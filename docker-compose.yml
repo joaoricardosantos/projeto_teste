@@ -12,6 +12,7 @@ services:
 
   web:
     build: .
+    working_dir: /app/projeto_disparador
     command: gunicorn core.wsgi:application --bind 0.0.0.0:8000
     volumes:
       - .:/app
@@ -28,6 +29,16 @@ services:
       - EXTERNAL_MESSAGING_API_KEY=chave_api_aqui
     depends_on:
       - db
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - web
 
 volumes:
   postgres_data:
