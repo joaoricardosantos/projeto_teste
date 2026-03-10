@@ -1,68 +1,69 @@
 <template>
-  <v-app>
-    <v-app-bar color="primary" dark>
-      <v-toolbar-title>Administração de Usuários</v-toolbar-title>
-      <v-spacer></v-spacer>
-      <v-btn variant="text" @click="goToDashboard">Dashboard</v-btn>
-      <v-btn icon @click="logout">
-        <v-icon>mdi-logout</v-icon>
-      </v-btn>
-    </v-app-bar>
+  <v-container>
+    <v-row class="mb-4" align="center" justify="space-between">
+      <v-col cols="12" sm="6">
+        <h1 class="text-h5 font-weight-bold">Administração de Usuários</h1>
+      </v-col>
+      <v-col cols="12" sm="6" class="text-sm-right text-left">
+        <v-btn variant="text" class="mr-2" @click="goToDashboard">
+          Dashboard
+        </v-btn>
+        <v-btn icon @click="logout">
+          <v-icon>mdi-logout</v-icon>
+        </v-btn>
+      </v-col>
+    </v-row>
 
-    <v-main>
-      <v-container>
-        <v-alert v-if="errorMessage" type="error" class="mb-4" dense>
-          {{ errorMessage }}
-        </v-alert>
+    <v-alert v-if="errorMessage" type="error" class="mb-4" dense>
+      {{ errorMessage }}
+    </v-alert>
 
-        <v-card elevation="4">
-          <v-table>
-            <thead>
-              <tr>
-                <th class="text-left">Nome</th>
-                <th class="text-left">E-mail</th>
-                <th class="text-center">Status</th>
-                <th class="text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="user in users" :key="user.id">
-                <td>{{ user.name }}</td>
-                <td>{{ user.email }}</td>
-                <td class="text-center">
-                  <v-chip
-                    :color="user.is_approved ? 'success' : 'warning'"
-                    text-color="white"
-                    size="small"
-                  >
-                    {{ user.is_approved ? 'Aprovado' : 'Pendente' }}
-                  </v-chip>
-                </td>
-                <td class="text-center">
-                  <v-btn
-                    v-if="!user.is_approved"
-                    color="success"
-                    size="small"
-                    @click="updateUserStatus(user.id, true)"
-                  >
-                    Aprovar
-                  </v-btn>
-                  <v-btn
-                    v-else
-                    color="error"
-                    size="small"
-                    @click="updateUserStatus(user.id, false)"
-                  >
-                    Revogar
-                  </v-btn>
-                </td>
-              </tr>
-            </tbody>
-          </v-table>
-        </v-card>
-      </v-container>
-    </v-main>
-  </v-app>
+    <v-card elevation="4">
+      <v-table>
+        <thead>
+          <tr>
+            <th class="text-left">Nome</th>
+            <th class="text-left">E-mail</th>
+            <th class="text-center">Status</th>
+            <th class="text-center">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="user in users" :key="user.id">
+            <td>{{ user.name }}</td>
+            <td>{{ user.email }}</td>
+            <td class="text-center">
+              <v-chip
+                :color="user.is_approved ? 'success' : 'warning'"
+                text-color="white"
+                size="small"
+              >
+                {{ user.is_approved ? 'Aprovado' : 'Pendente' }}
+              </v-chip>
+            </td>
+            <td class="text-center">
+              <v-btn
+                v-if="!user.is_approved"
+                color="success"
+                size="small"
+                @click="updateUserStatus(user.id, true)"
+              >
+                Aprovar
+              </v-btn>
+              <v-btn
+                v-else
+                color="error"
+                size="small"
+                @click="updateUserStatus(user.id, false)"
+              >
+                Revogar
+              </v-btn>
+            </td>
+          </tr>
+        </tbody>
+      </v-table>
+    </v-card>
+  </v-container>
 </template>
 
 <script setup>
