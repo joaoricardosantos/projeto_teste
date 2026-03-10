@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: condo_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  web:
+    build: .
+    command: gunicorn core.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_NAME=condo_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DJANGO_SECRET_KEY=development-secret-key-change-in-prod
+      - DJANGO_DEBUG=True
+      - EXTERNAL_MESSAGING_API_URL=http://api.externa.com/v1/send
+      - EXTERNAL_MESSAGING_API_KEY=chave_api_aqui
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
