@@ -1,3 +1,4 @@
+from typing import List
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from core.models import User
@@ -9,6 +10,20 @@ admin_router = Router(auth=JWTAuth())
 class UserApprovalIn(Schema):
     user_id: UUID4
     is_approved: bool
+
+class UserOut(Schema):
+    id: UUID4
+    name: str
+    email: str
+    is_approved: bool
+    is_active: bool
+
+@admin_router.get("/users", response=List[UserOut])
+def list_users(request):
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+    
+    return User.objects.all().order_by('-created_at')
 
 @admin_router.post("/approve-user", response={200: dict})
 def approve_user(request, payload: UserApprovalIn):
