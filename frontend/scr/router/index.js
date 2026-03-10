@@ -1,0 +1,41 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import AuthView from '../views/AuthView.vue'
+import DashboardView from '../views/DashboardView.vue'
+import AdminView from '../views/AdminView.vue'
+
+const routes = [
+    {
+        path: '/',
+        name: 'Auth',
+        component: AuthView
+    },
+    {
+        path: '/dashboard',
+        name: 'Dashboard',
+        component: DashboardView,
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/admin',
+        name: 'Admin',
+        component: AdminView,
+        meta: { requiresAuth: true }
+    }
+]
+
+const router = createRouter({
+    history: createWebHistory(),
+    routes
+})
+
+router.beforeEach((to, from, next) => {
+    const isAuthenticated = !!localStorage.getItem('access_token')
+
+    if (to.meta.requiresAuth && !isAuthenticated) {
+        next('/')
+    } else {
+        next()
+    }
+})
+
+export default router
