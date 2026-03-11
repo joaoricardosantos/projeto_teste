@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AuthView from '../views/AuthView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import AdminView from '../views/AdminView.vue'
+import ReportsView from '../views/ReportsView.vue'
 
 const routes = [
     {
@@ -19,6 +20,12 @@ const routes = [
         path: '/admin',
         name: 'Admin',
         component: AdminView,
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/relatorios',
+        name: 'Reports',
+        component: ReportsView,
         meta: { requiresAuth: true }
     }
 ]
