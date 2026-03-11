@@ -21,10 +21,18 @@
         <v-btn
           v-if="isAuthenticated"
           variant="text"
-          class="mr-4"
+          class="mr-2"
           @click="goToAdmin"
         >
           Administração
+        </v-btn>
+        <v-btn
+          v-if="isAuthenticated"
+          variant="text"
+          class="mr-4"
+          @click="goToReports"
+        >
+          Relatórios
         </v-btn>
         <v-btn
           v-if="showLogout"
@@ -58,6 +66,10 @@ const goToDashboard = () => {
 
 const goToAdmin = () => {
   router.push('/admin')
+}
+
+const goToReports = () => {
+  router.push('/relatorios')
 }
 
 const logout = () => {
