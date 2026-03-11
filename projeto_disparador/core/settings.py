@@ -79,3 +79,11 @@ AUTH_USER_MODEL = "core.User"
 
 EXTERNAL_MESSAGING_API_URL = os.environ.get("EXTERNAL_MESSAGING_API_URL", "")
 EXTERNAL_MESSAGING_API_KEY = os.environ.get("EXTERNAL_MESSAGING_API_KEY", "")
+
+# Configurações de integração com Superlógica
+SUPERLOGICA_BASE_URL = os.environ.get(
+    "SUPERLOGICA_BASE_URL", "https://api.superlogica.net/v2/condor"
+)
+SUPERLOGICA_APP_TOKEN = os.environ.get("SUPERLOGICA_APP_TOKEN", "")
+SUPERLOGICA_ACCESS_TOKEN = os.environ.get("SUPERLOGICA_ACCESS_TOKEN", "")
+SUPERLOGICA_MAX_ID = int(os.environ.get("SUPERLOGICA_MAX_ID", "100"))
