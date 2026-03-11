@@ -76,13 +76,14 @@
       {{ errorMessage }}
     </v-alert>
 
-    <v-card elevation="4">
+      <v-card elevation="4">
       <v-table>
         <thead>
           <tr>
             <th class="text-left">Nome</th>
             <th class="text-left">E-mail</th>
             <th class="text-center">Status</th>
+            <th class="text-center">Permissão</th>
             <th class="text-center">Ações</th>
           </tr>
         </thead>
@@ -97,6 +98,15 @@
                 size="small"
               >
                 {{ user.is_approved ? 'Aprovado' : 'Pendente' }}
+              </v-chip>
+            </td>
+            <td class="text-center">
+              <v-chip
+                :color="user.is_staff || user.is_superuser ? 'primary' : 'grey'"
+                text-color="white"
+                size="small"
+              >
+                {{ user.is_staff || user.is_superuser ? 'Admin' : 'Usuário' }}
               </v-chip>
             </td>
             <td class="text-center">
@@ -115,6 +125,14 @@
                 @click="updateUserStatus(user.id, false)"
               >
                 Revogar
+              </v-btn>
+              <v-btn
+                class="ml-2"
+                size="small"
+                :color="user.is_staff || user.is_superuser ? 'secondary' : 'primary'"
+                @click="toggleAdmin(user)"
+              >
+                {{ user.is_staff || user.is_superuser ? 'Remover admin' : 'Tornar admin' }}
               </v-btn>
             </td>
           </tr>
@@ -169,6 +187,33 @@ const updateUserStatus = async (userId, isApproved) => {
     if (!response.ok) {
       throw new Error('Erro ao atualizar status do usuário')
     }
+    await fetchUsers()
+  } catch (error) {
+    errorMessage.value = error.message
+  }
+}
+
+const toggleAdmin = async (user) => {
+  try {
+    const token = localStorage.getItem('access_token')
+    const response = await fetch('/api/admin/set-admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: user.id,
+        make_admin: !(user.is_staff || user.is_superuser),
+      }),
+    })
+
+    const data = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Erro ao atualizar permissão')
+    }
+
     await fetchUsers()
   } catch (error) {
     errorMessage.value = error.message

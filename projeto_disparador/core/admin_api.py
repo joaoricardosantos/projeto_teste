@@ -25,6 +25,13 @@ class UserOut(Schema):
     email: str
     is_approved: bool
     is_active: bool
+    is_staff: bool
+    is_superuser: bool
+
+
+class AdminRoleIn(Schema):
+    user_id: UUID4
+    make_admin: bool
 
 
 @admin_router.get("/users", response=List[UserOut])
@@ -67,3 +74,24 @@ def create_user(request, payload: UserCreateIn):
     )
 
     return 201, {"message": "User_created_successfully_pending_approval"}
+
+
+@admin_router.post("/set-admin", response={200: dict})
+def set_admin_role(request, payload: AdminRoleIn):
+    """
+    Concede ou remove privilégios de administrador de um usuário.
+    """
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+
+    try:
+        user = User.objects.get(id=payload.user_id)
+    except User.DoesNotExist:
+        raise HttpError(404, "User_not_found")
+
+    # Atualiza flags de admin
+    user.is_staff = payload.make_admin
+    user.is_superuser = payload.make_admin
+    user.save()
+
+    return 200, {"message": "User_admin_role_updated"}
