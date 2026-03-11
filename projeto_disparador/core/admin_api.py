@@ -4,6 +4,9 @@ from ninja.errors import HttpError
 from core.models import User
 from core.auth import JWTAuth
 from pydantic import UUID4, EmailStr
+from django.http import HttpResponse
+from core.superlogica import gerar_relatorio_inadimplentes
+import requests
 
 admin_router = Router(auth=JWTAuth())
 
@@ -95,3 +98,27 @@ def set_admin_role(request, payload: AdminRoleIn):
     user.save()
 
     return 200, {"message": "User_admin_role_updated"}
+
+
+@admin_router.get("/export-defaulters")
+def export_defaulters(request):
+    """
+    Gera um relatório Excel com todos os inadimplentes e devolve para download.
+    """
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+
+    try:
+        content, filename = gerar_relatorio_inadimplentes()
+    except requests.RequestException:
+        raise HttpError(502, "External_service_unavailable")
+
+    if not content:
+        raise HttpError(204, "No_defaulters_found")
+
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

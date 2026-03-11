@@ -5,6 +5,14 @@
         <h1 class="text-h5 font-weight-bold">Administração de Usuários</h1>
       </v-col>
       <v-col cols="12" sm="6" class="text-sm-right text-left">
+        <v-btn
+          color="primary"
+          class="mr-4 mb-2"
+          :loading="isExporting"
+          @click="exportDefaulters"
+        >
+          Exportar inadimplentes (Excel)
+        </v-btn>
         <v-btn variant="text" class="mr-2" @click="goToDashboard">
           Dashboard
         </v-btn>
@@ -155,6 +163,7 @@ const newUser = reactive({
   password: '',
 })
 const isCreatingUser = ref(false)
+const isExporting = ref(false)
 const createUserSuccess = ref('')
 const createUserError = ref('')
 
@@ -217,6 +226,43 @@ const toggleAdmin = async (user) => {
     await fetchUsers()
   } catch (error) {
     errorMessage.value = error.message
+  }
+}
+
+const exportDefaulters = async () => {
+  isExporting.value = true
+  errorMessage.value = ''
+  try {
+    const token = localStorage.getItem('access_token')
+    const response = await fetch('/api/admin/export-defaulters', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    if (response.status === 204) {
+      throw new Error('Nenhum inadimplente encontrado para exportar')
+    }
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.detail || 'Erro ao exportar inadimplentes')
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'inadimplentes_condominios.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    errorMessage.value = error.message
+  } finally {
+    isExporting.value = false
   }
 }
 
