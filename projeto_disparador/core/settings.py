@@ -92,3 +92,10 @@ SUPERLOGICA_MAX_ID = int(os.environ.get("SUPERLOGICA_MAX_ID", "100"))
 EVOLUTION_BASE_URL = os.environ.get("EVOLUTION_BASE_URL", "http://localhost:8080")
 EVOLUTION_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "minha-instancia")
 EVOLUTION_API_KEY  = os.environ.get("EVOLUTION_API_KEY", "")
+
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@seudominio.com.br")
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)

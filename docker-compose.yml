@@ -55,7 +55,18 @@ services:
       - EXTERNAL_MESSAGING_API_KEY=chave_api_aqui
       - EVOLUTION_BASE_URL=http://evolution:8080
       - EVOLUTION_INSTANCE=minha-instancia
-      - EVOLUTION_API_KEY=minha-chave-secreta-evolution
+      - EVOLUTION_API_KEY=minha-chave-secreta-evolution - FRONTEND_URL=http://localhost:3000
+      - DEFAULT_FROM_EMAIL=noreply@seudominio.com.br
+
+      # Deixe console por padrão (e-mail aparece nos logs do Docker):
+      - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+      # Quando tiver SMTP real, mude o backend e preencha abaixo:
+      # - EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+      # - EMAIL_HOST=smtp.gmail.com
+      # - EMAIL_PORT=587
+      # - EMAIL_USE_TLS=True
+      # - EMAIL_HOST_USER=seu@email.com
+      # - EMAIL_HOST_PASSWORD=sua_senha_de_app
     depends_on:
       db:
         condition: service_healthy
