@@ -12,12 +12,18 @@ from core.services import (
 
 message_router = Router(auth=JWTAuth())
 
+ALLOWED_EXTENSIONS = (".csv", ".xlsx")
+
+
+def _check_extension(filename: str):
+    if not any(filename.lower().endswith(ext) for ext in ALLOWED_EXTENSIONS):
+        raise HttpError(400, "Invalid_file_format_expected_csv_or_xlsx")
+
 
 @message_router.post("/upload-defaulters", response={200: dict})
 def upload_defaulters(request, file: UploadedFile = File(...)):
-    """Upload de CSV com mensagem padrão."""
-    if not file.name.endswith(".csv"):
-        raise HttpError(400, "Invalid_file_format_expected_csv")
+    """Upload de CSV ou XLSX com mensagem padrão."""
+    _check_extension(file.name)
     try:
         result = process_defaulters_spreadsheet(file)
         return 200, {"message": "Processing_completed", "details": result}
@@ -33,9 +39,8 @@ def upload_defaulters_with_template(
     template_id: UUID4,
     file: UploadedFile = File(...),
 ):
-    """Upload de CSV usando template de mensagem específico."""
-    if not file.name.endswith(".csv"):
-        raise HttpError(400, "Invalid_file_format_expected_csv")
+    """Upload de CSV ou XLSX usando template de mensagem específico."""
+    _check_extension(file.name)
     try:
         result = process_defaulters_with_template(file, str(template_id))
         return 200, {"message": "Processing_completed", "details": result}
@@ -54,14 +59,14 @@ def dispatch_excel(
     template_id: Optional[UUID4] = None,
 ):
     """
-    Recebe o Excel do relatório de inadimplentes e envia WhatsApp
-    para todos os números da coluna 'Telefones' da aba Resumo.
+    Recebe CSV ou XLSX do relatório de inadimplentes e envia WhatsApp
+    para todos os números da coluna 'Telefones'.
+    Colunas esperadas: Condomínio | Unidade | Telefones | Total
 
     Query param opcional:
       - template_id: UUID do template de mensagem
     """
-    if not file.name.endswith(".xlsx"):
-        raise HttpError(400, "Invalid_file_format_expected_xlsx")
+    _check_extension(file.name)
     try:
         result = process_excel_report_dispatch(
             file,

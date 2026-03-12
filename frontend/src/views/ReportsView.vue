@@ -112,8 +112,8 @@
       <!-- Upload do Excel -->
       <v-file-input
         v-model="dispatchFile"
-        accept=".xlsx"
-        label="Selecione o Excel do relatório (.xlsx)"
+        accept=".csv,.xlsx"
+        label="Selecione o arquivo do relatório (.csv ou .xlsx)"
         variant="outlined"
         density="comfortable"
         prepend-icon="mdi-file-excel"

@@ -4,7 +4,7 @@
       <v-col cols="12" sm="10" md="8" lg="6">
         <v-card elevation="8">
           <v-card-title class="text-h5 font-weight-bold pa-4">
-            Upload de Planilha (CSV)
+            Enviar Mensagens
           </v-card-title>
           <v-card-text class="pa-4">
             <v-form @submit.prevent="handleFileUpload">
@@ -42,10 +42,10 @@
 
               <v-file-input
                 v-model="selectedFile"
-                accept=".csv"
-                label="Selecione o arquivo CSV gerado pelo sistema"
+                accept=".csv,.xlsx"
+                label="Selecione o arquivo do relatório (.csv ou .xlsx)"
                 variant="outlined"
-                prepend-icon="mdi-file-delimited"
+                prepend-icon="mdi-file-table"
                 show-size
                 required
               />
@@ -57,8 +57,18 @@
               <v-alert v-if="successMessage" type="success" class="mt-4" dense>
                 {{ successMessage }}
                 <div v-if="resultDetails" class="mt-2">
-                  <strong>Sucessos:</strong> {{ resultDetails.success }}<br />
-                  <strong>Erros:</strong> {{ resultDetails.errors }}
+                  <div>✅ <strong>Sucessos:</strong> {{ resultDetails.success }}</div>
+                  <div>❌ <strong>Erros:</strong> {{ resultDetails.errors }}</div>
+                  <div v-if="resultDetails.failures && resultDetails.failures.length" class="mt-2">
+                    <div class="text-caption text-medium-emphasis mb-1">Números com falha:</div>
+                    <div
+                      v-for="f in resultDetails.failures"
+                      :key="f.phone"
+                      class="text-caption"
+                    >
+                      {{ f.phone }} — {{ f.error }}
+                    </div>
+                  </div>
                 </div>
               </v-alert>
 
@@ -112,6 +122,8 @@ const renderPreview = (body) =>
     .replace(/\{\{nome\}\}/g, 'João Silva')
     .replace(/\{\{condominio\}\}/g, 'Residencial Acácias')
     .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
+    .replace(/\{\{vencimento\}\}/g, '10/04/2025')
+    .replace(/\{\{competencia\}\}/g, '12/10/2025')
 
 const fetchTemplates = async () => {
   loadingTemplates.value = true
@@ -140,10 +152,11 @@ const handleFileUpload = async () => {
     const token = localStorage.getItem('access_token')
     if (!token) throw new Error('Usuário não autenticado')
 
-    // Escolhe endpoint conforme template selecionado
-    let url = '/api/messages/upload-defaulters'
+    // Usa o endpoint dispatch-excel que lê o Excel/CSV do relatório
+    // com colunas: Condomínio | Unidade | Telefones | Total
+    let url = '/api/messages/dispatch-excel'
     if (selectedTemplateId.value) {
-      url = `/api/messages/upload-defaulters-template?template_id=${selectedTemplateId.value}`
+      url += `?template_id=${selectedTemplateId.value}`
     }
 
     const response = await fetch(url, {
@@ -152,7 +165,9 @@ const handleFileUpload = async () => {
       body: formData,
     })
 
-    const data = await response.json()
+    const text = await response.text()
+    let data = {}
+    try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
 
     if (!response.ok) {
       throw new Error(data.detail || 'Erro ao processar o arquivo')
