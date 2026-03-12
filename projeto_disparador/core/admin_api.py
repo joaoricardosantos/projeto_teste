@@ -159,3 +159,38 @@ def delete_template(request, template_id: UUID4):
         raise HttpError(404, "Template_not_found")
     t.delete()
     return 200, {"message": "Template_deleted"}
+
+
+@admin_router.delete("/users/{user_id}", response={200: dict})
+def delete_user(request, user_id: UUID4):
+    """
+    Remove um usuário permanentemente. Apenas admins podem executar.
+    Não é possível remover a si mesmo.
+    """
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+
+    if str(request.auth.id) == str(user_id):
+        raise HttpError(400, "Cannot_delete_yourself")
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        raise HttpError(404, "User_not_found")
+
+    user.delete()
+    return 200, {"message": "User_deleted_successfully"}
+
+
+@admin_router.delete("/users/{user_id}", response={200: dict})
+def delete_user(request, user_id: UUID4):
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+    if str(request.auth.id) == str(user_id):
+        raise HttpError(400, "Cannot_delete_yourself")
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        raise HttpError(404, "User_not_found")
+    user.delete()
+    return 200, {"message": "User_deleted_successfully"}
