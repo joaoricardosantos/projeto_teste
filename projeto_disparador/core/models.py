@@ -38,11 +38,6 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
-    """
-    Custom user model using email as the unique identifier and
-    integrating approval and audit fields used across the project.
-    """
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = None
     email = models.EmailField(unique=True)
@@ -58,3 +53,38 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+
+class MessageTemplate(models.Model):
+    """
+    Template de mensagem WhatsApp com suporte a variáveis dinâmicas.
+
+    Variáveis disponíveis: {nome}, {condominio}, {valor}, {data_atraso}
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120, verbose_name="Nome do template")
+    body = models.TextField(
+        verbose_name="Corpo da mensagem",
+        help_text="Variáveis: {nome}, {condominio}, {valor}, {data_atraso}",
+    )
+    is_active = models.BooleanField(
+        default=False,
+        verbose_name="Template ativo",
+        help_text="Apenas um template pode estar ativo por vez.",
+    )
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="Criado em")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({'ativo' if self.is_active else 'inativo'})"
+
+    def render(self, *, nome: str, condominio: str, valor: str, data_atraso: str) -> str:
+        return self.body.format(
+            nome=nome,
+            condominio=condominio,
+            valor=valor,
+            data_atraso=data_atraso,
+        )
