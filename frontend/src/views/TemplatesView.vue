@@ -88,77 +88,192 @@
       </v-col>
     </v-row>
 
-    <!-- ── Dialog: Criar / Editar ── -->
-    <v-dialog v-model="dialog.open" max-width="600" persistent>
+    <!-- ── Dialog: Criar / Editar (layout duas colunas) ── -->
+    <v-dialog v-model="dialog.open" max-width="960" persistent>
       <v-card>
-        <v-card-title class="pa-4 pb-2">
+        <v-card-title class="pa-4 pb-2 d-flex align-center">
+          <v-icon class="mr-2" color="primary">mdi-message-text-outline</v-icon>
           <span class="text-h6">{{ dialog.isEdit ? 'Editar template' : 'Novo template' }}</span>
         </v-card-title>
 
-        <v-card-text class="pa-4">
-          <v-text-field
-            v-model="dialog.form.name"
-            label="Nome do template"
-            variant="outlined"
-            :error-messages="dialog.errors.name"
-            class="mb-3"
-            @update:model-value="dialog.errors.name = ''"
-          />
+        <v-divider />
 
-          <!-- Botões de inserção de variáveis -->
-          <div class="mb-2">
-            <p class="text-caption text-medium-emphasis mb-1">Clique para inserir uma variável:</p>
-            <div class="d-flex gap-2 flex-wrap">
-              <v-chip
-                v-for="variable in availableVariables"
-                :key="variable.value"
-                size="small"
-                color="primary"
-                variant="tonal"
-                prepend-icon="mdi-code-braces"
-                style="cursor: pointer;"
-                @click="insertVariable(variable.value)"
+        <v-card-text class="pa-0">
+          <v-row no-gutters style="min-height: 480px;">
+
+            <!-- ── Coluna esquerda: formulário ── -->
+            <v-col cols="12" md="6" class="pa-5" style="border-right: 1px solid rgba(0,0,0,0.08);">
+              <p class="text-caption text-uppercase font-weight-bold text-medium-emphasis mb-4 letter-spacing-wide">
+                Edição
+              </p>
+
+              <v-text-field
+                v-model="dialog.form.name"
+                label="Nome do template"
+                variant="outlined"
+                density="comfortable"
+                :error-messages="dialog.errors.name"
+                class="mb-4"
+                @update:model-value="dialog.errors.name = ''"
+              />
+
+              <!-- Chips de variáveis -->
+              <div class="mb-3">
+                <p class="text-caption text-medium-emphasis mb-2">
+                  <v-icon size="14" class="mr-1">mdi-cursor-pointer</v-icon>
+                  Clique para inserir uma variável:
+                </p>
+                <div class="d-flex gap-2 flex-wrap">
+                  <v-chip
+                    v-for="variable in availableVariables"
+                    :key="variable.value"
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="mdi-code-braces"
+                    style="cursor: pointer; user-select: none;"
+                    @click="insertVariable(variable.value)"
+                  >
+                    {{ variable.label }}
+                  </v-chip>
+                </div>
+              </div>
+
+              <v-textarea
+                ref="bodyTextareaRef"
+                v-model="dialog.form.body"
+                label="Corpo da mensagem"
+                variant="outlined"
+                rows="8"
+                density="comfortable"
+                :error-messages="dialog.errors.body"
+                @update:model-value="dialog.errors.body = ''"
+              />
+
+              <v-alert v-if="dialog.error" type="error" class="mt-2" density="compact">
+                {{ dialog.error }}
+              </v-alert>
+            </v-col>
+
+            <!-- ── Coluna direita: preview WhatsApp ── -->
+            <v-col
+              cols="12"
+              md="6"
+              class="pa-5 d-flex flex-column"
+              style="background: #ece5dd;"
+            >
+              <p class="text-caption text-uppercase font-weight-bold mb-4" style="color: #54656f; letter-spacing: 0.08em;">
+                Pré-visualização
+              </p>
+
+              <!-- Barra do "chat" -->
+              <div
+                class="d-flex align-center pa-3 mb-4 rounded-lg"
+                style="background: #075e54;"
               >
-                {{ variable.label }}
-              </v-chip>
-            </div>
-          </div>
+                <v-avatar size="36" color="grey-lighten-2" class="mr-3">
+                  <v-icon color="grey-darken-1">mdi-account</v-icon>
+                </v-avatar>
+                <div>
+                  <p class="text-body-2 font-weight-bold ma-0" style="color: white; line-height: 1.2;">
+                    {{ dialog.form.name || 'Nome do template' }}
+                  </p>
+                  <p class="text-caption ma-0" style="color: rgba(255,255,255,0.7);">
+                    Sistema de cobrança
+                  </p>
+                </div>
+              </div>
 
-          <v-textarea
-            ref="bodyTextareaRef"
-            v-model="dialog.form.body"
-            label="Corpo da mensagem"
-            variant="outlined"
-            rows="5"
-            :error-messages="dialog.errors.body"
-            @update:model-value="dialog.errors.body = ''"
-          />
+              <!-- Área de mensagens -->
+              <div class="flex-grow-1 d-flex flex-column justify-end">
 
-          <!-- Preview em tempo real -->
-          <v-expand-transition>
-            <div v-if="dialog.form.body">
-              <p class="text-caption text-medium-emphasis mt-3 mb-1">Pré-visualização:</p>
-              <v-sheet
-                color="grey-lighten-4"
-                rounded
-                class="pa-3"
-                style="font-size: 0.875rem; white-space: pre-wrap; word-break: break-word;"
-              >{{ renderPreview(dialog.form.body) }}</v-sheet>
-            </div>
-          </v-expand-transition>
+                <!-- Estado vazio -->
+                <div
+                  v-if="!dialog.form.body"
+                  class="d-flex flex-column align-center justify-center flex-grow-1 text-center"
+                  style="opacity: 0.45;"
+                >
+                  <v-icon size="48" style="color: #54656f;">mdi-message-outline</v-icon>
+                  <p class="text-body-2 mt-2" style="color: #54656f;">
+                    Digite a mensagem ao lado<br>para ver o preview aqui
+                  </p>
+                </div>
 
-          <v-alert v-if="dialog.error" type="error" class="mt-3" dense>
-            {{ dialog.error }}
-          </v-alert>
+                <!-- Balão de mensagem -->
+                <div v-else class="d-flex flex-column align-end">
+                  <!-- Hora fake + balão -->
+                  <div
+                    class="pa-3 rounded-lg mb-1"
+                    style="
+                      background: #dcf8c6;
+                      max-width: 88%;
+                      box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+                      border-radius: 8px 0px 8px 8px !important;
+                      position: relative;
+                    "
+                  >
+                    <!-- Orelha do balão -->
+                    <div style="
+                      position: absolute;
+                      top: 0; right: -8px;
+                      width: 0; height: 0;
+                      border-left: 8px solid #dcf8c6;
+                      border-bottom: 8px solid transparent;
+                    "/>
+
+                    <p
+                      class="ma-0"
+                      style="
+                        font-size: 0.875rem;
+                        color: #111;
+                        white-space: pre-wrap;
+                        word-break: break-word;
+                        line-height: 1.5;
+                      "
+                    >{{ renderPreview(dialog.form.body) }}</p>
+
+                    <div class="d-flex align-center justify-end mt-1 gap-1">
+                      <span style="font-size: 0.7rem; color: #667781;">
+                        {{ currentTime }}
+                      </span>
+                      <v-icon size="14" color="#4fc3f7">mdi-check-all</v-icon>
+                    </div>
+                  </div>
+
+                  <!-- Chips das variáveis usadas -->
+                  <div v-if="extractVariables(dialog.form.body).length" class="d-flex flex-wrap gap-1 mt-2 justify-end">
+                    <v-chip
+                      v-for="v in extractVariables(dialog.form.body)"
+                      :key="v"
+                      size="x-small"
+                      color="success"
+                      variant="tonal"
+                    >
+                      {{ v }} substituído
+                    </v-chip>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Nota de rodapé -->
+              <p class="text-caption mt-4 text-center" style="color: #8696a0;">
+                Preview com dados de exemplo
+              </p>
+            </v-col>
+
+          </v-row>
         </v-card-text>
 
-        <v-card-actions class="pa-4 pt-0">
+        <v-divider />
+
+        <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="closeDialog" :disabled="dialog.loading">
             Cancelar
           </v-btn>
           <v-btn
             color="primary"
+            variant="elevated"
             :loading="dialog.loading"
             @click="dialog.isEdit ? submitEdit() : submitCreate()"
           >
@@ -190,7 +305,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 
 // ── Estado principal ──────────────────────────────────────────────────────────
 const templates = ref([])
@@ -199,10 +314,16 @@ const errorMessage = ref('')
 
 // ── Variáveis disponíveis ─────────────────────────────────────────────────────
 const availableVariables = [
-  { label: 'Nome',        value: '{{nome}}'       },
-  { label: 'Condomínio',  value: '{{condominio}}' },
-  { label: 'Valor',       value: '{{valor}}'      },
+  { label: 'Nome',       value: '{{nome}}'       },
+  { label: 'Condomínio', value: '{{condominio}}' },
+  { label: 'Valor',      value: '{{valor}}'      },
 ]
+
+// ── Hora atual para o preview ─────────────────────────────────────────────────
+const currentTime = computed(() => {
+  const now = new Date()
+  return now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+})
 
 // ── Ref do textarea para controle do cursor ───────────────────────────────────
 const bodyTextareaRef = ref(null)
@@ -243,7 +364,6 @@ const renderPreview = (body) =>
 
 // ── Inserção de variável na posição do cursor ─────────────────────────────────
 const insertVariable = async (variable) => {
-  // Tenta obter o elemento <textarea> nativo dentro do componente Vuetify
   const el = bodyTextareaRef.value?.$el?.querySelector('textarea')
 
   if (el) {
@@ -255,13 +375,11 @@ const insertVariable = async (variable) => {
       variable +
       dialog.form.body.slice(end)
 
-    // Reposiciona o cursor após a variável inserida
     await nextTick()
     const newPos = start + variable.length
     el.setSelectionRange(newPos, newPos)
     el.focus()
   } else {
-    // Fallback: insere no final
     dialog.form.body += variable
   }
 
