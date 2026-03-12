@@ -1,4 +1,5 @@
 import re
+import time
 import requests
 from django.conf import settings
 
@@ -15,11 +16,14 @@ def _format_phone(phone: str) -> str:
     return "55" + digits
 
 
-def send_whatsapp_message(phone: str, message: str) -> dict:
+def send_whatsapp_message(phone: str, message: str, sleep_seconds: float = 5.0) -> dict:
     """
     Envia mensagem de texto via Evolution API.
+    Aguarda sleep_seconds antes de enviar (padrão: 5s).
     Lança requests.HTTPError em caso de falha HTTP.
     """
+    time.sleep(sleep_seconds)
+
     instance = settings.EVOLUTION_INSTANCE
     api_key  = settings.EVOLUTION_API_KEY
     base_url = settings.EVOLUTION_BASE_URL.rstrip("/")
@@ -33,9 +37,28 @@ def send_whatsapp_message(phone: str, message: str) -> dict:
 
     payload = {
         "number": _format_phone(phone),
-        "text": message,
+        "textMessage": {"text": message},
     }
 
     response = requests.post(url, json=payload, headers=headers, timeout=15)
     response.raise_for_status()
     return response.json()
+
+
+def send_whatsapp_bulk(contacts: list, delay_between: float = 5.0) -> list:
+    """
+    Envia mensagens em lote.
+    contacts: lista de dicts com 'phone' e 'message'.
+    Aguarda delay_between segundos entre cada envio.
+    Retorna lista de resultados com status de cada envio.
+    """
+    results = []
+    for contact in contacts:
+        phone = contact.get("phone", "")
+        message = contact.get("message", "")
+        try:
+            response = send_whatsapp_message(phone, message, sleep_seconds=delay_between)
+            results.append({"phone": phone, "status": "success", "response": response})
+        except Exception as e:
+            results.append({"phone": phone, "status": "error", "error": str(e)})
+    return results

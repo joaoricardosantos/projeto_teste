@@ -453,7 +453,9 @@ const submitCreate = async () => {
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify(dialog.form),
     })
-    const data = await res.json()
+    const text = await res.text()
+    let data = {}
+    try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
     if (!res.ok) {
       const msg = data.detail || 'Erro ao criar template'
       if (msg === 'Template_name_already_exists') {

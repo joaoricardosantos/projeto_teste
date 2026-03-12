@@ -1,14 +1,10 @@
 <template>
   <v-app>
+    <!-- Fundo com imagem em baixa opacidade -->
+    <div class="bg-image" />
+
     <v-app-bar color="primary" dark flat>
       <v-container class="d-flex align-center">
-        <v-img
-          src="/logo-pratika.png"
-          alt="Pratika Administradora de Condomínios"
-          max-height="56"
-          max-width="200"
-          contain
-        />
         <v-spacer />
         <v-btn
           v-if="isAuthenticated"
@@ -78,3 +74,21 @@ const logout = () => {
   router.push('/')
 }
 </script>
+
+<style>
+.bg-image {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url('/fundosistema.png');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.v-main {
+  position: relative;
+  z-index: 1;
+}
+</style>
