@@ -3,16 +3,12 @@ import AuthView from '../views/AuthView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import AdminView from '../views/AdminView.vue'
 import ReportsView from '../views/ReportsView.vue'
+import TemplatesView from '../views/TemplatesView.vue'
 
 const routes = [
     {
         path: '/',
         name: 'Auth',
-        component: AuthView
-    },
-    {
-        path: '/reset-password',
-        name: 'ResetPassword',
         component: AuthView
     },
     {
@@ -32,6 +28,12 @@ const routes = [
         name: 'Reports',
         component: ReportsView,
         meta: { requiresAuth: true }
+    },
+    {
+        path: '/templates',
+        name: 'Templates',
+        component: TemplatesView,
+        meta: { requiresAuth: true }
     }
 ]
 
@@ -42,7 +44,6 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
     const isAuthenticated = !!localStorage.getItem('access_token')
-
     if (to.meta.requiresAuth && !isAuthenticated) {
         next('/')
     } else {

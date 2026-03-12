@@ -56,39 +56,30 @@ class User(AbstractUser):
 
 class MessageTemplate(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=120)
-    body = models.TextField(
-        help_text="Use {nome}, {condominio}, {valor}, {data_atraso} como variáveis."
-    )
+    name = models.CharField(max_length=255)
+    body = models.TextField()
     is_active = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        verbose_name = "Template de mensagem"
+        verbose_name_plural = "Templates de mensagem"
 
     def __str__(self):
         return self.name
 
-    def render(self, *, nome: str, condominio: str, valor: str, data_atraso: str) -> str:
-        return self.body.format(
-            nome=nome,
-            condominio=condominio,
-            valor=valor,
-            data_atraso=data_atraso,
-        )
-
 
 class PasswordResetToken(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="reset_tokens",
-    )
-    token = models.CharField(max_length=128, unique=True, db_index=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reset_tokens")
+    token = models.CharField(max_length=255, unique=True)
     used = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
 
+    class Meta:
+        verbose_name = "Token de redefinição de senha"
+        verbose_name_plural = "Tokens de redefinição de senha"
+
     def __str__(self):
-        return f"ResetToken({self.user.email}, used={self.used})"
+        return f"{self.user.email} - {'usado' if self.used else 'ativo'}"

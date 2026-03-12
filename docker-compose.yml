@@ -1,6 +1,9 @@
 services:
+
+  # ─── Banco de dados principal (Django) ────────────────────────────────────
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: condo_db
       POSTGRES_USER: postgres
@@ -9,37 +12,13 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
-  evolution:
-    image: atendai/evolution-api:v1.8.2
-    ports:
-      - "8080:8080"
-    environment:
-      - SERVER_URL=http://localhost:8080
-      - AUTHENTICATION_TYPE=apikey
-      - AUTHENTICATION_API_KEY=minha-chave-secreta-evolution
-      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
-      - QRCODE_LIMIT=30
-      - QRCODE_COLOR=#198754
-      - DEL_INSTANCE=false
-      - STORE_MESSAGES=true
-      - STORE_MESSAGE_UP=true
-      - STORE_CONTACTS=true
-      - STORE_CHATS=true
-    volumes:
-      - evolution_instances:/evolution/instances
-      - evolution_store:/evolution/store
-    restart: unless-stopped
-
+  # ─── Backend Django ────────────────────────────────────────────────────────
   web:
     build: .
     working_dir: /app/projeto_disparador
-    command: gunicorn core.wsgi:application --bind 0.0.0.0:8000
+    restart: unless-stopped
+    command: ./entrypoint.sh
     volumes:
       - .:/app
     ports:
@@ -53,37 +32,89 @@ services:
       - DJANGO_DEBUG=True
       - EXTERNAL_MESSAGING_API_URL=http://api.externa.com/v1/send
       - EXTERNAL_MESSAGING_API_KEY=chave_api_aqui
+      # Superlógica
+      - SUPERLOGICA_BASE_URL=https://api.superlogica.net/v2/condor
+      - SUPERLOGICA_APP_TOKEN=seu_app_token_aqui
+      - SUPERLOGICA_ACCESS_TOKEN=seu_access_token_aqui
+      - SUPERLOGICA_MAX_ID=100
+      # Evolution API
       - EVOLUTION_BASE_URL=http://evolution:8080
-      - EVOLUTION_INSTANCE=minha-instancia
-      - EVOLUTION_API_KEY=minha-chave-secreta-evolution - FRONTEND_URL=http://localhost:3000
-      - DEFAULT_FROM_EMAIL=noreply@seudominio.com.br
-
-      # Deixe console por padrão (e-mail aparece nos logs do Docker):
-      - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-      # Quando tiver SMTP real, mude o backend e preencha abaixo:
-      # - EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-      # - EMAIL_HOST=smtp.gmail.com
-      # - EMAIL_PORT=587
-      # - EMAIL_USE_TLS=True
-      # - EMAIL_HOST_USER=seu@email.com
-      # - EMAIL_HOST_PASSWORD=sua_senha_de_app
+      - EVOLUTION_INSTANCE=sua_instancia_aqui
+      - EVOLUTION_API_KEY=sua_api_key_aqui
     depends_on:
-      db:
-        condition: service_healthy
-      evolution:
-        condition: service_started
+      - db
+      - evolution
 
+  # ─── Frontend Vue.js ───────────────────────────────────────────────────────
   frontend:
     build: ./frontend
+    restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
       - ./frontend:/app
+      - /app/node_modules
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
     depends_on:
       - web
 
+  # ─── Banco de dados da Evolution API ──────────────────────────────────────
+  evolution_db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution_db
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+
+  # ─── Redis (cache/filas da Evolution API) ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # ─── Evolution API ─────────────────────────────────────────────────────────
+  evolution:
+    image: atendai/evolution-api:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    environment:
+      # Servidor
+      - SERVER_URL=http://localhost:8080
+      - AUTHENTICATION_API_KEY=sua_api_key_aqui # mesmo valor de EVOLUTION_API_KEY
+
+      # Banco de dados
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution:evolution@evolution_db:5432/evolution_db
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution
+
+      # Redis
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379/6
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=false
+
+      # Logs
+      - LOG_LEVEL=ERROR
+      - LOG_COLOR=true
+      - LOG_BAILEYS=error
+
+      # Instância
+      - DEL_INSTANCE=false
+    depends_on:
+      - evolution_db
+      - redis
+
 volumes:
   postgres_data:
+  evolution_postgres_data:
+  redis_data:
   evolution_instances:
-  evolution_store:
