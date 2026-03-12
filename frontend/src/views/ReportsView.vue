@@ -279,7 +279,9 @@ const dispatchMessages = async () => {
       body: formData,
     })
 
-    const data = await response.json()
+    const text = await response.text()
+    let data = {}
+    try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
 
     if (!response.ok) {
       throw new Error(data.detail || 'Erro ao disparar mensagens')
