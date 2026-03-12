@@ -84,11 +84,18 @@ EXTERNAL_MESSAGING_API_KEY = os.environ.get("EXTERNAL_MESSAGING_API_KEY", "")
 SUPERLOGICA_BASE_URL = os.environ.get(
     "SUPERLOGICA_BASE_URL", "https://api.superlogica.net/v2/condor"
 )
-SUPERLOGICA_APP_TOKEN = os.environ.get("SUPERLOGICA_APP_TOKEN", "d904263b-a203-42fb-b33c-c4d772ebeb02")
-SUPERLOGICA_ACCESS_TOKEN = os.environ.get("SUPERLOGICA_ACCESS_TOKEN", "1d0acbdd-6a3d-42da-9314-ff78bde5d081")
-SUPERLOGICA_MAX_ID = int(os.environ.get("SUPERLOGICA_MAX_ID", "100"))
-
+SUPERLOGICA_APP_TOKEN    = os.environ.get("SUPERLOGICA_APP_TOKEN",    "")
+SUPERLOGICA_ACCESS_TOKEN = os.environ.get("SUPERLOGICA_ACCESS_TOKEN", "")
+SUPERLOGICA_MAX_ID       = int(os.environ.get("SUPERLOGICA_MAX_ID",   "100"))
+ 
 # Evolution API (WhatsApp)
 EVOLUTION_BASE_URL = os.environ.get("EVOLUTION_BASE_URL", "http://localhost:8080")
 EVOLUTION_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "minha-instancia")
 EVOLUTION_API_KEY  = os.environ.get("EVOLUTION_API_KEY", "")
+
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@seudominio.com.br")
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)

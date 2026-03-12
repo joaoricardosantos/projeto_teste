@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from core.models import User
@@ -61,9 +61,6 @@ def approve_user(request, payload: UserApprovalIn):
 
 @admin_router.post("/create-user", response={201: dict})
 def create_user(request, payload: UserCreateIn):
-    """
-    Criação de usuários restrita a administradores autenticados.
-    """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
@@ -75,15 +72,11 @@ def create_user(request, payload: UserCreateIn):
         password=payload.password,
         name=payload.name,
     )
-
     return 201, {"message": "User_created_successfully_pending_approval"}
 
 
 @admin_router.post("/set-admin", response={200: dict})
 def set_admin_role(request, payload: AdminRoleIn):
-    """
-    Concede ou remove privilégios de administrador de um usuário.
-    """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
@@ -92,24 +85,33 @@ def set_admin_role(request, payload: AdminRoleIn):
     except User.DoesNotExist:
         raise HttpError(404, "User_not_found")
 
-    # Atualiza flags de admin
     user.is_staff = payload.make_admin
     user.is_superuser = payload.make_admin
     user.save()
-
     return 200, {"message": "User_admin_role_updated"}
 
 
 @admin_router.get("/export-defaulters")
-def export_defaulters(request):
+def export_defaulters(
+    request,
+    id_condominio: Optional[int] = None,
+    data_posicao: Optional[str] = None,
+):
     """
-    Gera um relatório Excel com todos os inadimplentes e devolve para download.
+    Gera relatório Excel de inadimplentes (duas abas: Resumo e Detalhado).
+
+    Query params opcionais:
+      - id_condominio: filtra por um condomínio específico (omitir = todos)
+      - data_posicao:  data no formato dd/mm/yyyy (omitir = hoje)
     """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
     try:
-        content, filename = gerar_relatorio_inadimplentes()
+        content, filename = gerar_relatorio_inadimplentes(
+            id_condominio=id_condominio,
+            data_posicao=data_posicao,
+        )
     except requests.RequestException:
         raise HttpError(502, "External_service_unavailable")
 

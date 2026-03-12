@@ -19,11 +19,21 @@ _FALLBACK_TEMPLATE = (
 
 
 def _render_message(*, nome, condominio, valor, data_atraso):
-    try:
-        template = MessageTemplate.objects.get(is_active=True)
-        return template.render(nome=nome, condominio=condominio, valor=valor, data_atraso=data_atraso)
-    except MessageTemplate.DoesNotExist:
-        return _FALLBACK_TEMPLATE.format(nome=nome, condominio=condominio, valor=valor, data_atraso=data_atraso)
+    template = MessageTemplate.objects.filter(is_active=True).order_by("-updated_at").first()
+    if template:
+        return template.render(
+            nome=nome,
+            condominio=condominio,
+            valor=valor,
+            data_atraso=data_atraso,
+        )
+
+    return _FALLBACK_TEMPLATE.format(
+        nome=nome,
+        condominio=condominio,
+        valor=valor,
+        data_atraso=data_atraso,
+    )
 
 
 def _send_to_contact(condo_name, name, phone, debt_amount, due_date):

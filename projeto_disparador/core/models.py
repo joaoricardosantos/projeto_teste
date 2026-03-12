@@ -28,10 +28,12 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
         extra_fields.setdefault("is_approved", True)
+
         if extra_fields.get("is_staff") is not True:
             raise ValueError("Superuser must have is_staff=True.")
         if extra_fields.get("is_superuser") is not True:
             raise ValueError("Superuser must have is_superuser=True.")
+
         return self._create_user(email, password, **extra_fields)
 
 
@@ -54,22 +56,30 @@ class User(AbstractUser):
 
 class MessageTemplate(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=120)
+    name = models.CharField(max_length=255)
     body = models.TextField()
     is_active = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        verbose_name = "Template de mensagem"
+        verbose_name_plural = "Templates de mensagem"
 
     def __str__(self):
-        return f"{self.name} ({'ativo' if self.is_active else 'inativo'})"
+        return self.name
 
-    def render(self, *, nome, condominio, valor, data_atraso):
-        return self.body.format(
-            nome=nome,
-            condominio=condominio,
-            valor=valor,
-            data_atraso=data_atraso,
-        )
+
+class PasswordResetToken(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reset_tokens")
+    token = models.CharField(max_length=255, unique=True)
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Token de redefinição de senha"
+        verbose_name_plural = "Tokens de redefinição de senha"
+
+    def __str__(self):
+        return f"{self.user.email} - {'usado' if self.used else 'ativo'}"

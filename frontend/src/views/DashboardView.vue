@@ -24,7 +24,7 @@
 
             <v-alert v-else type="warning" variant="tonal" density="compact" class="mb-4">
               Nenhum template ativo. Será usado o template padrão.
-              <router-link to="/admin" class="ml-1">Configurar na aba Administração →</router-link>
+              <router-link to="/templates" class="ml-1">Configurar na aba Templates →</router-link>
             </v-alert>
 
             <!-- Instruções -->
@@ -117,7 +117,6 @@ const previewRows    = ref([])
 const totalRows      = ref(0)
 const activeTemplate = ref(null)
 
-// Busca template ativo para exibir no topo
 const fetchActiveTemplate = async () => {
   try {
     const token = localStorage.getItem('access_token')
@@ -128,7 +127,6 @@ const fetchActiveTemplate = async () => {
   } catch { /* nenhum template ativo */ }
 }
 
-// Preview local da planilha
 const onFileSelected = async (file) => {
   previewHeaders.value = []
   previewRows.value    = []
@@ -148,10 +146,9 @@ const onFileSelected = async (file) => {
     previewHeaders.value = Object.keys(data[0])
     totalRows.value      = data.length
     previewRows.value    = data.slice(0, 5)
-  } catch { /* CSV ou formato não suportado pelo XLSX — preview ignorado */ }
+  } catch { /* CSV ou formato não suportado — preview ignorado */ }
 }
 
-// Envio ao backend
 const handleFileUpload = async () => {
   if (!selectedFile.value) return
 
