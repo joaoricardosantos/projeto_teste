@@ -124,3 +124,20 @@ def export_defaulters(
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+class UserDeleteIn(Schema):
+    user_id: UUID4
+
+
+@admin_router.delete("/delete-user", response={200: dict})
+def delete_user(request, payload: UserDeleteIn):
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+    if str(request.auth.id) == str(payload.user_id):
+        raise HttpError(400, "Cannot_delete_own_account")
+    try:
+        user = User.objects.get(id=payload.user_id)
+        user.delete()
+        return 200, {"message": "User_deleted_successfully"}
+    except User.DoesNotExist:
+        raise HttpError(404, "User_not_found")

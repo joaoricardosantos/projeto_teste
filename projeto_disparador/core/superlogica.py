@@ -95,6 +95,27 @@ def buscar_unidades(id_condominio: int):
     return mapa
 
 
+def _formatar_data(valor) -> str:
+    """
+    Formata datas retornadas pela Superlógica para DD/MM/YYYY.
+    Aceita: 'DD/MM/YYYY HH:MM:SS', 'DD/MM/YYYY', 'YYYY-MM-DD', etc.
+    """
+    if not valor:
+        return ""
+    texto = str(valor).strip()
+
+    # Formato DD/MM/YYYY HH:MM:SS (padrão da Superlógica)
+    if len(texto) >= 10 and texto[2] == "/" and texto[5] == "/":
+        return texto[:10]
+
+    # Formato YYYY-MM-DD (ISO)
+    if len(texto) >= 10 and texto[4] == "-" and texto[7] == "-":
+        partes = texto[:10].split("-")
+        return f"{partes[2]}/{partes[1]}/{partes[0]}"
+
+    return texto
+
+
 def _para_float(valor) -> float:
     if valor in (None, "", "null"):
         return 0.0
@@ -195,6 +216,8 @@ def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_
                     resumo[unidade_id] = {
                         "nome_pdf":    nome_pdf,
                         "telefones":   telefones,
+                        "vencimento":  _formatar_data(vencimento),
+                        "competencia": _formatar_data(competencia),
                         "principal":   0.0,
                         "juros":       0.0,
                         "multa":       0.0,
@@ -210,8 +233,8 @@ def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_
                     "Condomínio":  None,  # preenchido pelo chamador
                     "Unidade":     nome_pdf,
                     "Código":      id_receb,
-                    "Vencimento":  vencimento,
-                    "Competência": competencia,
+                    "Vencimento":  _formatar_data(vencimento),
+                    "Competência": _formatar_data(competencia),
                     "Principal":   valores["principal"],
                     "Juros":       valores["juros"],
                     "Multa":       valores["multa"],
@@ -284,6 +307,8 @@ def gerar_relatorio_inadimplentes(
                 "Condomínio":  nome_condominio,
                 "Unidade":     valores["nome_pdf"],
                 "Telefones":   " | ".join(telefones) if telefones else "",
+                "Vencimento":  valores.get("vencimento", ""),
+                "Competência": valores.get("competencia", ""),
                 "Principal":   round(valores["principal"],   2),
                 "Juros":       round(valores["juros"],       2),
                 "Multa":       round(valores["multa"],       2),
@@ -312,7 +337,7 @@ def gerar_relatorio_inadimplentes(
     # Aba Resumo
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = ["Condomínio", "Unidade", "Telefones", "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    headers_resumo = ["Condomínio", "Unidade", "Telefones", "Vencimento", "Competência", "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_resumo.append(headers_resumo)
     for row in todas_resumo:
         ws_resumo.append([row[h] for h in headers_resumo])

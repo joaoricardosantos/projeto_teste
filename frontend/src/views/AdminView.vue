@@ -5,11 +5,12 @@
         <h1 class="text-h5 font-weight-bold">Administração de Usuários</h1>
       </v-col>
       <v-col cols="12" sm="6" class="text-sm-right text-left">
-        <v-btn variant="text" class="mr-2" @click="goToDashboard">Enviar mensagens</v-btn>
+        <v-btn variant="text" class="mr-2" @click="goToDashboard">Dashboard</v-btn>
         <v-btn icon @click="logout"><v-icon>mdi-logout</v-icon></v-btn>
       </v-col>
     </v-row>
 
+    <!-- Criar usuário -->
     <v-row class="mb-6">
       <v-col cols="12" md="6">
         <v-card elevation="4" class="pa-4">
@@ -28,6 +29,7 @@
 
     <v-alert v-if="errorMessage" type="error" class="mb-4" dense>{{ errorMessage }}</v-alert>
 
+    <!-- Tabela de usuários -->
     <v-card elevation="4">
       <v-table>
         <thead>
@@ -68,23 +70,22 @@
       </v-table>
     </v-card>
 
-    <!-- Dialog de confirmação -->
-    <v-dialog v-model="deleteDialog" max-width="420">
+    <!-- Diálogo de confirmação -->
+    <v-dialog v-model="deleteDialog" max-width="420" persistent>
       <v-card>
-        <v-card-title class="text-h6 pa-4">
-          <v-icon color="error" class="mr-2">mdi-alert</v-icon>
-          Confirmar exclusão
-        </v-card-title>
-        <v-card-text class="pa-4">
-          Tem certeza que deseja remover o usuário
+        <v-card-title class="text-h6 pa-4">Confirmar exclusão</v-card-title>
+        <v-card-text class="px-4">
+          Tem certeza que deseja excluir o usuário
           <strong>{{ userToDelete?.name }}</strong> ({{ userToDelete?.email }})?
-          <br><br>
-          <span class="text-error">Esta ação é permanente e não pode ser desfeita.</span>
+          <br /><br />
+          <span class="text-error">Esta ação não pode ser desfeita.</span>
         </v-card-text>
         <v-card-actions class="pa-4">
           <v-spacer />
-          <v-btn variant="text" @click="deleteDialog = false">Cancelar</v-btn>
-          <v-btn color="error" :loading="isDeleting" @click="deleteUser">Excluir</v-btn>
+          <v-btn variant="text" @click="deleteDialog = false" :disabled="isDeleting">Cancelar</v-btn>
+          <v-btn color="error" variant="elevated" :loading="isDeleting" @click="deleteUser">
+            Excluir definitivamente
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -98,19 +99,23 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 const users = ref([])
 const errorMessage = ref('')
+
 const newUser = reactive({ name: '', email: '', password: '' })
 const isCreatingUser = ref(false)
 const createUserSuccess = ref('')
 const createUserError = ref('')
+
 const deleteDialog = ref(false)
 const userToDelete = ref(null)
 const isDeleting = ref(false)
 
+const getToken = () => localStorage.getItem('access_token')
+
 const fetchUsers = async () => {
+  errorMessage.value = ''
   try {
-    const token = localStorage.getItem('access_token')
     const response = await fetch('/api/admin/users', {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${getToken()}` },
     })
     if (!response.ok) throw new Error('Erro ao buscar usuários ou permissão negada')
     users.value = await response.json()
@@ -120,12 +125,12 @@ const fetchUsers = async () => {
 }
 
 const updateUserStatus = async (userId, isApproved) => {
+  errorMessage.value = ''
   try {
-    const token = localStorage.getItem('access_token')
     const response = await fetch('/api/admin/approve-user', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ user_id: userId, is_approved: isApproved })
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ user_id: userId, is_approved: isApproved }),
     })
     if (!response.ok) throw new Error('Erro ao atualizar status do usuário')
     await fetchUsers()
@@ -135,11 +140,11 @@ const updateUserStatus = async (userId, isApproved) => {
 }
 
 const toggleAdmin = async (user) => {
+  errorMessage.value = ''
   try {
-    const token = localStorage.getItem('access_token')
     const response = await fetch('/api/admin/set-admin', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
       body: JSON.stringify({ user_id: user.id, make_admin: !(user.is_staff || user.is_superuser) }),
     })
     const data = await response.json().catch(() => ({}))
@@ -150,15 +155,49 @@ const toggleAdmin = async (user) => {
   }
 }
 
+const confirmDelete = (user) => {
+  userToDelete.value = user
+  errorMessage.value = ''
+  deleteDialog.value = true
+}
+
+const deleteUser = async () => {
+  if (!userToDelete.value) return
+  isDeleting.value = true
+  try {
+    const response = await fetch('/api/admin/delete-user', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ user_id: userToDelete.value.id }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const msg = {
+        Cannot_delete_own_account: 'Você não pode excluir sua própria conta.',
+        Admin_privileges_required: 'Você não tem permissão para excluir usuários.',
+        User_not_found: 'Usuário não encontrado.',
+      }
+      throw new Error(msg[data.detail] || data.detail || 'Erro ao excluir usuário')
+    }
+    deleteDialog.value = false
+    userToDelete.value = null
+    await fetchUsers()
+  } catch (error) {
+    deleteDialog.value = false
+    errorMessage.value = error.message
+  } finally {
+    isDeleting.value = false
+  }
+}
+
 const handleCreateUser = async () => {
   isCreatingUser.value = true
   createUserSuccess.value = ''
   createUserError.value = ''
   try {
-    const token = localStorage.getItem('access_token')
     const response = await fetch('/api/admin/create-user', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
       body: JSON.stringify({ name: newUser.name, email: newUser.email, password: newUser.password }),
     })
     const data = await response.json().catch(() => ({}))
@@ -172,39 +211,6 @@ const handleCreateUser = async () => {
     createUserError.value = error.message
   } finally {
     isCreatingUser.value = false
-  }
-}
-
-const confirmDelete = (user) => {
-  userToDelete.value = user
-  deleteDialog.value = true
-}
-
-const deleteUser = async () => {
-  if (!userToDelete.value) return
-  isDeleting.value = true
-  try {
-    const token = localStorage.getItem('access_token')
-    const response = await fetch(`/api/admin/users/${userToDelete.value.id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      throw new Error(
-        data.detail === 'Cannot_delete_yourself'
-          ? 'Você não pode remover a si mesmo.'
-          : data.detail || 'Erro ao excluir usuário'
-      )
-    }
-    deleteDialog.value = false
-    userToDelete.value = null
-    await fetchUsers()
-  } catch (error) {
-    errorMessage.value = error.message
-    deleteDialog.value = false
-  } finally {
-    isDeleting.value = false
   }
 }
 

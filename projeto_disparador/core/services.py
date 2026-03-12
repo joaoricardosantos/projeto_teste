@@ -6,13 +6,15 @@ from django.conf import settings
 from core.evolution_service import send_whatsapp_bulk
 
 
-def _render_template(body: str, condo_name: str, contact: str, debt_amount: str) -> str:
-    """Substitui variáveis {{nome}}, {{condominio}}, {{valor}} no corpo do template."""
+def _render_template(body: str, condo_name: str, contact: str, debt_amount: str, vencimento: str = "", competencia: str = "") -> str:
+    """Substitui variáveis {{nome}}, {{condominio}}, {{valor}}, {{vencimento}}, {{competencia}} no corpo do template."""
     return (
         body
         .replace("{{nome}}", contact)
         .replace("{{condominio}}", condo_name)
         .replace("{{valor}}", debt_amount)
+        .replace("{{vencimento}}", vencimento)
+        .replace("{{competencia}}", competencia)
     )
 
 
@@ -103,10 +105,12 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
         except ValueError:
             return None
 
-    idx_condo     = col("Condomínio")
-    idx_unidade   = col("Unidade")
-    idx_telefones = col("Telefones")
-    idx_total     = col("Total")
+    idx_condo      = col("Condomínio")
+    idx_unidade    = col("Unidade")
+    idx_telefones  = col("Telefones")
+    idx_vencimento = col("Vencimento")
+    idx_competencia= col("Competência")
+    idx_total      = col("Total")
 
     if idx_telefones is None:
         raise ValueError("Coluna_Telefones_nao_encontrada")
@@ -115,10 +119,12 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
     error_count = 0
 
     for row in ws.iter_rows(min_row=2, values_only=True):
-        telefones_raw = row[idx_telefones] if idx_telefones is not None else None
-        condo_name    = str(row[idx_condo])   if idx_condo   is not None and row[idx_condo]   else ""
-        unidade       = str(row[idx_unidade]) if idx_unidade is not None and row[idx_unidade] else ""
-        total         = str(row[idx_total])   if idx_total   is not None and row[idx_total]   else ""
+        telefones_raw = row[idx_telefones]  if idx_telefones  is not None else None
+        condo_name    = str(row[idx_condo])    if idx_condo      is not None and row[idx_condo]      else ""
+        unidade       = str(row[idx_unidade])  if idx_unidade    is not None and row[idx_unidade]    else ""
+        vencimento    = str(row[idx_vencimento])  if idx_vencimento  is not None and row[idx_vencimento]  else ""
+        competencia   = str(row[idx_competencia]) if idx_competencia is not None and row[idx_competencia] else ""
+        total         = str(row[idx_total])    if idx_total      is not None and row[idx_total]      else ""
 
         if not telefones_raw:
             error_count += 1
@@ -137,11 +143,12 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
 
         # Mensagem
         if template_body:
-            message = _render_template(template_body, condo_name, unidade, valor_fmt)
+            message = _render_template(template_body, condo_name, unidade, valor_fmt, vencimento, competencia)
         else:
             message = (
                 f"Olá! Identificamos débito em aberto referente à unidade *{unidade}* "
                 f"do condomínio *{condo_name}*.\n"
+                f"Vencimento: *{vencimento}* | Competência: *{competencia}*\n"
                 f"Valor total com encargos: *{valor_fmt}*.\n"
                 f"Entre em contato para regularização."
             )
