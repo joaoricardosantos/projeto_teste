@@ -10,19 +10,43 @@
           contain
         />
         <v-spacer />
-        <v-btn v-if="isAuthenticated" variant="text" class="mr-2" @click="goToDashboard">
-          Enviar mensagens
+        <v-btn
+          v-if="isAuthenticated"
+          variant="text"
+          class="mr-2"
+          @click="goToDashboard"
+        >
+          Dashboard
         </v-btn>
-        <v-btn v-if="isAuthenticated" variant="text" class="mr-2" @click="goToAdmin">
-          Administração
-        </v-btn>
-        <v-btn v-if="isAuthenticated" variant="text" class="mr-2" @click="goToTemplates">
+        <v-btn
+          v-if="isAuthenticated"
+          variant="text"
+          class="mr-2"
+          @click="goToTemplates"
+        >
           Templates
         </v-btn>
-        <v-btn v-if="isAuthenticated" variant="text" class="mr-4" @click="goToReports">
+        <v-btn
+          v-if="isAuthenticated"
+          variant="text"
+          class="mr-2"
+          @click="goToAdmin"
+        >
+          Administração
+        </v-btn>
+        <v-btn
+          v-if="isAuthenticated"
+          variant="text"
+          class="mr-4"
+          @click="goToReports"
+        >
           Relatórios
         </v-btn>
-        <v-btn v-if="showLogout" icon @click="logout">
+        <v-btn
+          v-if="showLogout"
+          icon
+          @click="logout"
+        >
           <v-icon>mdi-logout</v-icon>
         </v-btn>
       </v-container>
@@ -39,15 +63,15 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
-const route  = useRoute()
+const route = useRoute()
 
 const isAuthenticated = computed(() => route.name !== 'Auth')
-const showLogout      = computed(() => route.meta.requiresAuth === true)
+const showLogout = computed(() => route.meta.requiresAuth === true)
 
 const goToDashboard = () => router.push('/dashboard')
-const goToAdmin     = () => router.push('/admin')
 const goToTemplates = () => router.push('/templates')
-const goToReports   = () => router.push('/relatorios')
+const goToAdmin = () => router.push('/admin')
+const goToReports = () => router.push('/relatorios')
 
 const logout = () => {
   localStorage.removeItem('access_token')

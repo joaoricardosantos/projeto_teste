@@ -38,6 +38,11 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
+    """
+    Custom user model using email as the unique identifier and
+    integrating approval and audit fields used across the project.
+    """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = None
     email = models.EmailField(unique=True)
@@ -55,31 +60,22 @@ class User(AbstractUser):
 
 
 class MessageTemplate(models.Model):
+    """
+    Template de mensagem reutilizável para disparos.
+    Suporta variáveis no formato {{variavel}}.
+    Ex: Olá {{nome}}, seu débito de {{valor}} está em aberto.
+    """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255)
-    body = models.TextField()
-    is_active = models.BooleanField(default=False)
+    name = models.CharField(max_length=255, verbose_name="Nome")
+    body = models.TextField(verbose_name="Corpo da mensagem")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "Template de mensagem"
         verbose_name_plural = "Templates de mensagem"
+        ordering = ["-created_at"]
 
     def __str__(self):
         return self.name
-
-
-class PasswordResetToken(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reset_tokens")
-    token = models.CharField(max_length=255, unique=True)
-    used = models.BooleanField(default=False)
-    created_at = models.DateTimeField(default=timezone.now)
-
-    class Meta:
-        verbose_name = "Token de redefinição de senha"
-        verbose_name_plural = "Tokens de redefinição de senha"
-
-    def __str__(self):
-        return f"{self.user.email} - {'usado' if self.used else 'ativo'}"
