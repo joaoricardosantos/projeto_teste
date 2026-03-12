@@ -1,221 +1,117 @@
-from typing import List, Optional
-from ninja import Router, Schema
-from ninja.errors import HttpError
-from core.models import User, MessageTemplate
-from core.auth import JWTAuth
-from pydantic import UUID4, EmailStr
-from django.http import HttpResponse
-from core.superlogica import gerar_relatorio_inadimplentes
+import csv
+from io import StringIO, BytesIO
+
+import openpyxl
 import requests
 
-admin_router = Router(auth=JWTAuth())
+from core.evolution_service import send_whatsapp_message
+from core.models import MessageTemplate
 
 
-# ─────────────────────────────────────────────
-# Schemas – Usuários
-# ─────────────────────────────────────────────
-
-class UserApprovalIn(Schema):
-    user_id: UUID4
-    is_approved: bool
-
-
-class UserCreateIn(Schema):
-    name: str
-    email: EmailStr
-    password: str
+_FALLBACK_TEMPLATE = (
+    "Olá, {nome}! 👋\n\n"
+    "Identificamos um débito em aberto referente ao condomínio *{condominio}*.\n"
+    "📅 Data de atraso: *{data_atraso}*\n"
+    "💰 Valor: *R$ {valor}*\n\n"
+    "Entre em contato com a administração para regularizar sua situação.\n"
+    "Agradecemos sua atenção!"
+)
 
 
-class UserOut(Schema):
-    id: UUID4
-    name: str
-    email: str
-    is_approved: bool
-    is_active: bool
-    is_staff: bool
-    is_superuser: bool
-
-
-class AdminRoleIn(Schema):
-    user_id: UUID4
-    make_admin: bool
-
-
-# ─────────────────────────────────────────────
-# Schemas – Templates
-# ─────────────────────────────────────────────
-
-class TemplateIn(Schema):
-    name: str
-    body: str
-    is_active: bool = False
-
-
-class TemplateOut(Schema):
-    id: UUID4
-    name: str
-    body: str
-    is_active: bool
-
-
-# ─────────────────────────────────────────────
-# Endpoints – Usuários
-# ─────────────────────────────────────────────
-
-@admin_router.get("/users", response=List[UserOut])
-def list_users(request):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-    return User.objects.all().order_by("-created_at")
-
-
-@admin_router.post("/approve-user", response={200: dict})
-def approve_user(request, payload: UserApprovalIn):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+def _render_message(*, nome, condominio, valor, data_atraso):
     try:
-        user = User.objects.get(id=payload.user_id)
-        user.is_approved = payload.is_approved
-        user.save()
-        return 200, {"message": "User_approval_status_updated"}
-    except User.DoesNotExist:
-        raise HttpError(404, "User_not_found")
-
-
-@admin_router.post("/create-user", response={201: dict})
-def create_user(request, payload: UserCreateIn):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-    if User.objects.filter(email=payload.email).exists():
-        raise HttpError(400, "Email_already_registered")
-    User.objects.create_user(
-        email=payload.email,
-        password=payload.password,
-        name=payload.name,
-    )
-    return 201, {"message": "User_created_successfully_pending_approval"}
-
-
-@admin_router.post("/set-admin", response={200: dict})
-def set_admin_role(request, payload: AdminRoleIn):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-    try:
-        user = User.objects.get(id=payload.user_id)
-    except User.DoesNotExist:
-        raise HttpError(404, "User_not_found")
-    user.is_staff = payload.make_admin
-    user.is_superuser = payload.make_admin
-    user.save()
-    return 200, {"message": "User_admin_role_updated"}
-
-
-@admin_router.get("/export-defaulters")
-def export_defaulters(request):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-    try:
-        content, filename = gerar_relatorio_inadimplentes()
-    except requests.RequestException:
-        raise HttpError(502, "External_service_unavailable")
-    if not content:
-        raise HttpError(204, "No_defaulters_found")
-    response = HttpResponse(
-        content,
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
-
-
-# ─────────────────────────────────────────────
-# Endpoints – Templates de mensagem
-# ─────────────────────────────────────────────
-
-@admin_router.get("/templates", response=List[TemplateOut])
-def list_templates(request):
-    """Lista todos os templates cadastrados."""
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-    return list(MessageTemplate.objects.all())
-
-
-@admin_router.get("/templates/active", response=TemplateOut)
-def get_active_template(request):
-    """Retorna o template atualmente ativo."""
-    try:
-        return MessageTemplate.objects.get(is_active=True)
+        template = MessageTemplate.objects.get(is_active=True)
+        return template.render(nome=nome, condominio=condominio, valor=valor, data_atraso=data_atraso)
     except MessageTemplate.DoesNotExist:
-        raise HttpError(404, "No_active_template")
+        return _FALLBACK_TEMPLATE.format(nome=nome, condominio=condominio, valor=valor, data_atraso=data_atraso)
 
 
-@admin_router.post("/templates", response={201: TemplateOut})
-def create_template(request, payload: TemplateIn):
-    """Cria um novo template. Se is_active=True, desativa os demais."""
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-
-    if payload.is_active:
-        MessageTemplate.objects.filter(is_active=True).update(is_active=False)
-
-    template = MessageTemplate.objects.create(
-        name=payload.name,
-        body=payload.body,
-        is_active=payload.is_active,
-    )
-    return 201, template
+def _send_to_contact(condo_name, name, phone, debt_amount, due_date):
+    message = _render_message(nome=name, condominio=condo_name, valor=debt_amount, data_atraso=due_date)
+    send_whatsapp_message(phone, message)
 
 
-@admin_router.put("/templates/{template_id}", response=TemplateOut)
-def update_template(request, template_id: UUID4, payload: TemplateIn):
-    """Atualiza um template existente."""
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-
-    try:
-        template = MessageTemplate.objects.get(id=template_id)
-    except MessageTemplate.DoesNotExist:
-        raise HttpError(404, "Template_not_found")
-
-    if payload.is_active:
-        MessageTemplate.objects.exclude(id=template_id).filter(is_active=True).update(
-            is_active=False
-        )
-
-    template.name = payload.name
-    template.body = payload.body
-    template.is_active = payload.is_active
-    template.save()
-    return template
+def process_csv(file_obj):
+    decoded = file_obj.read().decode("utf-8")
+    reader = csv.DictReader(StringIO(decoded))
+    success, errors = 0, 0
+    for row in reader:
+        try:
+            condo    = row.get("condominio", "").strip()
+            name     = row.get("nome", "").strip()
+            phone    = row.get("telefone", "").strip()
+            debt     = row.get("valor_debito", "").strip()
+            due_date = row.get("data_atraso", "").strip()
+            if condo and name and phone and debt:
+                _send_to_contact(condo, name, phone, debt, due_date or "N/A")
+                success += 1
+            else:
+                errors += 1
+        except Exception:
+            errors += 1
+    return {"success": success, "errors": errors}
 
 
-@admin_router.post("/templates/{template_id}/activate", response=TemplateOut)
-def activate_template(request, template_id: UUID4):
-    """Ativa um template e desativa todos os outros."""
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+def process_xlsx(file_obj):
+    content = file_obj.read()
+    wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return {"success": 0, "errors": 0}
 
-    try:
-        template = MessageTemplate.objects.get(id=template_id)
-    except MessageTemplate.DoesNotExist:
-        raise HttpError(404, "Template_not_found")
+    raw_headers = [str(h).strip().lower() if h else "" for h in rows[0]]
 
-    MessageTemplate.objects.exclude(id=template_id).update(is_active=False)
-    template.is_active = True
-    template.save()
-    return template
+    def _col(candidates):
+        for c in candidates:
+            if c in raw_headers:
+                return raw_headers.index(c)
+        return None
+
+    idx_condo    = _col(["condomínio", "condominio"])
+    idx_name     = _col(["nome"])
+    idx_phone    = _col(["telefones", "telefone"])
+    idx_debt     = _col(["valor da dívida com juros", "valor_debito", "valor da divida com juros"])
+    idx_due_date = _col(["data de atraso", "data_atraso", "data atraso"])
+
+    if None in (idx_condo, idx_name, idx_phone, idx_debt):
+        raise ValueError("Cabeçalhos não reconhecidos. Esperado: Condomínio, Nome, Telefones, Valor da dívida com juros, Data de atraso")
+
+    success, errors = 0, 0
+    for row in rows[1:]:
+        try:
+            condo      = str(row[idx_condo] or "").strip()
+            name       = str(row[idx_name]  or "").strip()
+            raw_phones = str(row[idx_phone] or "").strip()
+            debt       = str(row[idx_debt]  or "").strip()
+            due_date   = str(row[idx_due_date] if idx_due_date is not None else "").strip() or "N/A"
+            if not (condo and name and raw_phones and debt):
+                errors += 1
+                continue
+            phones = [p.strip() for p in raw_phones.split("|") if p.strip()]
+            sent = False
+            for phone in phones:
+                try:
+                    _send_to_contact(condo, name, phone, debt, due_date)
+                    sent = True
+                    break
+                except requests.RequestException:
+                    continue
+            if sent:
+                success += 1
+            else:
+                errors += 1
+        except Exception:
+            errors += 1
+    wb.close()
+    return {"success": success, "errors": errors}
 
 
-@admin_router.delete("/templates/{template_id}", response={200: dict})
-def delete_template(request, template_id: UUID4):
-    """Remove um template."""
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-
-    try:
-        template = MessageTemplate.objects.get(id=template_id)
-    except MessageTemplate.DoesNotExist:
-        raise HttpError(404, "Template_not_found")
-
-    template.delete()
-    return 200, {"message": "Template_deleted"}
+def process_defaulters_spreadsheet(file_obj, filename):
+    name_lower = filename.lower()
+    if name_lower.endswith(".xlsx"):
+        return process_xlsx(file_obj)
+    elif name_lower.endswith(".csv"):
+        return process_csv(file_obj)
+    else:
+        raise ValueError("Formato não suportado. Envie um arquivo .csv ou .xlsx")

@@ -28,12 +28,10 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
         extra_fields.setdefault("is_approved", True)
-
         if extra_fields.get("is_staff") is not True:
             raise ValueError("Superuser must have is_staff=True.")
         if extra_fields.get("is_superuser") is not True:
             raise ValueError("Superuser must have is_superuser=True.")
-
         return self._create_user(email, password, **extra_fields)
 
 
@@ -55,25 +53,12 @@ class User(AbstractUser):
 
 
 class MessageTemplate(models.Model):
-    """
-    Template de mensagem WhatsApp com suporte a variáveis dinâmicas.
-
-    Variáveis disponíveis: {nome}, {condominio}, {valor}, {data_atraso}
-    """
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=120, verbose_name="Nome do template")
-    body = models.TextField(
-        verbose_name="Corpo da mensagem",
-        help_text="Variáveis: {nome}, {condominio}, {valor}, {data_atraso}",
-    )
-    is_active = models.BooleanField(
-        default=False,
-        verbose_name="Template ativo",
-        help_text="Apenas um template pode estar ativo por vez.",
-    )
-    created_at = models.DateTimeField(default=timezone.now, verbose_name="Criado em")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+    name = models.CharField(max_length=120)
+    body = models.TextField()
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -81,7 +66,7 @@ class MessageTemplate(models.Model):
     def __str__(self):
         return f"{self.name} ({'ativo' if self.is_active else 'inativo'})"
 
-    def render(self, *, nome: str, condominio: str, valor: str, data_atraso: str) -> str:
+    def render(self, *, nome, condominio, valor, data_atraso):
         return self.body.format(
             nome=nome,
             condominio=condominio,
