@@ -42,8 +42,8 @@
 
               <v-file-input
                 v-model="selectedFile"
-                accept=".csv, .xlsx"
-                label="Selecione o arquivo CSV ou Excel (.csv, .xlsx) gerado pelo sistema"
+                accept=".csv,.xlsx"
+                label="Selecione o arquivo do relatório (.csv ou .xlsx)"
                 variant="outlined"
                 prepend-icon="mdi-file-table"
                 show-size
@@ -57,8 +57,18 @@
               <v-alert v-if="successMessage" type="success" class="mt-4" dense>
                 {{ successMessage }}
                 <div v-if="resultDetails" class="mt-2">
-                  <strong>Sucessos:</strong> {{ resultDetails.success }}<br />
-                  <strong>Erros:</strong> {{ resultDetails.errors }}
+                  <div>✅ <strong>Sucessos:</strong> {{ resultDetails.success }}</div>
+                  <div>❌ <strong>Erros:</strong> {{ resultDetails.errors }}</div>
+                  <div v-if="resultDetails.failures && resultDetails.failures.length" class="mt-2">
+                    <div class="text-caption text-medium-emphasis mb-1">Números com falha:</div>
+                    <div
+                      v-for="f in resultDetails.failures"
+                      :key="f.phone"
+                      class="text-caption"
+                    >
+                      {{ f.phone }} — {{ f.error }}
+                    </div>
+                  </div>
                 </div>
               </v-alert>
 
@@ -112,6 +122,8 @@ const renderPreview = (body) =>
     .replace(/\{\{nome\}\}/g, 'João Silva')
     .replace(/\{\{condominio\}\}/g, 'Residencial Acácias')
     .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
+    .replace(/\{\{vencimento\}\}/g, '10/04/2025')
+    .replace(/\{\{competencia\}\}/g, '12/10/2025')
 
 const fetchTemplates = async () => {
   loadingTemplates.value = true
@@ -140,7 +152,8 @@ const handleFileUpload = async () => {
     const token = localStorage.getItem('access_token')
     if (!token) throw new Error('Usuário não autenticado')
 
-    // Escolhe endpoint conforme template selecionado
+    // Usa o endpoint dispatch-excel que lê o Excel/CSV do relatório
+    // com colunas: Condomínio | Unidade | Telefones | Total
     let url = '/api/messages/dispatch-excel'
     if (selectedTemplateId.value) {
       url += `?template_id=${selectedTemplateId.value}`
@@ -152,7 +165,9 @@ const handleFileUpload = async () => {
       body: formData,
     })
 
-    const data = await response.json()
+    const text = await response.text()
+    let data = {}
+    try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
 
     if (!response.ok) {
       throw new Error(data.detail || 'Erro ao processar o arquivo')

@@ -61,6 +61,10 @@ def dispatch_excel(
     """
     Recebe CSV ou XLSX do relatório de inadimplentes e envia WhatsApp
     para todos os números da coluna 'Telefones'.
+    Colunas esperadas: Condomínio | Unidade | Telefones | Total
+
+    Query param opcional:
+      - template_id: UUID do template de mensagem
     """
     _check_extension(file.name)
     try:
