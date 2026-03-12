@@ -1,13 +1,12 @@
 import csv
 import openpyxl
 import requests
-from io import StringIO
+from io import StringIO, BytesIO
 from django.conf import settings
 from core.evolution_service import send_whatsapp_bulk
 
 
 def _render_template(body: str, condo_name: str, contact: str, debt_amount: str, vencimento: str = "", competencia: str = "") -> str:
-    """Substitui variáveis {{nome}}, {{condominio}}, {{valor}}, {{vencimento}}, {{competencia}} no corpo do template."""
     return (
         body
         .replace("{{nome}}", contact)
@@ -22,15 +21,32 @@ def _build_default_message(condo_name: str, debt_amount: str) -> str:
     return f"Prezado condomínio {condo_name}, consta um débito de {debt_amount}."
 
 
-def process_defaulters_spreadsheet(file_obj):
-    """Processa CSV com mensagem padrão e envia via WhatsApp."""
-    decoded_file = file_obj.read().decode("utf-8")
-    csv_reader = csv.DictReader(StringIO(decoded_file))
+def _read_spreadsheet_rows(file_obj) -> list[dict]:
+    """
+    Lê CSV ou XLSX e retorna lista de dicts com as colunas.
+    Detecta o formato pelo atributo .name do arquivo.
+    """
+    filename = getattr(file_obj, "name", "").lower()
 
+    if filename.endswith(".xlsx"):
+        wb = openpyxl.load_workbook(BytesIO(file_obj.read()))
+        ws = wb.active
+        headers = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
+        rows = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
+        return rows
+    else:
+        decoded = file_obj.read().decode("utf-8")
+        return list(csv.DictReader(StringIO(decoded)))
+
+
+def process_defaulters_spreadsheet(file_obj):
+    """Processa CSV ou XLSX com mensagem padrão e envia via WhatsApp."""
     contacts = []
     error_count = 0
 
-    for row in csv_reader:
+    for row in _read_spreadsheet_rows(file_obj):
         condo_name  = (row.get("condominio") or "").strip()
         contact     = (row.get("contato") or "").strip()
         debt_amount = (row.get("valor_debito") or "").strip()
@@ -47,7 +63,7 @@ def process_defaulters_spreadsheet(file_obj):
 
 
 def process_defaulters_with_template(file_obj, template_id: str):
-    """Processa CSV com template específico e envia via WhatsApp."""
+    """Processa CSV ou XLSX com template específico e envia via WhatsApp."""
     from core.models import MessageTemplate
 
     try:
@@ -55,13 +71,10 @@ def process_defaulters_with_template(file_obj, template_id: str):
     except MessageTemplate.DoesNotExist:
         raise ValueError("Template_not_found")
 
-    decoded_file = file_obj.read().decode("utf-8")
-    csv_reader = csv.DictReader(StringIO(decoded_file))
-
     contacts = []
     error_count = 0
 
-    for row in csv_reader:
+    for row in _read_spreadsheet_rows(file_obj):
         condo_name  = (row.get("condominio") or "").strip()
         contact     = (row.get("contato") or "").strip()
         debt_amount = (row.get("valor_debito") or "").strip()
@@ -79,9 +92,8 @@ def process_defaulters_with_template(file_obj, template_id: str):
 
 def process_excel_report_dispatch(file_obj, template_id: str = None):
     """
-    Lê o Excel gerado pelo relatório (aba Resumo) e envia WhatsApp
+    Lê CSV ou XLSX do relatório (aba Resumo ou primeira aba) e envia WhatsApp
     para cada número da coluna 'Telefones'.
-
     Colunas esperadas: Condomínio | Unidade | Telefones | Total
     """
     from core.models import MessageTemplate
@@ -94,23 +106,38 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
         except MessageTemplate.DoesNotExist:
             raise ValueError("Template_not_found")
 
-    wb = openpyxl.load_workbook(file_obj)
-    ws = wb["Resumo"] if "Resumo" in wb.sheetnames else wb.active
+    filename = getattr(file_obj, "name", "").lower()
 
-    headers = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
+    if filename.endswith(".csv"):
+        decoded = file_obj.read().decode("utf-8")
+        raw_rows = list(csv.DictReader(StringIO(decoded)))
+        # Normaliza para o mesmo formato usado pelo loop abaixo
+        headers = list(raw_rows[0].keys()) if raw_rows else []
 
-    def col(name):
+        def get_col(row, name):
+            return row.get(name, "") or ""
+
+        rows_iter = raw_rows
+        use_dict = True
+    else:
+        wb = openpyxl.load_workbook(file_obj)
+        ws = wb["Resumo"] if "Resumo" in wb.sheetnames else wb.active
+        headers = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
+        rows_iter = list(ws.iter_rows(min_row=2, values_only=True))
+        use_dict = False
+
+    def col_idx(name):
         try:
             return headers.index(name)
         except ValueError:
             return None
 
-    idx_condo      = col("Condomínio")
-    idx_unidade    = col("Unidade")
-    idx_telefones  = col("Telefones")
-    idx_vencimento = col("Vencimento")
-    idx_competencia= col("Competência")
-    idx_total      = col("Total")
+    idx_condo       = col_idx("Condomínio")
+    idx_unidade     = col_idx("Unidade")
+    idx_telefones   = col_idx("Telefones")
+    idx_vencimento  = col_idx("Vencimento")
+    idx_competencia = col_idx("Competência")
+    idx_total       = col_idx("Total")
 
     if idx_telefones is None:
         raise ValueError("Coluna_Telefones_nao_encontrada")
@@ -118,13 +145,21 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
     contacts = []
     error_count = 0
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        telefones_raw = row[idx_telefones]  if idx_telefones  is not None else None
-        condo_name    = str(row[idx_condo])    if idx_condo      is not None and row[idx_condo]      else ""
-        unidade       = str(row[idx_unidade])  if idx_unidade    is not None and row[idx_unidade]    else ""
-        vencimento    = str(row[idx_vencimento])  if idx_vencimento  is not None and row[idx_vencimento]  else ""
-        competencia   = str(row[idx_competencia]) if idx_competencia is not None and row[idx_competencia] else ""
-        total         = str(row[idx_total])    if idx_total      is not None and row[idx_total]      else ""
+    for row in rows_iter:
+        if use_dict:
+            telefones_raw = row.get("Telefones", "")
+            condo_name    = str(row.get("Condomínio", "") or "")
+            unidade       = str(row.get("Unidade", "") or "")
+            vencimento    = str(row.get("Vencimento", "") or "")
+            competencia   = str(row.get("Competência", "") or "")
+            total         = str(row.get("Total", "") or "")
+        else:
+            telefones_raw = row[idx_telefones]  if idx_telefones  is not None else None
+            condo_name    = str(row[idx_condo])       if idx_condo      is not None and row[idx_condo]      else ""
+            unidade       = str(row[idx_unidade])     if idx_unidade    is not None and row[idx_unidade]    else ""
+            vencimento    = str(row[idx_vencimento])  if idx_vencimento  is not None and row[idx_vencimento]  else ""
+            competencia   = str(row[idx_competencia]) if idx_competencia is not None and row[idx_competencia] else ""
+            total         = str(row[idx_total])       if idx_total      is not None and row[idx_total]      else ""
 
         if not telefones_raw:
             error_count += 1
@@ -135,13 +170,11 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
             error_count += 1
             continue
 
-        # Formata valor BRL
         try:
             valor_fmt = f"R$ {float(total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except (ValueError, TypeError):
             valor_fmt = total
 
-        # Mensagem
         if template_body:
             message = _render_template(template_body, condo_name, unidade, valor_fmt, vencimento, competencia)
         else:

@@ -4,7 +4,7 @@
       <v-col cols="12" sm="10" md="8" lg="6">
         <v-card elevation="8">
           <v-card-title class="text-h5 font-weight-bold pa-4">
-            Upload de Planilha (CSV)
+            Enviar Mensagens
           </v-card-title>
           <v-card-text class="pa-4">
             <v-form @submit.prevent="handleFileUpload">
@@ -42,10 +42,10 @@
 
               <v-file-input
                 v-model="selectedFile"
-                accept=".csv"
-                label="Selecione o arquivo CSV gerado pelo sistema"
+                accept=".csv, .xlsx"
+                label="Selecione o arquivo CSV ou Excel (.csv, .xlsx) gerado pelo sistema"
                 variant="outlined"
-                prepend-icon="mdi-file-delimited"
+                prepend-icon="mdi-file-table"
                 show-size
                 required
               />
@@ -141,9 +141,9 @@ const handleFileUpload = async () => {
     if (!token) throw new Error('Usuário não autenticado')
 
     // Escolhe endpoint conforme template selecionado
-    let url = '/api/messages/upload-defaulters'
+    let url = '/api/messages/dispatch-excel'
     if (selectedTemplateId.value) {
-      url = `/api/messages/upload-defaulters-template?template_id=${selectedTemplateId.value}`
+      url += `?template_id=${selectedTemplateId.value}`
     }
 
     const response = await fetch(url, {
