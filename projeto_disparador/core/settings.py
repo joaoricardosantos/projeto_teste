@@ -9,6 +9,8 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
+APPEND_SLASH = False
+
 INSTALLED_APPS =[
     "django.contrib.admin",
     "django.contrib.auth",
