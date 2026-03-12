@@ -12,7 +12,7 @@ const routes = [
     },
     {
         path: '/dashboard',
-        name: 'Dashboard',
+        name: 'EnviarMensagens',
         component: DashboardView,
         meta: { requiresAuth: true }
     },

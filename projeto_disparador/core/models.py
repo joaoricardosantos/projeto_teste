@@ -28,21 +28,14 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
         extra_fields.setdefault("is_approved", True)
-
         if extra_fields.get("is_staff") is not True:
             raise ValueError("Superuser must have is_staff=True.")
         if extra_fields.get("is_superuser") is not True:
             raise ValueError("Superuser must have is_superuser=True.")
-
         return self._create_user(email, password, **extra_fields)
 
 
 class User(AbstractUser):
-    """
-    Custom user model using email as the unique identifier and
-    integrating approval and audit fields used across the project.
-    """
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = None
     email = models.EmailField(unique=True)
@@ -58,3 +51,25 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+
+class MessageTemplate(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120)
+    body = models.TextField()
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({'ativo' if self.is_active else 'inativo'})"
+
+    def render(self, *, nome, condominio, valor, data_atraso):
+        return self.body.format(
+            nome=nome,
+            condominio=condominio,
+            valor=valor,
+            data_atraso=data_atraso,
+        )
