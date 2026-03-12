@@ -1,120 +1,37 @@
 services:
-
-  # ─── Banco de dados principal (Django) ────────────────────────────────────
   db:
     image: postgres:16-alpine
-    restart: unless-stopped
     environment:
-      POSTGRES_DB: condo_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
 
-  # ─── Backend Django ────────────────────────────────────────────────────────
   web:
     build: .
     working_dir: /app/projeto_disparador
-    restart: unless-stopped
-    command: ./entrypoint.sh
+    command: gunicorn core.wsgi:application --bind 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
       - "8000:8000"
-    environment:
-      - DB_HOST=db
-      - DB_NAME=condo_db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DJANGO_SECRET_KEY=development-secret-key-change-in-prod
-      - DJANGO_DEBUG=True
-      - EXTERNAL_MESSAGING_API_URL=http://api.externa.com/v1/send
-      - EXTERNAL_MESSAGING_API_KEY=chave_api_aqui
-      # Superlógica
-      - SUPERLOGICA_BASE_URL=https://api.superlogica.net/v2/condor
-      - SUPERLOGICA_APP_TOKEN=seu_app_token_aqui
-      - SUPERLOGICA_ACCESS_TOKEN=seu_access_token_aqui
-      - SUPERLOGICA_MAX_ID=100
-      # Evolution API
-      - EVOLUTION_BASE_URL=http://evolution:8080
-      - EVOLUTION_INSTANCE=sua_instancia_aqui
-      - EVOLUTION_API_KEY=sua_api_key_aqui
+    env_file:
+      - .env
     depends_on:
       - db
-      - evolution
 
-  # ─── Frontend Vue.js ───────────────────────────────────────────────────────
   frontend:
     build: ./frontend
-    restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
     depends_on:
       - web
 
-  # ─── Banco de dados da Evolution API ──────────────────────────────────────
-  evolution_db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: evolution_db
-      POSTGRES_USER: evolution
-      POSTGRES_PASSWORD: evolution
-    volumes:
-      - evolution_postgres_data:/var/lib/postgresql/data
-
-  # ─── Redis (cache/filas da Evolution API) ─────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-
-  # ─── Evolution API ─────────────────────────────────────────────────────────
-  evolution:
-    image: atendai/evolution-api:latest
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    volumes:
-      - evolution_instances:/evolution/instances
-    environment:
-      # Servidor
-      - SERVER_URL=http://localhost:8080
-      - AUTHENTICATION_API_KEY=sua_api_key_aqui # mesmo valor de EVOLUTION_API_KEY
-
-      # Banco de dados
-      - DATABASE_ENABLED=true
-      - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://evolution:evolution@evolution_db:5432/evolution_db
-      - DATABASE_CONNECTION_CLIENT_NAME=evolution
-
-      # Redis
-      - CACHE_REDIS_ENABLED=true
-      - CACHE_REDIS_URI=redis://redis:6379/6
-      - CACHE_REDIS_PREFIX_KEY=evolution
-      - CACHE_REDIS_SAVE_INSTANCES=false
-
-      # Logs
-      - LOG_LEVEL=ERROR
-      - LOG_COLOR=true
-      - LOG_BAILEYS=error
-
-      # Instância
-      - DEL_INSTANCE=false
-    depends_on:
-      - evolution_db
-      - redis
-
 volumes:
   postgres_data:
-  evolution_postgres_data:
-  redis_data:
-  evolution_instances:

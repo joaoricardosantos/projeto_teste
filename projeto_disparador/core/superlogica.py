@@ -1,10 +1,12 @@
 import time
 from datetime import datetime
 from io import BytesIO
+from typing import Optional
 
 import requests
 from django.conf import settings
 from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 
 
 def _get_headers() -> dict:
@@ -15,39 +17,31 @@ def _get_headers() -> dict:
     }
 
 
-def _para_float(valor) -> float:
-    if valor in (None, "", "null"):
-        return 0.0
-    texto = str(valor).strip()
-    try:
-        return float(texto)
-    except ValueError:
-        pass
-    try:
-        return float(texto.replace(".", "").replace(",", "."))
-    except ValueError:
-        return 0.0
-
-
 def verificar_condominio(id_condominio: int):
     response = requests.get(
         f"{settings.SUPERLOGICA_BASE_URL}/unidades",
         headers=_get_headers(),
-        params={"idCondominio": id_condominio, "pagina": 1, "itensPorPagina": 1},
+        params={
+            "idCondominio": id_condominio,
+            "pagina": 1,
+            "itensPorPagina": 1,
+        },
         timeout=20,
     )
+
     if response.status_code != 200:
         return False, None
 
     dados = response.json()
     nome_condominio = None
+
     if dados and isinstance(dados, list):
         nome_condominio = dados[0].get("st_nome_cond")
 
     return True, nome_condominio
 
 
-def buscar_unidades(id_condominio: int) -> dict | None:
+def buscar_unidades(id_condominio: int):
     mapa = {}
     pagina = 1
 
@@ -62,10 +56,12 @@ def buscar_unidades(id_condominio: int) -> dict | None:
             },
             timeout=30,
         )
+
         if response.status_code != 200:
             return None
 
         dados = response.json()
+
         if not dados:
             break
 
@@ -74,8 +70,11 @@ def buscar_unidades(id_condominio: int) -> dict | None:
 
             codigo_unidade = (unidade.get("st_unidade_uni") or "").strip()
             sacado = (
-                unidade.get("st_sacado_uni") or unidade.get("nome_proprietario") or ""
+                unidade.get("st_sacado_uni")
+                or unidade.get("nome_proprietario")
+                or ""
             ).strip()
+
             nome_pdf = f"{codigo_unidade} - {sacado}".strip(" -")
 
             telefones = []
@@ -96,13 +95,23 @@ def buscar_unidades(id_condominio: int) -> dict | None:
     return mapa
 
 
-def _extrair_componentes(receb: dict) -> dict:
+def _para_float(valor) -> float:
+    if valor in (None, "", "null"):
+        return 0.0
+    texto = str(valor).strip()
+    try:
+        return float(texto)
+    except ValueError:
+        pass
+    try:
+        return float(texto.replace(".", "").replace(",", "."))
+    except ValueError:
+        return 0.0
+
+
+def extrair_componentes(receb: dict) -> dict:
     """
     Extrai principal, juros, multa, atualização e honorários de um recebimento.
-
-    - Principal: vl_emitido_recb (valor original, sem encargos)
-    - Encargos: apenas de encargos[0].detalhes quando a API é chamada
-      com comValoresAtualizados=1 e comValoresAtualizadosPorComposicao=1
     """
     principal = _para_float(receb.get("vl_emitido_recb") or 0)
 
@@ -129,12 +138,11 @@ def _extrair_componentes(receb: dict) -> dict:
     }
 
 
-def buscar_inadimplentes(
-    id_condominio: int, mapa_unidades: dict, data_posicao: str
-) -> tuple[dict, list] | tuple[None, None]:
-    resumo: dict = {}
-    detalhado: list = []
-    recebimentos_processados: set = set()
+def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict):
+    """Busca inadimplentes de um condomínio específico, retorna resumo e detalhado."""
+    resumo = {}
+    detalhado = []
+    processados = set()
     pagina = 1
 
     while True:
@@ -151,6 +159,7 @@ def buscar_inadimplentes(
             },
             timeout=30,
         )
+
         if response.status_code != 200:
             return None, None
 
@@ -161,33 +170,31 @@ def buscar_inadimplentes(
         for item in dados:
             if not isinstance(item, dict):
                 continue
-            recebimentos = item.get("recebimento", [])
-            if not isinstance(recebimentos, list):
-                continue
-
-            for receb in recebimentos:
+            for receb in item.get("recebimento", []):
                 if not isinstance(receb, dict):
                     continue
                 if receb.get("fl_status_recb") != "0":
                     continue
 
                 id_receb = receb.get("id_recebimento_recb")
-                if id_receb in recebimentos_processados:
+                if id_receb in processados:
                     continue
-                recebimentos_processados.add(id_receb)
+                processados.add(id_receb)
 
                 unidade_id  = receb.get("id_unidade_uni")
-                codigo      = receb.get("id_recebimento_recb")
                 vencimento  = receb.get("dt_vencimento_recb")
                 competencia = receb.get("dt_competencia_recb")
 
                 dados_unidade = mapa_unidades.get(unidade_id, {})
                 nome_pdf      = dados_unidade.get("nome_pdf", f"Unidade {unidade_id}")
-                valores       = _extrair_componentes(receb)
+                telefones     = dados_unidade.get("telefones", [])
+
+                valores = extrair_componentes(receb)
 
                 if unidade_id not in resumo:
                     resumo[unidade_id] = {
                         "nome_pdf":    nome_pdf,
+                        "telefones":   telefones,
                         "principal":   0.0,
                         "juros":       0.0,
                         "multa":       0.0,
@@ -200,8 +207,9 @@ def buscar_inadimplentes(
                     resumo[unidade_id][campo] += valores[campo]
 
                 detalhado.append({
+                    "Condomínio":  None,  # preenchido pelo chamador
                     "Unidade":     nome_pdf,
-                    "Código":      codigo,
+                    "Código":      id_receb,
                     "Vencimento":  vencimento,
                     "Competência": competencia,
                     "Principal":   valores["principal"],
@@ -217,48 +225,62 @@ def buscar_inadimplentes(
     return resumo, detalhado
 
 
+def _estilizar_cabecalho(ws):
+    """Aplica estilo verde ao cabeçalho da planilha."""
+    header_fill = PatternFill(start_color="006837", end_color="006837", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+
 def gerar_relatorio_inadimplentes(
-    id_condominio: int | None = None,
-    data_posicao: str | None = None,
-) -> tuple[bytes, str] | tuple[None, None]:
+    id_condominio: Optional[int] = None,
+    data_posicao: Optional[str] = None,
+) -> tuple:
     """
-    Gera um arquivo Excel em memória com duas abas:
-      - Resumo: uma linha por unidade inadimplente com totais
-      - Detalhado: uma linha por cobrança em aberto
+    Gera relatório Excel com abas Resumo e Detalhado.
 
-    Se id_condominio for None, varre do ID 1 até SUPERLOGICA_MAX_ID.
-    Se data_posicao for None, usa a data de hoje (formato dd/mm/yyyy).
+    Args:
+        id_condominio: ID específico ou None para varrer todos.
+        data_posicao:  Data no formato DD/MM/YYYY ou None para hoje.
     """
-    if data_posicao is None:
-        data_posicao = datetime.today().strftime("%d/%m/%Y")
+    # Data de posição: usa o parâmetro, ou hoje formatado corretamente
+    if not data_posicao:
+        data_posicao = datetime.today().strftime("%m/%d/%Y")
+    else:
+        # Converte DD/MM/YYYY → MM/DD/YYYY (formato exigido pela API Superlógica)
+        partes = data_posicao.split("/")
+        if len(partes) == 3:
+            data_posicao = f"{partes[1]}/{partes[0]}/{partes[2]}"
 
-    max_id = getattr(settings, "SUPERLOGICA_MAX_ID", 100)
+    # Range de condomínios a varrer
+    if id_condominio:
+        ids_range = [id_condominio]
+    else:
+        max_id = getattr(settings, "SUPERLOGICA_MAX_ID", 100)
+        ids_range = range(1, max_id + 1)
 
-    ids_para_varrer = (
-        [id_condominio] if id_condominio is not None else range(1, max_id + 1)
-    )
+    todas_resumo = []
+    todo_detalhado = []
 
-    linhas_resumo: list[dict] = []
-    linhas_detalhado: list[dict] = []
-
-    for cid in ids_para_varrer:
-        acesso, nome_condominio = verificar_condominio(cid)
+    for condo_id in ids_range:
+        acesso, nome_condominio = verificar_condominio(condo_id)
         if not acesso:
             continue
 
-        mapa_unidades = buscar_unidades(cid)
+        mapa_unidades = buscar_unidades(condo_id)
         if not mapa_unidades:
             continue
 
-        resumo, detalhado = buscar_inadimplentes(cid, mapa_unidades, data_posicao)
+        resumo, detalhado = buscar_inadimplentes_condominio(condo_id, data_posicao, mapa_unidades)
         if not resumo:
             continue
 
         for unidade_id, valores in resumo.items():
-            dados_unidade = mapa_unidades.get(unidade_id, {})
-            telefones     = dados_unidade.get("telefones", [])
-
-            linhas_resumo.append({
+            telefones = valores.get("telefones", [])
+            todas_resumo.append({
                 "Condomínio":  nome_condominio,
                 "Unidade":     valores["nome_pdf"],
                 "Telefones":   " | ".join(telefones) if telefones else "",
@@ -270,47 +292,46 @@ def gerar_relatorio_inadimplentes(
                 "Total":       round(valores["total"],       2),
             })
 
-        for linha in detalhado:
-            linhas_detalhado.append({
-                "Condomínio": nome_condominio,
-                **linha,
-            })
+        for row in detalhado:
+            row["Condomínio"] = nome_condominio
+            todo_detalhado.append(row)
 
-        time.sleep(0.3)
+        if len(ids_range) > 1:
+            time.sleep(0.3)
 
-    if not linhas_resumo:
+    if not todas_resumo:
         return None, None
 
-    # Ordena resumo por condomínio e unidade
-    linhas_resumo.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
-    linhas_detalhado.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or "", str(r.get("Código") or "")))
+    # Ordena por condomínio e depois por unidade
+    todas_resumo.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
+    todo_detalhado.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
 
+    # Monta Excel com duas abas
     wb = Workbook()
 
-    # ── Aba Resumo ──────────────────────────────────────────────────────────────
+    # Aba Resumo
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = [
-        "Condomínio", "Unidade", "Telefones",
-        "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total",
-    ]
+    headers_resumo = ["Condomínio", "Unidade", "Telefones", "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_resumo.append(headers_resumo)
-    for linha in linhas_resumo:
-        ws_resumo.append([linha[h] for h in headers_resumo])
+    for row in todas_resumo:
+        ws_resumo.append([row[h] for h in headers_resumo])
+    _estilizar_cabecalho(ws_resumo)
 
-    # ── Aba Detalhado ───────────────────────────────────────────────────────────
+    # Aba Detalhado
     ws_det = wb.create_sheet("Detalhado")
-    headers_det = [
-        "Condomínio", "Unidade", "Código", "Vencimento", "Competência",
-        "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total",
-    ]
+    headers_det = ["Condomínio", "Unidade", "Código", "Vencimento", "Competência", "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_det.append(headers_det)
-    for linha in linhas_detalhado:
-        ws_det.append([linha.get(h, "") for h in headers_det])
+    for row in todo_detalhado:
+        ws_det.append([row.get(h, "") for h in headers_det])
+    _estilizar_cabecalho(ws_det)
 
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
 
-    filename = f"inadimplentes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    suffix = f"_condo{id_condominio}" if id_condominio else "_todos"
+    filename = f"inadimplentes{suffix}_{timestamp}.xlsx"
+
     return buffer.getvalue(), filename

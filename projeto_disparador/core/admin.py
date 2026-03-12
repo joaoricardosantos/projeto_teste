@@ -1,7 +1,7 @@
 from typing import List, Optional
 from ninja import Router, Schema
 from ninja.errors import HttpError
-from core.models import User, MessageTemplate
+from core.models import User
 from core.auth import JWTAuth
 from pydantic import UUID4, EmailStr
 from django.http import HttpResponse
@@ -72,6 +72,7 @@ def create_user(request, payload: UserCreateIn):
         password=payload.password,
         name=payload.name,
     )
+
     return 201, {"message": "User_created_successfully_pending_approval"}
 
 
@@ -88,23 +89,8 @@ def set_admin_role(request, payload: AdminRoleIn):
     user.is_staff = payload.make_admin
     user.is_superuser = payload.make_admin
     user.save()
+
     return 200, {"message": "User_admin_role_updated"}
-
-
-class TemplateOut(Schema):
-    id: UUID4
-    name: str
-    body: str
-    is_active: bool
-
-
-@admin_router.get("/templates/active", response=TemplateOut)
-def get_active_template(request):
-    """Retorna o template ativo atual. Usado pelo Dashboard para exibir preview."""
-    try:
-        return MessageTemplate.objects.get(is_active=True)
-    except MessageTemplate.DoesNotExist:
-        raise HttpError(404, "No_active_template")
 
 
 @admin_router.get("/export-defaulters")
@@ -114,11 +100,11 @@ def export_defaulters(
     data_posicao: Optional[str] = None,
 ):
     """
-    Gera relatório Excel de inadimplentes (duas abas: Resumo e Detalhado).
+    Gera relatório Excel de inadimplentes.
 
     Query params opcionais:
-      - id_condominio: filtra por um condomínio específico (omitir = todos)
-      - data_posicao:  data no formato dd/mm/yyyy (omitir = hoje)
+      - id_condominio: filtra por condomínio específico (int)
+      - data_posicao:  data no formato DD/MM/YYYY (str)
     """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
@@ -128,8 +114,10 @@ def export_defaulters(
             id_condominio=id_condominio,
             data_posicao=data_posicao,
         )
-    except requests.RequestException:
+    except requests.RequestException as e:
         raise HttpError(502, "External_service_unavailable")
+    except Exception as e:
+        raise HttpError(500, str(e))
 
     if not content:
         raise HttpError(204, "No_defaulters_found")
