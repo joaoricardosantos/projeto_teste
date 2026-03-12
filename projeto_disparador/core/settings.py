@@ -87,3 +87,8 @@ SUPERLOGICA_BASE_URL = os.environ.get(
 SUPERLOGICA_APP_TOKEN = os.environ.get("SUPERLOGICA_APP_TOKEN", "d904263b-a203-42fb-b33c-c4d772ebeb02")
 SUPERLOGICA_ACCESS_TOKEN = os.environ.get("SUPERLOGICA_ACCESS_TOKEN", "1d0acbdd-6a3d-42da-9314-ff78bde5d081")
 SUPERLOGICA_MAX_ID = int(os.environ.get("SUPERLOGICA_MAX_ID", "100"))
+
+# Evolution API (WhatsApp)
+EVOLUTION_BASE_URL = os.environ.get("EVOLUTION_BASE_URL", "http://localhost:8080")
+EVOLUTION_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "minha-instancia")
+EVOLUTION_API_KEY  = os.environ.get("EVOLUTION_API_KEY", "")

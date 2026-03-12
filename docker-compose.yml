@@ -26,7 +26,10 @@ services:
       - DJANGO_SECRET_KEY=development-secret-key-change-in-prod
       - DJANGO_DEBUG=True
       - EXTERNAL_MESSAGING_API_URL=http://api.externa.com/v1/send
-      - EXTERNAL_MESSAGING_API_KEY=chave_api_aqui
+      - EXTERNAL_MESSAGING_API_KEY=chave_api_aqui - EVOLUTION_BASE_URL=http://evolution:8080 # URL da instância Evolution API
+      - EVOLUTION_INSTANCE=nome-da-instancia # Nome da instância criada na Evolution
+      - EVOLUTION_API_KEY=sua_global_api_key # Global API Key configurada na Evolution
+
     depends_on:
       - db
 
