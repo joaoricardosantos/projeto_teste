@@ -11,8 +11,13 @@ const routes = [
         component: AuthView
     },
     {
+        path: '/reset-password',
+        name: 'ResetPassword',
+        component: AuthView
+    },
+    {
         path: '/dashboard',
-        name: 'EnviarMensagens',
+        name: 'Dashboard',
         component: DashboardView,
         meta: { requiresAuth: true }
     },
