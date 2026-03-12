@@ -12,7 +12,7 @@
           class="mr-2"
           @click="goToDashboard"
         >
-          Dashboard
+          Enviar mensagens
         </v-btn>
         <v-btn
           v-if="isAuthenticated"

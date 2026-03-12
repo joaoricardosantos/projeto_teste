@@ -314,9 +314,11 @@ const errorMessage = ref('')
 
 // ── Variáveis disponíveis ─────────────────────────────────────────────────────
 const availableVariables = [
-  { label: 'Nome',       value: '{{nome}}'       },
-  { label: 'Condomínio', value: '{{condominio}}' },
-  { label: 'Valor',      value: '{{valor}}'      },
+  { label: 'Nome',        value: '{{nome}}'        },
+  { label: 'Condomínio',  value: '{{condominio}}'  },
+  { label: 'Valor',       value: '{{valor}}'       },
+  { label: 'Vencimento',  value: '{{vencimento}}'  },
+  { label: 'Competência', value: '{{competencia}}' },
 ]
 
 // ── Hora atual para o preview ─────────────────────────────────────────────────
@@ -361,6 +363,8 @@ const renderPreview = (body) =>
     .replace(/\{\{nome\}\}/g, 'João Silva')
     .replace(/\{\{condominio\}\}/g, 'Residencial Acácias')
     .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
+    .replace(/\{\{vencimento\}\}/g, '10/04/2025')
+    .replace(/\{\{competencia\}\}/g, '12/10/2025')
 
 // ── Inserção de variável na posição do cursor ─────────────────────────────────
 const insertVariable = async (variable) => {
