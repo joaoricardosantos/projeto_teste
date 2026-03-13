@@ -28,6 +28,7 @@
             hide-details="auto"
             hint="Deixe em branco para todos"
             persistent-hint
+            :disabled="isExporting"
           />
         </v-col>
 
@@ -42,6 +43,7 @@
             hide-details="auto"
             hint="Deixe em branco para hoje"
             persistent-hint
+            :disabled="isExporting"
           />
         </v-col>
 
@@ -52,12 +54,32 @@
             size="large"
             prepend-icon="mdi-microsoft-excel"
             :loading="isExporting"
+            :disabled="isExporting"
             @click="exportDefaulters"
           >
-            Exportar Excel
+            {{ isExporting ? 'Gerando...' : 'Exportar Excel' }}
           </v-btn>
         </v-col>
       </v-row>
+
+      <!-- Progresso do job assíncrono -->
+      <v-expand-transition>
+        <div v-if="isExporting" class="mt-5">
+          <div class="d-flex align-center mb-2">
+            <v-icon color="primary" class="mr-2" size="small">mdi-timer-sand</v-icon>
+            <span class="text-body-2 text-medium-emphasis">{{ progressMessage }}</span>
+          </div>
+          <v-progress-linear
+            indeterminate
+            color="primary"
+            rounded
+            height="6"
+          />
+          <p class="text-caption text-medium-emphasis mt-2">
+            Para todos os condomínios esse processo pode levar alguns minutos. Não feche esta página.
+          </p>
+        </div>
+      </v-expand-transition>
 
       <v-alert v-if="exportError" type="error" class="mt-5" closable @click:close="exportError = ''">
         {{ exportError }}
@@ -74,7 +96,7 @@
       </p>
       <p class="text-body-2 text-medium-emphasis mb-4">
         Faça upload do Excel gerado acima (aba <strong>Resumo</strong>) para enviar mensagens
-        a todos os números da coluna <strong>Telefones</strong>.
+        a todos os números das colunas <strong>Telefone 1</strong> e <strong>Telefone 2</strong>.
       </p>
 
       <!-- Seleção de template -->
@@ -143,11 +165,7 @@
         <div>❌ Erros: <strong>{{ dispatchResult.errors }}</strong></div>
         <div v-if="dispatchResult.failures && dispatchResult.failures.length" class="mt-2">
           <div class="text-caption text-medium-emphasis mb-1">Números com falha:</div>
-          <div
-            v-for="f in dispatchResult.failures"
-            :key="f.phone"
-            class="text-caption"
-          >
+          <div v-for="f in dispatchResult.failures" :key="f.phone" class="text-caption">
             {{ f.phone }} — {{ f.error }}
           </div>
         </div>
@@ -157,24 +175,27 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
-// ── Exportar Excel ────────────────────────────────────────────────────────────
-const isExporting   = ref(false)
-const exportError   = ref('')
-const exportSuccess = ref('')
-const idCondominio  = ref(null)
-const dataPosicao   = ref('')
+// ── Estado exportação ─────────────────────────────────────────────────────────
+const isExporting     = ref(false)
+const exportError     = ref('')
+const exportSuccess   = ref('')
+const idCondominio    = ref(null)
+const dataPosicao     = ref('')
+const progressMessage = ref('Iniciando geração do relatório...')
+let   pollingInterval = null
+let   pollingSeconds  = 0
 
-// ── Disparar mensagens ────────────────────────────────────────────────────────
-const isDispatching     = ref(false)
-const dispatchError     = ref('')
-const dispatchResult    = ref(null)
-const dispatchFile      = ref(null)
+// ── Estado disparo ────────────────────────────────────────────────────────────
+const isDispatching      = ref(false)
+const dispatchError      = ref('')
+const dispatchResult     = ref(null)
+const dispatchFile       = ref(null)
 const dispatchTemplateId = ref(null)
 
 // ── Templates ─────────────────────────────────────────────────────────────────
-const templates       = ref([])
+const templates        = ref([])
 const loadingTemplates = ref(false)
 
 const selectedTemplate = computed(() =>
@@ -201,56 +222,109 @@ const fetchTemplates = async () => {
   finally { loadingTemplates.value = false }
 }
 
-// ── Exportar Excel ────────────────────────────────────────────────────────────
+// ── Exportar Excel (assíncrono com polling) ───────────────────────────────────
 const exportDefaulters = async () => {
-  isExporting.value = true
-  exportError.value = ''
+  isExporting.value   = true
+  exportError.value   = ''
   exportSuccess.value = ''
+  pollingSeconds      = 0
+  progressMessage.value = 'Iniciando geração do relatório...'
 
   try {
+    // 1. Dispara o job em background
     const params = new URLSearchParams()
     if (idCondominio.value) params.append('id_condominio', idCondominio.value)
     if (dataPosicao.value) {
       const [ano, mes, dia] = dataPosicao.value.split('-')
       params.append('data_posicao', `${dia}/${mes}/${ano}`)
     }
-
     const query = params.toString() ? `?${params.toString()}` : ''
-    const response = await fetch(`/api/admin/export-defaulters${query}`, {
+
+    const startRes = await fetch(`/api/admin/export-defaulters/start${query}`, {
+      method: 'POST',
       headers: authHeader(),
     })
 
-    if (response.status === 204) {
-      exportError.value = 'Nenhum inadimplente encontrado para os filtros informados.'
+    if (!startRes.ok) {
+      const d = await startRes.json().catch(() => ({}))
+      exportError.value = d.detail || 'Erro ao iniciar exportação.'
+      isExporting.value = false
       return
     }
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      const detail = data.detail || ''
-      exportError.value = detail === 'External_service_unavailable'
-        ? 'Serviço externo (Superlógica) indisponível. Tente novamente mais tarde.'
-        : detail || 'Erro ao exportar inadimplentes.'
+    const { job_id } = await startRes.json()
+
+    // 2. Polling de status a cada 3 segundos
+    pollingInterval = setInterval(async () => {
+      pollingSeconds += 3
+      const mins = Math.floor(pollingSeconds / 60)
+      const secs = pollingSeconds % 60
+      const tempo = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
+      progressMessage.value = `Processando... (${tempo} aguardando)`
+
+      try {
+        const statusRes = await fetch(`/api/admin/export-defaulters/status/${job_id}`, {
+          headers: authHeader(),
+        })
+        if (!statusRes.ok) return
+
+        const { status, filename, error } = await statusRes.json()
+
+        if (status === 'done') {
+          clearInterval(pollingInterval)
+          pollingInterval = null
+          await downloadJob(job_id, filename)
+
+        } else if (status === 'empty') {
+          clearInterval(pollingInterval)
+          pollingInterval = null
+          exportError.value = 'Nenhum inadimplente encontrado para os filtros informados.'
+          isExporting.value = false
+
+        } else if (status === 'error') {
+          clearInterval(pollingInterval)
+          pollingInterval = null
+          exportError.value = error || 'Erro ao gerar relatório.'
+          isExporting.value = false
+        }
+        // pending ou running → continua polling
+      } catch (_) {}
+    }, 3000)
+
+  } catch (err) {
+    exportError.value = err.message || 'Erro inesperado.'
+    isExporting.value = false
+  }
+}
+
+const downloadJob = async (jobId, filename) => {
+  try {
+    const dlRes = await fetch(`/api/admin/export-defaulters/download/${jobId}`, {
+      headers: authHeader(),
+    })
+    if (!dlRes.ok) {
+      exportError.value = 'Erro ao baixar o arquivo gerado.'
+      isExporting.value = false
       return
     }
 
-    const disposition = response.headers.get('Content-Disposition') || ''
+    const disposition = dlRes.headers.get('Content-Disposition') || ''
     const match = disposition.match(/filename="(.+)"/)
-    const filename = match ? match[1] : 'inadimplentes.xlsx'
+    const fname = match ? match[1] : filename || 'inadimplentes.xlsx'
 
-    const blob = await response.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
+    const blob = await dlRes.blob()
+    const url  = window.URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = fname
     document.body.appendChild(a)
     a.click()
     a.remove()
     window.URL.revokeObjectURL(url)
 
-    exportSuccess.value = `Arquivo "${filename}" baixado com sucesso! Agora faça o upload abaixo para disparar as mensagens.`
-  } catch (error) {
-    exportError.value = error.message || 'Erro inesperado ao exportar.'
+    exportSuccess.value = `Arquivo "${fname}" baixado com sucesso! Agora faça o upload abaixo para disparar as mensagens.`
+  } catch (err) {
+    exportError.value = err.message || 'Erro ao baixar arquivo.'
   } finally {
     isExporting.value = false
   }
@@ -269,9 +343,7 @@ const dispatchMessages = async () => {
     formData.append('file', dispatchFile.value)
 
     let url = '/api/messages/dispatch-excel'
-    if (dispatchTemplateId.value) {
-      url += `?template_id=${dispatchTemplateId.value}`
-    }
+    if (dispatchTemplateId.value) url += `?template_id=${dispatchTemplateId.value}`
 
     const response = await fetch(url, {
       method: 'POST',
@@ -283,9 +355,7 @@ const dispatchMessages = async () => {
     let data = {}
     try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
 
-    if (!response.ok) {
-      throw new Error(data.detail || 'Erro ao disparar mensagens')
-    }
+    if (!response.ok) throw new Error(data.detail || 'Erro ao disparar mensagens')
 
     dispatchResult.value = data.details
     dispatchFile.value = null
@@ -297,4 +367,5 @@ const dispatchMessages = async () => {
 }
 
 onMounted(fetchTemplates)
+onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 </script>
