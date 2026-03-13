@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from io import BytesIO
 from typing import Optional
 
@@ -21,173 +22,112 @@ def verificar_condominio(id_condominio: int):
     response = requests.get(
         f"{settings.SUPERLOGICA_BASE_URL}/unidades",
         headers=_get_headers(),
-        params={
-            "idCondominio": id_condominio,
-            "pagina": 1,
-            "itensPorPagina": 1,
-        },
+        params={"idCondominio": id_condominio, "pagina": 1, "itensPorPagina": 1},
         timeout=20,
     )
-
     if response.status_code != 200:
         return False, None
-
     dados = response.json()
     nome_condominio = None
-
     if dados and isinstance(dados, list):
         nome_condominio = dados[0].get("st_nome_cond")
-
     return True, nome_condominio
 
 
 def buscar_unidades(id_condominio: int):
     mapa = {}
     pagina = 1
-
     while True:
         response = requests.get(
             f"{settings.SUPERLOGICA_BASE_URL}/unidades",
             headers=_get_headers(),
-            params={
-                "idCondominio": id_condominio,
-                "pagina": pagina,
-                "itensPorPagina": 50,
-            },
+            params={"idCondominio": id_condominio, "pagina": pagina, "itensPorPagina": 50},
             timeout=30,
         )
-
         if response.status_code != 200:
             return None
-
         dados = response.json()
-
         if not dados:
             break
-
         for unidade in dados:
             unidade_id = unidade.get("id_unidade_uni")
-
             codigo_unidade = (unidade.get("st_unidade_uni") or "").strip()
             sacado = (
-                unidade.get("st_sacado_uni")
-                or unidade.get("nome_proprietario")
-                or ""
+                unidade.get("st_sacado_uni") or unidade.get("nome_proprietario") or ""
             ).strip()
-
             nome_pdf = f"{codigo_unidade} - {sacado}".strip(" -")
-
             telefones = []
             for campo in ["telefone_proprietario", "celular_proprietario"]:
                 numero = unidade.get(campo)
                 if numero and str(numero).strip():
                     telefones.append(str(numero).strip())
-
             mapa[unidade_id] = {
                 "unidade": codigo_unidade,
                 "sacado": sacado,
                 "nome_pdf": nome_pdf,
                 "telefones": list(dict.fromkeys(telefones)),
             }
-
         pagina += 1
-
     return mapa
 
 
 def _formatar_data(valor) -> str:
-    """
-    Formata datas retornadas pela Superlógica para DD/MM/YYYY.
-    Aceita: 'DD/MM/YYYY HH:MM:SS', 'DD/MM/YYYY', 'YYYY-MM-DD', etc.
-    """
     if not valor:
         return ""
     texto = str(valor).strip()
-
-    # Formato DD/MM/YYYY HH:MM:SS (padrão da Superlógica)
     if len(texto) >= 10 and texto[2] == "/" and texto[5] == "/":
         return texto[:10]
-
-    # Formato YYYY-MM-DD (ISO)
     if len(texto) >= 10 and texto[4] == "-" and texto[7] == "-":
         partes = texto[:10].split("-")
         return f"{partes[2]}/{partes[1]}/{partes[0]}"
-
     return texto
 
 
-def _para_float(valor) -> float:
+def _para_decimal(valor) -> Decimal:
     if valor in (None, "", "null"):
-        return 0.0
+        return Decimal("0")
     texto = str(valor).strip()
     try:
-        return float(texto)
-    except ValueError:
+        return Decimal(texto)
+    except InvalidOperation:
         pass
     try:
-        return float(texto.replace(".", "").replace(",", "."))
-    except ValueError:
-        return 0.0
+        return Decimal(texto.replace(".", "").replace(",", "."))
+    except InvalidOperation:
+        return Decimal("0")
 
 
-def extrair_componentes(receb: dict) -> dict:
+def _d2f(valor: Decimal) -> float:
+    return float(valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> set:
     """
-    Extrai principal, juros, multa, atualização e honorários de um recebimento.
+    Usa /index (rápido) para descobrir quais unidades têm inadimplência.
+    Retorna um set de id_unidade_uni.
     """
-    principal = _para_float(receb.get("vl_emitido_recb") or 0)
-
-    juros = multa = atualizacao = honorarios = 0.0
-
-    encargos = receb.get("encargos", [])
-    if encargos and isinstance(encargos, list):
-        detalhes = encargos[0].get("detalhes", {})
-        if isinstance(detalhes, dict):
-            juros       = _para_float(detalhes.get("juros",       0))
-            multa       = _para_float(detalhes.get("multa",       0))
-            atualizacao = _para_float(detalhes.get("atualizacao", 0))
-            honorarios  = _para_float(detalhes.get("honorarios",  0))
-
-    total = round(principal + juros + multa + atualizacao + honorarios, 2)
-
-    return {
-        "principal":   round(principal,   2),
-        "juros":       round(juros,       2),
-        "multa":       round(multa,       2),
-        "atualizacao": round(atualizacao, 2),
-        "honorarios":  round(honorarios,  2),
-        "total":       total,
-    }
-
-
-def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict):
-    """Busca inadimplentes de um condomínio específico, retorna resumo e detalhado."""
-    resumo = {}
-    detalhado = []
-    processados = set()
+    unidades = set()
     pagina = 1
+    processados = set()
 
     while True:
         response = requests.get(
             f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/index",
             headers=_get_headers(),
             params={
-                "idCondominio":                       id_condominio,
-                "pagina":                             pagina,
-                "itensPorPagina":                     50,
-                "posicaoEm":                          data_posicao,
-                "comValoresAtualizados":              1,
-                "comValoresAtualizadosPorComposicao": 1,
+                "idCondominio":      id_condominio,
+                "pagina":            pagina,
+                "itensPorPagina":    50,
+                "posicaoEm":         data_posicao,
+                "comValoresAtualizados": 1,
             },
             timeout=30,
         )
-
         if response.status_code != 200:
-            return None, None
-
+            break
         dados = response.json()
         if not dados:
             break
-
         for item in dados:
             if not isinstance(item, dict):
                 continue
@@ -196,60 +136,133 @@ def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_
                     continue
                 if receb.get("fl_status_recb") != "0":
                     continue
-
-                id_receb = receb.get("id_recebimento_recb")
-                if id_receb in processados:
+                id_r = receb.get("id_recebimento_recb")
+                if id_r in processados:
                     continue
-                processados.add(id_receb)
-
-                unidade_id  = receb.get("id_unidade_uni")
-                vencimento  = receb.get("dt_vencimento_recb")
-                competencia = receb.get("dt_competencia_recb")
-
-                dados_unidade = mapa_unidades.get(unidade_id, {})
-                nome_pdf      = dados_unidade.get("nome_pdf", f"Unidade {unidade_id}")
-                telefones     = dados_unidade.get("telefones", [])
-
-                valores = extrair_componentes(receb)
-
-                if unidade_id not in resumo:
-                    resumo[unidade_id] = {
-                        "nome_pdf":    nome_pdf,
-                        "telefones":   telefones,
-                        "vencimento":  _formatar_data(vencimento),
-                        "competencia": _formatar_data(competencia),
-                        "principal":   0.0,
-                        "juros":       0.0,
-                        "multa":       0.0,
-                        "atualizacao": 0.0,
-                        "honorarios":  0.0,
-                        "total":       0.0,
-                    }
-
-                for campo in ("principal", "juros", "multa", "atualizacao", "honorarios", "total"):
-                    resumo[unidade_id][campo] += valores[campo]
-
-                detalhado.append({
-                    "Condomínio":  None,  # preenchido pelo chamador
-                    "Unidade":     nome_pdf,
-                    "Código":      id_receb,
-                    "Vencimento":  _formatar_data(vencimento),
-                    "Competência": _formatar_data(competencia),
-                    "Principal":   valores["principal"],
-                    "Juros":       valores["juros"],
-                    "Multa":       valores["multa"],
-                    "Atualização": valores["atualizacao"],
-                    "Honorários":  valores["honorarios"],
-                    "Total":       valores["total"],
-                })
-
+                processados.add(id_r)
+                unidades.add(receb.get("id_unidade_uni"))
         pagina += 1
+
+    return unidades
+
+
+def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: dict):
+    """
+    Usa /avancada filtrando por unidade para obter valores exatos
+    com índice de correção monetária atualizado.
+    """
+    response = requests.get(
+        f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
+        headers=_get_headers(),
+        params={
+            "idCondominio":           id_condominio,
+            "idUnidades":             id_unidade,
+            "itensPorPagina":         500,
+            "comEncargos":            "true",
+            "comHonorarios":          "true",
+            "comAtualizacaoMonetaria": "true",
+        },
+        timeout=60,
+    )
+
+    if response.status_code != 200:
+        return None, None
+
+    dados = response.json()
+    if not dados:
+        return None, None
+
+    dados_unidade = mapa_unidades.get(id_unidade, {})
+    nome_pdf  = dados_unidade.get("nome_pdf", f"Unidade {id_unidade}")
+    telefones = dados_unidade.get("telefones", [])
+
+    resumo = {
+        "nome_pdf":    nome_pdf,
+        "telefones":   telefones,
+        "vencimento":  "",
+        "competencia": "",
+        "principal":   Decimal("0"),
+        "juros":       Decimal("0"),
+        "multa":       Decimal("0"),
+        "atualizacao": Decimal("0"),
+        "honorarios":  Decimal("0"),
+        "total":       Decimal("0"),
+    }
+    detalhado = []
+
+    for receb in dados:
+        if not isinstance(receb, dict):
+            continue
+
+        vencimento  = receb.get("dt_vencimento_recb", "")
+        competencia = receb.get("dt_competencia_recb", "")
+        id_receb    = receb.get("id_recebimento_recb")
+
+        if not resumo["vencimento"]:
+            resumo["vencimento"]  = _formatar_data(vencimento)
+            resumo["competencia"] = _formatar_data(competencia)
+
+        det = receb.get("detalhes", {}) or {}
+        p = _para_decimal(receb.get("total_receita") or receb.get("vl_emitido_recb") or 0)
+        j = _para_decimal(det.get("juros",      0))
+        m = _para_decimal(det.get("multa",      0))
+        h = _para_decimal(det.get("honorarios", 0))
+        a = _para_decimal(det.get("atualizacaomonetaria") or det.get("atualizacao") or 0)
+        total_receb = p + j + m + a + h
+
+        resumo["principal"]   += p
+        resumo["juros"]       += j
+        resumo["multa"]       += m
+        resumo["atualizacao"] += a
+        resumo["honorarios"]  += h
+        resumo["total"]       += total_receb
+
+        detalhado.append({
+            "Condomínio":  None,
+            "Unidade":     nome_pdf,
+            "Código":      id_receb,
+            "Vencimento":  _formatar_data(vencimento),
+            "Competência": _formatar_data(competencia),
+            "Principal":   _d2f(p),
+            "Juros":       _d2f(j),
+            "Multa":       _d2f(m),
+            "Atualização": _d2f(a),
+            "Honorários":  _d2f(h),
+            "Total":       _d2f(total_receb),
+        })
+
+    # Converte resumo para float
+    for campo in ("principal", "juros", "multa", "atualizacao", "honorarios", "total"):
+        resumo[campo] = _d2f(resumo[campo])
 
     return resumo, detalhado
 
 
+def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict):
+    """
+    Estratégia em 2 etapas:
+    1. /index  → descobre quais unidades são inadimplentes (rápido)
+    2. /avancada por unidade → busca valores exatos com índice atualizado (preciso)
+    """
+    unidades_ids = _descobrir_unidades_inadimplentes(id_condominio, data_posicao)
+    if not unidades_ids:
+        return {}, []
+
+    resumo_total = {}
+    detalhado_total = []
+
+    for id_unidade in unidades_ids:
+        resumo_uni, det_uni = _buscar_valores_unidade(id_condominio, id_unidade, mapa_unidades)
+        if resumo_uni:
+            resumo_total[id_unidade] = resumo_uni
+        if det_uni:
+            detalhado_total.extend(det_uni)
+        time.sleep(0.1)  # pausa pequena para não sobrecarregar a API
+
+    return resumo_total, detalhado_total
+
+
 def _estilizar_cabecalho(ws):
-    """Aplica estilo verde ao cabeçalho da planilha."""
     header_fill = PatternFill(start_color="006837", end_color="006837", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
     for cell in ws[1]:
@@ -262,28 +275,14 @@ def gerar_relatorio_inadimplentes(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
 ) -> tuple:
-    """
-    Gera relatório Excel com abas Resumo e Detalhado.
-
-    Args:
-        id_condominio: ID específico ou None para varrer todos.
-        data_posicao:  Data no formato DD/MM/YYYY ou None para hoje.
-    """
-    # Data de posição: usa o parâmetro, ou hoje formatado corretamente
     if not data_posicao:
         data_posicao = datetime.today().strftime("%m/%d/%Y")
     else:
-        # Converte DD/MM/YYYY → MM/DD/YYYY (formato exigido pela API Superlógica)
         partes = data_posicao.split("/")
         if len(partes) == 3:
             data_posicao = f"{partes[1]}/{partes[0]}/{partes[2]}"
 
-    # Range de condomínios a varrer
-    if id_condominio:
-        ids_range = [id_condominio]
-    else:
-        max_id = getattr(settings, "SUPERLOGICA_MAX_ID", 100)
-        ids_range = range(1, max_id + 1)
+    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
 
     todas_resumo = []
     todo_detalhado = []
@@ -292,11 +291,9 @@ def gerar_relatorio_inadimplentes(
         acesso, nome_condominio = verificar_condominio(condo_id)
         if not acesso:
             continue
-
         mapa_unidades = buscar_unidades(condo_id)
         if not mapa_unidades:
             continue
-
         resumo, detalhado = buscar_inadimplentes_condominio(condo_id, data_posicao, mapa_unidades)
         if not resumo:
             continue
@@ -309,43 +306,41 @@ def gerar_relatorio_inadimplentes(
                 "Telefones":   " | ".join(telefones) if telefones else "",
                 "Vencimento":  valores.get("vencimento", ""),
                 "Competência": valores.get("competencia", ""),
-                "Principal":   round(valores["principal"],   2),
-                "Juros":       round(valores["juros"],       2),
-                "Multa":       round(valores["multa"],       2),
-                "Atualização": round(valores["atualizacao"], 2),
-                "Honorários":  round(valores["honorarios"],  2),
-                "Total":       round(valores["total"],       2),
+                "Principal":   valores["principal"],
+                "Juros":       valores["juros"],
+                "Multa":       valores["multa"],
+                "Atualização": valores["atualizacao"],
+                "Honorários":  valores["honorarios"],
+                "Total":       valores["total"],
             })
 
         for row in detalhado:
             row["Condomínio"] = nome_condominio
             todo_detalhado.append(row)
 
-        if len(ids_range) > 1:
+        if len(list(ids_range)) > 1:
             time.sleep(0.3)
 
     if not todas_resumo:
         return None, None
 
-    # Ordena por condomínio e depois por unidade
     todas_resumo.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
     todo_detalhado.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
 
-    # Monta Excel com duas abas
     wb = Workbook()
 
-    # Aba Resumo
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = ["Condomínio", "Unidade", "Telefones", "Vencimento", "Competência", "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    headers_resumo = ["Condomínio", "Unidade", "Telefones", "Vencimento", "Competência",
+                      "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_resumo.append(headers_resumo)
     for row in todas_resumo:
         ws_resumo.append([row[h] for h in headers_resumo])
     _estilizar_cabecalho(ws_resumo)
 
-    # Aba Detalhado
     ws_det = wb.create_sheet("Detalhado")
-    headers_det = ["Condomínio", "Unidade", "Código", "Vencimento", "Competência", "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    headers_det = ["Condomínio", "Unidade", "Código", "Vencimento", "Competência",
+                   "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_det.append(headers_det)
     for row in todo_detalhado:
         ws_det.append([row.get(h, "") for h in headers_det])
