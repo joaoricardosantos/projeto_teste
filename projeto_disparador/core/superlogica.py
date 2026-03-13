@@ -1,4 +1,5 @@
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from io import BytesIO
@@ -151,19 +152,33 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
     Usa /avancada filtrando por unidade para obter valores exatos
     com índice de correção monetária atualizado.
     """
-    response = requests.get(
-        f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
-        headers=_get_headers(),
-        params={
-            "idCondominio":           id_condominio,
-            "idUnidades":             id_unidade,
-            "itensPorPagina":         500,
-            "comEncargos":            "true",
-            "comHonorarios":          "true",
-            "comAtualizacaoMonetaria": "true",
-        },
-        timeout=60,
-    )
+    # Retry até 3 vezes em caso de erro temporário
+    for tentativa in range(3):
+        try:
+            response = requests.get(
+                f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
+                headers=_get_headers(),
+                params={
+                    "idCondominio":           id_condominio,
+                    "idUnidades":             id_unidade,
+                    "itensPorPagina":         500,
+                    "comEncargos":            "true",
+                    "comHonorarios":          "true",
+                    "comAtualizacaoMonetaria": "true",
+                },
+                timeout=60,
+            )
+            if response.status_code == 200:
+                break
+            if tentativa < 2:
+                time.sleep(1)
+        except requests.RequestException:
+            if tentativa < 2:
+                time.sleep(1)
+            else:
+                return None, None
+    else:
+        return None, None
 
     if response.status_code != 200:
         return None, None
@@ -238,26 +253,42 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
     return resumo, detalhado
 
 
+# Número de threads paralelas por condomínio.
+# 8 é um bom equilíbrio: rápido sem sobrecarregar a API Superlógica.
+_MAX_WORKERS_UNIDADES = 12
+# Número de condomínios processados em paralelo.
+_MAX_WORKERS_CONDOMINIOS = 6
+
+
 def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict):
     """
-    Estratégia em 2 etapas:
+    Estratégia em 2 etapas com paralelismo:
     1. /index  → descobre quais unidades são inadimplentes (rápido)
-    2. /avancada por unidade → busca valores exatos com índice atualizado (preciso)
+    2. /avancada por unidade → busca valores exatos em paralelo (rápido + preciso)
     """
     unidades_ids = _descobrir_unidades_inadimplentes(id_condominio, data_posicao)
     if not unidades_ids:
         return {}, []
 
-    resumo_total = {}
+    resumo_total    = {}
     detalhado_total = []
 
-    for id_unidade in unidades_ids:
-        resumo_uni, det_uni = _buscar_valores_unidade(id_condominio, id_unidade, mapa_unidades)
-        if resumo_uni:
-            resumo_total[id_unidade] = resumo_uni
-        if det_uni:
-            detalhado_total.extend(det_uni)
-        time.sleep(0.1)  # pausa pequena para não sobrecarregar a API
+    # Busca todos os valores em paralelo com pool de threads
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS_UNIDADES) as executor:
+        futures = {
+            executor.submit(_buscar_valores_unidade, id_condominio, id_uni, mapa_unidades): id_uni
+            for id_uni in unidades_ids
+        }
+        for future in as_completed(futures):
+            id_uni = futures[future]
+            try:
+                resumo_uni, det_uni = future.result()
+                if resumo_uni:
+                    resumo_total[id_uni] = resumo_uni
+                if det_uni:
+                    detalhado_total.extend(det_uni)
+            except Exception:
+                pass  # unidade com erro é ignorada silenciosamente
 
     return resumo_total, detalhado_total
 
@@ -275,10 +306,11 @@ _FILL_IMPAR = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="s
 
 # Larguras fixas por nome de coluna (caracteres)
 _LARGURAS_FIXAS = {
-    "Condomínio":  80,
+    "Condomínio":  55,
     "Unidade":     18,
-    "Nome":        40,
-    "Telefones":   28,
+    "Nome":        45,
+    "Telefone 1":  22,
+    "Telefone 2":  22,
     "Vencimento":  16,
     "Competência": 16,
     "Principal":   16,
@@ -300,7 +332,7 @@ def _ajustar_larguras(ws):
         largura = _LARGURAS_FIXAS.get(header, 20)
         ws.column_dimensions[col_letter].width = largura
     for row in ws.iter_rows():
-        ws.row_dimensions[row[0].row].height = 18
+        ws.row_dimensions[row[0].row].height = 30
 
 
 def _aplicar_grade_e_zebra(ws):
@@ -313,6 +345,9 @@ def _aplicar_grade_e_zebra(ws):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.border = _BORDA
             cell.alignment = Alignment(vertical="center", wrap_text=False)
+            # Ativa quebra de texto nas colunas de texto longas (col 1=Condomínio, col 3=Nome)
+            if col_idx in (1, 3):
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
             # Não sobrescreve a cor da linha de totais (última linha)
             if row_idx < max_row:
                 cell.fill = fill
@@ -328,6 +363,18 @@ def _estilizar_cabecalho(ws):
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
+
+
+def _aplicar_formato_contabil(ws, headers):
+    """Aplica formato contábil R$ nas colunas numéricas."""
+    cols_numericas = {"Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"}
+    fmt = r'R$ #,##0.00'
+    for col_idx, header in enumerate(headers, start=1):
+        if header in cols_numericas:
+            for row_idx in range(2, ws.max_row + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = fmt
 
 
 def gerar_relatorio_inadimplentes(
@@ -346,25 +393,30 @@ def gerar_relatorio_inadimplentes(
     todas_resumo = []
     todo_detalhado = []
 
-    for condo_id in ids_range:
+    def _processar_condominio(condo_id):
+        """Processa um condomínio completo e retorna (linhas_resumo, linhas_detalhado)."""
         acesso, nome_condominio = verificar_condominio(condo_id)
         if not acesso:
-            continue
+            return [], []
         mapa_unidades = buscar_unidades(condo_id)
         if not mapa_unidades:
-            continue
+            return [], []
         resumo, detalhado = buscar_inadimplentes_condominio(condo_id, data_posicao, mapa_unidades)
         if not resumo:
-            continue
+            return [], []
 
+        linhas_resumo = []
         for unidade_id, valores in resumo.items():
             telefones = valores.get("telefones", [])
             dados_uni = mapa_unidades.get(unidade_id, {})
-            todas_resumo.append({
+            tel1 = telefones[0] if len(telefones) > 0 else "s/n"
+            tel2 = telefones[1] if len(telefones) > 1 else "s/n"
+            linhas_resumo.append({
                 "Condomínio":  nome_condominio,
                 "Unidade":     dados_uni.get("unidade") or valores["nome_pdf"],
                 "Nome":        dados_uni.get("sacado", ""),
-                "Telefones":   " | ".join(telefones) if telefones else "",
+                "Telefone 1":  tel1,
+                "Telefone 2":  tel2,
                 "Vencimento":  valores.get("vencimento", ""),
                 "Competência": valores.get("competencia", ""),
                 "Principal":   valores["principal"],
@@ -377,10 +429,19 @@ def gerar_relatorio_inadimplentes(
 
         for row in detalhado:
             row["Condomínio"] = nome_condominio
-            todo_detalhado.append(row)
 
-        if len(list(ids_range)) > 1:
-            time.sleep(0.3)
+        return linhas_resumo, detalhado
+
+    # Processa condomínios em paralelo
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS_CONDOMINIOS) as executor:
+        futures = {executor.submit(_processar_condominio, cid): cid for cid in ids_range}
+        for future in as_completed(futures):
+            try:
+                linhas_r, linhas_d = future.result()
+                todas_resumo.extend(linhas_r)
+                todo_detalhado.extend(linhas_d)
+            except Exception:
+                pass
 
     if not todas_resumo:
         return None, None
@@ -393,7 +454,7 @@ def gerar_relatorio_inadimplentes(
     # ── Aba Resumo ──────────────────────────────────────────────────────────
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = ["Condomínio", "Unidade", "Nome", "Telefones", "Vencimento", "Competência",
+    headers_resumo = ["Condomínio", "Unidade", "Nome", "Telefone 1", "Telefone 2", "Vencimento", "Competência",
                       "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_resumo.append(headers_resumo)
     for row in todas_resumo:
@@ -401,7 +462,7 @@ def gerar_relatorio_inadimplentes(
 
     # Linha de totais
     num_rows = len(todas_resumo)
-    totais_resumo = ["TOTAL GERAL", "", "", "", "", ""]
+    totais_resumo = ["TOTAL GERAL", "", "", "", "", "", ""]
     cols_num = ["Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     for col in cols_num:
         totais_resumo.append(round(sum(r[col] for r in todas_resumo), 2))
@@ -419,6 +480,7 @@ def gerar_relatorio_inadimplentes(
     _estilizar_cabecalho(ws_resumo)
     _ajustar_larguras(ws_resumo)
     _aplicar_grade_e_zebra(ws_resumo)
+    _aplicar_formato_contabil(ws_resumo, headers_resumo)
 
     # ── Aba Detalhado ────────────────────────────────────────────────────────
     ws_det = wb.create_sheet("Detalhado")
@@ -445,6 +507,7 @@ def gerar_relatorio_inadimplentes(
     _estilizar_cabecalho(ws_det)
     _ajustar_larguras(ws_det)
     _aplicar_grade_e_zebra(ws_det)
+    _aplicar_formato_contabil(ws_det, headers_det)
 
     buffer = BytesIO()
     wb.save(buffer)
