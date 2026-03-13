@@ -2,26 +2,20 @@ import os, sys
 sys.path.insert(0, "/app/projeto_disparador")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 import django; django.setup()
-from core.superlogica import buscar_inadimplentes_condominio, buscar_unidades
-from datetime import datetime
+import requests, json
+from django.conf import settings
 
-data_hoje = datetime.today().strftime("%m/%d/%Y")
-print(f"Buscando condominio 32 em {data_hoje}...")
+headers = {"app_token": settings.SUPERLOGICA_APP_TOKEN, "access_token": settings.SUPERLOGICA_ACCESS_TOKEN}
 
-mapa = buscar_unidades(32)
-print(f"Unidades encontradas: {len(mapa)}")
+r = requests.get("https://api.superlogica.net/v2/condor/inadimplencia/avancada", headers=headers,
+    params={"idCondominio": 79, "itensPorPagina": 5,
+            "comEncargos": "true", "comHonorarios": "true", "comAtualizacaoMonetaria": "true"},
+    timeout=60)
 
-resumo, detalhado = buscar_inadimplentes_condominio(32, data_hoje, mapa)
-print(f"Unidades inadimplentes: {len(resumo)}")
-
-# Mostra unidade 2196
-if "2196" in resumo:
-    v = resumo["2196"]
-    print(f"\nUnidade 2196 (315 SALA):")
-    print(f"  Principal:   R$ {v['principal']}")
-    print(f"  Juros:       R$ {v['juros']}")
-    print(f"  Multa:       R$ {v['multa']}")
-    print(f"  Atualização: R$ {v['atualizacao']}")
-    print(f"  Honorários:  R$ {v['honorarios']}")
-    print(f"  TOTAL:       R$ {v['total']}")
-    print(f"  Esperado:    R$ 335115.83")
+print(f"Status: {r.status_code}")
+if r.status_code == 200:
+    dados = r.json()
+    if dados:
+        det = dados[0].get("detalhes", {})
+        print("detalhes:", json.dumps(det, indent=2))
+        print("taxas:", json.dumps(dados[0].get("taxas", {}), indent=2))

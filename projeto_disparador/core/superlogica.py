@@ -7,7 +7,7 @@ from typing import Optional
 import requests
 from django.conf import settings
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 
 def _get_headers() -> dict:
@@ -262,6 +262,65 @@ def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_
     return resumo_total, detalhado_total
 
 
+# Borda fina para grade
+_BORDA = Border(
+    left=Side(style="thin", color="CCCCCC"),
+    right=Side(style="thin", color="CCCCCC"),
+    top=Side(style="thin", color="CCCCCC"),
+    bottom=Side(style="thin", color="CCCCCC"),
+)
+_FILL_PAR   = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")  # cinza claro
+_FILL_IMPAR = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")  # branco
+
+
+# Larguras fixas por nome de coluna (caracteres)
+_LARGURAS_FIXAS = {
+    "Condomínio":  80,
+    "Unidade":     18,
+    "Nome":        40,
+    "Telefones":   28,
+    "Vencimento":  16,
+    "Competência": 16,
+    "Principal":   16,
+    "Juros":       16,
+    "Multa":       12,
+    "Atualização": 16,
+    "Honorários":  16,
+    "Total":       16,
+    "Código":      14,
+}
+
+
+def _ajustar_larguras(ws):
+    """Aplica larguras fixas por coluna e altura padrão nas linhas."""
+    # Lê cabeçalhos da linha 1
+    headers = [ws.cell(row=1, column=col_idx).value for col_idx in range(1, ws.max_column + 1)]
+    for idx, header in enumerate(headers, start=1):
+        col_letter = ws.cell(row=1, column=idx).column_letter
+        largura = _LARGURAS_FIXAS.get(header, 20)
+        ws.column_dimensions[col_letter].width = largura
+    for row in ws.iter_rows():
+        ws.row_dimensions[row[0].row].height = 18
+
+
+def _aplicar_grade_e_zebra(ws):
+    """Aplica borda em todas as células e alterna cores por linha (zebra)."""
+    max_row = ws.max_row
+    max_col = ws.max_column
+    for row_idx in range(2, max_row + 1):  # pula cabeçalho (linha 1)
+        fill = _FILL_PAR if row_idx % 2 == 0 else _FILL_IMPAR
+        for col_idx in range(1, max_col + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = _BORDA
+            cell.alignment = Alignment(vertical="center", wrap_text=False)
+            # Não sobrescreve a cor da linha de totais (última linha)
+            if row_idx < max_row:
+                cell.fill = fill
+    # Borda também no cabeçalho
+    for cell in ws[1]:
+        cell.border = _BORDA
+
+
 def _estilizar_cabecalho(ws):
     header_fill = PatternFill(start_color="006837", end_color="006837", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
@@ -300,9 +359,11 @@ def gerar_relatorio_inadimplentes(
 
         for unidade_id, valores in resumo.items():
             telefones = valores.get("telefones", [])
+            dados_uni = mapa_unidades.get(unidade_id, {})
             todas_resumo.append({
                 "Condomínio":  nome_condominio,
-                "Unidade":     valores["nome_pdf"],
+                "Unidade":     dados_uni.get("unidade") or valores["nome_pdf"],
+                "Nome":        dados_uni.get("sacado", ""),
                 "Telefones":   " | ".join(telefones) if telefones else "",
                 "Vencimento":  valores.get("vencimento", ""),
                 "Competência": valores.get("competencia", ""),
@@ -329,22 +390,61 @@ def gerar_relatorio_inadimplentes(
 
     wb = Workbook()
 
+    # ── Aba Resumo ──────────────────────────────────────────────────────────
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = ["Condomínio", "Unidade", "Telefones", "Vencimento", "Competência",
+    headers_resumo = ["Condomínio", "Unidade", "Nome", "Telefones", "Vencimento", "Competência",
                       "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_resumo.append(headers_resumo)
     for row in todas_resumo:
         ws_resumo.append([row[h] for h in headers_resumo])
-    _estilizar_cabecalho(ws_resumo)
 
+    # Linha de totais
+    num_rows = len(todas_resumo)
+    totais_resumo = ["TOTAL GERAL", "", "", "", "", ""]
+    cols_num = ["Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    for col in cols_num:
+        totais_resumo.append(round(sum(r[col] for r in todas_resumo), 2))
+    ws_resumo.append(totais_resumo)
+
+    # Estilo da linha de totais
+    total_row_idx = num_rows + 2
+    total_fill = PatternFill(start_color="004225", end_color="004225", fill_type="solid")
+    total_font = Font(color="FFFFFF", bold=True)
+    for cell in ws_resumo[total_row_idx]:
+        cell.fill = total_fill
+        cell.font = total_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    _estilizar_cabecalho(ws_resumo)
+    _ajustar_larguras(ws_resumo)
+    _aplicar_grade_e_zebra(ws_resumo)
+
+    # ── Aba Detalhado ────────────────────────────────────────────────────────
     ws_det = wb.create_sheet("Detalhado")
     headers_det = ["Condomínio", "Unidade", "Código", "Vencimento", "Competência",
                    "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_det.append(headers_det)
     for row in todo_detalhado:
         ws_det.append([row.get(h, "") for h in headers_det])
+
+    # Linha de totais detalhado
+    num_rows_det = len(todo_detalhado)
+    totais_det = ["TOTAL GERAL", "", "", "", ""]
+    cols_num_det = ["Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    for col in cols_num_det:
+        totais_det.append(round(sum(r.get(col, 0) for r in todo_detalhado), 2))
+    ws_det.append(totais_det)
+
+    total_row_det = num_rows_det + 2
+    for cell in ws_det[total_row_det]:
+        cell.fill = total_fill
+        cell.font = total_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
     _estilizar_cabecalho(ws_det)
+    _ajustar_larguras(ws_det)
+    _aplicar_grade_e_zebra(ws_det)
 
     buffer = BytesIO()
     wb.save(buffer)
