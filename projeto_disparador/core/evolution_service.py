@@ -45,29 +45,20 @@ def send_whatsapp_message(phone: str, message: str, sleep_seconds: float = 5.0) 
     return response.json()
 
 
-def send_whatsapp_bulk(contacts: list, delay_between: float = 5.0) -> dict:
+def send_whatsapp_bulk(contacts: list, delay_between: float = 5.0) -> list:
     """
     Envia mensagens em lote.
     contacts: lista de dicts com 'phone' e 'message'.
     Aguarda delay_between segundos entre cada envio.
-    Retorna dict com 'success', 'errors' e 'failures'.
+    Retorna lista de resultados com status de cada envio.
     """
-    success_count = 0
-    error_count = 0
-    failures = []
-
+    results = []
     for contact in contacts:
         phone = contact.get("phone", "")
         message = contact.get("message", "")
         try:
-            send_whatsapp_message(phone, message, sleep_seconds=delay_between)
-            success_count += 1
+            response = send_whatsapp_message(phone, message, sleep_seconds=delay_between)
+            results.append({"phone": phone, "status": "success", "response": response})
         except Exception as e:
-            error_count += 1
-            failures.append({"phone": phone, "error": str(e)})
-
-    return {
-        "success": success_count,
-        "errors": error_count,
-        "failures": failures,
-    }
+            results.append({"phone": phone, "status": "error", "error": str(e)})
+    return results
