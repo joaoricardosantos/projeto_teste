@@ -22,6 +22,12 @@ admin_router = Router(auth=JWTAuth())
 _JOBS: dict = {}
 _JOBS_LOCK = threading.Lock()
 
+# ── Cache do dashboard ────────────────────────────────────────────────────────
+# { cache_key: { "data": dict, "expires_at": datetime } }
+_DASHBOARD_CACHE: dict = {}
+_CACHE_LOCK = threading.Lock()
+_CACHE_TTL_MINUTES = 30  # tempo de vida do cache em minutos
+
 
 def _run_job(job_id: str, id_condominio, data_posicao):
     with _JOBS_LOCK:
@@ -270,6 +276,18 @@ def export_defaulters(
     return response
 
 
+# ── Limpar cache do dashboard ────────────────────────────────────────────────
+
+@admin_router.post("/dashboard/clear-cache", response={200: dict})
+def clear_dashboard_cache(request):
+    """Limpa o cache do dashboard forçando recarregamento."""
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+    with _CACHE_LOCK:
+        _DASHBOARD_CACHE.clear()
+    return 200, {"message": "Cache limpo com sucesso"}
+
+
 # ── Endpoints de PDF (background job) ────────────────────────────────────────
 
 @admin_router.post("/export-pdf/start", response={202: dict})
@@ -354,3 +372,145 @@ def download_pdf(request, job_id: str):
     response = HttpResponse(content, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+# ── Endpoint de Dashboard ─────────────────────────────────────────────────────
+
+@admin_router.get("/dashboard", response={200: dict})
+def get_dashboard(
+    request,
+    id_condominio: Optional[int] = None,
+    data_posicao: Optional[str] = None,
+):
+    """
+    Retorna dados resumidos para o dashboard:
+    - Valor total de inadimplência
+    - Condomínio com maior valor
+    - Quantidade de unidades sem número
+    - Lista detalhada de unidades sem número
+    """
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+
+    from core.superlogica import (
+        verificar_condominio,
+        buscar_unidades,
+        buscar_inadimplentes_condominio,
+        _MAX_WORKERS_CONDOMINIOS,
+    )
+    from django.conf import settings
+    from decimal import Decimal
+    from datetime import datetime
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    if not data_posicao:
+        data_posicao_fmt = datetime.today().strftime("%m/%d/%Y")
+        data_posicao_label = datetime.today().strftime("%d/%m/%Y")
+    else:
+        partes = data_posicao.split("/")
+        if len(partes) == 3:
+            data_posicao_fmt = f"{partes[1]}/{partes[0]}/{partes[2]}"
+        else:
+            data_posicao_fmt = data_posicao
+        data_posicao_label = data_posicao
+
+    # Chave de cache: combina condomínio + data
+    cache_key = f"{id_condominio or 'todos'}_{data_posicao_label}"
+
+    # Verifica cache válido
+    with _CACHE_LOCK:
+        cached = _DASHBOARD_CACHE.get(cache_key)
+        if cached and cached["expires_at"] > datetime.now():
+            return 200, cached["data"]
+
+    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
+
+    total_geral     = Decimal("0")
+    condo_valores   = {}
+    sem_numero      = []
+    total_unidades  = 0
+
+    def _processar(condo_id):
+        """Retorna (nome, total_float, qtd_unidades, lista_sem_numero)."""
+        acesso, nome = verificar_condominio(condo_id)
+        if not acesso:
+            return None
+        mapa = buscar_unidades(condo_id)
+        if not mapa:
+            return None
+        resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
+        if not resumo:
+            return None
+
+        condo_total   = Decimal("0")
+        sem_num_local = []
+        for uid, vals in resumo.items():
+            # total pode ser Decimal ou float
+            try:
+                condo_total += Decimal(str(vals["total"]))
+            except Exception:
+                pass
+            tels = vals.get("telefones", [])
+            t1 = tels[0] if len(tels) > 0 else "s/n"
+            t2 = tels[1] if len(tels) > 1 else "s/n"
+            dados_uni = mapa.get(uid, {})
+            if t1.lower() == "s/n" and t2.lower() == "s/n":
+                sem_num_local.append({
+                    "condominio": nome or "",
+                    "unidade":    dados_uni.get("unidade") or vals.get("nome_pdf", ""),
+                    "nome":       dados_uni.get("sacado", ""),
+                })
+
+        return nome, float(condo_total.quantize(Decimal("0.01"))), len(resumo), sem_num_local
+
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS_CONDOMINIOS) as executor:
+        futures = {executor.submit(_processar, cid): cid for cid in ids_range}
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                if result:
+                    nome_c, val_c, qtd_c, sem_c = result
+                    total_geral += Decimal(str(val_c))
+                    condo_valores[nome_c] = condo_valores.get(nome_c, 0) + val_c
+                    total_unidades += qtd_c
+                    sem_numero.extend(sem_c)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Dashboard _processar erro: {e}", exc_info=True)
+
+    # Condomínio com maior valor
+    maior_condo = max(condo_valores, key=condo_valores.get) if condo_valores else None
+    maior_valor = condo_valores.get(maior_condo, 0) if maior_condo else 0
+
+    # Ordenar sem_número por condomínio
+    sem_numero.sort(key=lambda x: (x["condominio"], x["unidade"]))
+
+    # Ranking completo ordenado por valor desc
+    condo_ranking = sorted(
+        [{"nome": k, "valor": round(v, 2)} for k, v in condo_valores.items()],
+        key=lambda x: x["valor"],
+        reverse=True,
+    )
+
+    resultado = {
+        "total_inadimplencia":   float(total_geral.quantize(Decimal("0.01"))),
+        "total_condominios":     len(condo_valores),
+        "total_unidades":        total_unidades,
+        "maior_condo_nome":      maior_condo,
+        "maior_condo_valor":     round(maior_valor, 2),
+        "sem_numero_count":      len(sem_numero),
+        "sem_numero":            sem_numero,
+        "condo_ranking":         condo_ranking,
+        "gerado_em":             datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "cache":                 False,
+    }
+
+    # Salva no cache
+    from datetime import timedelta
+    with _CACHE_LOCK:
+        _DASHBOARD_CACHE[cache_key] = {
+            "data":       {**resultado, "cache": True},
+            "expires_at": datetime.now() + timedelta(minutes=_CACHE_TTL_MINUTES),
+        }
+
+    return 200, resultado

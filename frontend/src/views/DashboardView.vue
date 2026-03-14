@@ -1,195 +1,311 @@
 <template>
-  <v-container class="fill-height" fluid>
-    <v-row align="center" justify="center">
-      <v-col cols="12" sm="10" md="8" lg="6">
-        <v-card elevation="8">
-          <v-card-title class="text-h5 font-weight-bold pa-4">
-            Enviar Mensagens
-          </v-card-title>
-          <v-card-text class="pa-4">
-            <v-form @submit.prevent="handleFileUpload">
+  <v-container>
 
-              <!-- Seleção de template -->
-              <v-select
-                v-model="selectedTemplateId"
-                :items="templates"
-                item-title="name"
-                item-value="id"
-                label="Template de mensagem (opcional)"
-                variant="outlined"
-                clearable
-                prepend-icon="mdi-message-text"
-                class="mb-2"
-                :loading="loadingTemplates"
-                no-data-text="Nenhum template cadastrado"
-                hint="Se não selecionado, será usada a mensagem padrão"
-                persistent-hint
-              />
-
-              <!-- Preview do template selecionado -->
-              <v-expand-transition>
-                <v-sheet
-                  v-if="selectedTemplate"
-                  color="grey-lighten-4"
-                  rounded
-                  class="pa-3 mb-4"
-                  style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word;"
-                >
-                  <p class="text-caption text-medium-emphasis mb-1">Pré-visualização:</p>
-                  {{ renderPreview(selectedTemplate.body) }}
-                </v-sheet>
-              </v-expand-transition>
-
-              <v-file-input
-                v-model="selectedFile"
-                accept=".csv,.xlsx"
-                label="Selecione o arquivo do relatório (.csv ou .xlsx)"
-                variant="outlined"
-                prepend-icon="mdi-file-table"
-                show-size
-                required
-              />
-
-              <v-alert v-if="errorMessage" type="error" class="mt-4" dense>
-                {{ errorMessage }}
-              </v-alert>
-
-              <v-alert v-if="successMessage" type="success" class="mt-4" dense>
-                {{ successMessage }}
-                <div v-if="resultDetails" class="mt-2">
-                  <div>✅ <strong>Sucessos:</strong> {{ resultDetails.success }}</div>
-                  <div>❌ <strong>Erros:</strong> {{ resultDetails.errors }}</div>
-                  <div v-if="resultDetails.failures && resultDetails.failures.length" class="mt-2">
-                    <div class="text-caption text-medium-emphasis mb-1">Números com falha:</div>
-                    <div
-                      v-for="f in resultDetails.failures"
-                      :key="f.phone"
-                      class="text-caption"
-                    >
-                      {{ f.phone }} — {{ f.error }}
-                    </div>
-                  </div>
-                </div>
-              </v-alert>
-
-              <v-btn
-                type="submit"
-                color="primary"
-                block
-                size="large"
-                class="mt-6"
-                :loading="loading"
-                :disabled="!selectedFile"
-              >
-                Processar e Enviar Mensagens
-              </v-btn>
-            </v-form>
-          </v-card-text>
-        </v-card>
+    <!-- Cabeçalho -->
+    <v-row class="mb-4" align="center">
+      <v-col cols="12" sm="7">
+        <h1 class="text-h5 font-weight-bold">Dashboard de Inadimplência</h1>
+        <p class="text-body-2 text-medium-emphasis mt-1">
+          Visão geral consolidada de todos os condomínios.
+          <span v-if="dados">
+            Gerado em {{ dados.gerado_em }}
+            <v-chip v-if="dados.cache" size="x-small" color="blue" variant="tonal" class="ml-1">
+              <v-icon size="10" class="mr-1">mdi-lightning-bolt</v-icon>cache
+            </v-chip>
+          </span>
+        </p>
+      </v-col>
+      <v-col cols="12" sm="5" class="d-flex gap-2 justify-sm-end align-center flex-wrap">
+        <v-text-field
+          v-model="dataPosicao"
+          type="date"
+          label="Data de posição"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          style="max-width: 180px"
+        />
+        <v-btn
+          color="primary"
+          :loading="loading"
+          prepend-icon="mdi-refresh"
+          @click="carregar(false)"
+        >
+          Atualizar
+        </v-btn>
+        <v-btn
+          color="secondary"
+          variant="outlined"
+          :loading="loading"
+          prepend-icon="mdi-refresh-circle"
+          @click="carregar(true)"
+          title="Ignorar cache e buscar dados novos"
+        >
+          Forçar
+        </v-btn>
       </v-col>
     </v-row>
+
+    <!-- Erro -->
+    <v-alert v-if="erro" type="error" class="mb-4" closable @click:close="erro = ''">
+      {{ erro }}
+    </v-alert>
+
+    <!-- Loading inicial -->
+    <v-row v-if="loading && !dados" justify="center" class="my-16">
+      <v-col cols="12" class="text-center">
+        <v-progress-circular indeterminate color="primary" size="56" />
+        <p class="text-body-2 text-medium-emphasis mt-4">Consultando todos os condomínios...</p>
+        <p class="text-caption text-medium-emphasis">Isso pode levar alguns minutos</p>
+      </v-col>
+    </v-row>
+
+    <template v-if="dados">
+
+      <!-- KPI Cards -->
+      <v-row class="mb-4">
+
+        <!-- Total inadimplência -->
+        <v-col cols="12" sm="6" md="3">
+          <v-card elevation="4" class="pa-5" style="border-left: 4px solid #006837;">
+            <div class="d-flex align-center justify-space-between mb-2">
+              <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Inadimplência</span>
+              <v-icon color="primary" size="28">mdi-currency-brl</v-icon>
+            </div>
+            <div class="text-h5 font-weight-bold text-primary">{{ brl(dados.total_inadimplencia) }}</div>
+            <div class="text-caption text-medium-emphasis mt-1">{{ dados.total_unidades }} unidades inadimplentes</div>
+          </v-card>
+        </v-col>
+
+        <!-- Condomínios -->
+        <v-col cols="12" sm="6" md="3">
+          <v-card elevation="4" class="pa-5" style="border-left: 4px solid #1976D2;">
+            <div class="d-flex align-center justify-space-between mb-2">
+              <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Condomínios</span>
+              <v-icon color="blue" size="28">mdi-office-building</v-icon>
+            </div>
+            <div class="text-h5 font-weight-bold" style="color: #1976D2;">{{ dados.total_condominios }}</div>
+            <div class="text-caption text-medium-emphasis mt-1">com inadimplência ativa</div>
+          </v-card>
+        </v-col>
+
+        <!-- Maior inadimplente -->
+        <v-col cols="12" sm="6" md="3">
+          <v-card elevation="4" class="pa-5" style="border-left: 4px solid #F57C00;">
+            <div class="d-flex align-center justify-space-between mb-2">
+              <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Maior Devedor</span>
+              <v-icon color="orange-darken-2" size="28">mdi-podium-gold</v-icon>
+            </div>
+            <div class="text-body-2 font-weight-bold" style="color: #F57C00; line-height: 1.3;">
+              {{ dados.maior_condo_nome || '—' }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">{{ brl(dados.maior_condo_valor) }}</div>
+          </v-card>
+        </v-col>
+
+        <!-- Sem número -->
+        <v-col cols="12" sm="6" md="3">
+          <v-card
+            elevation="4"
+            class="pa-5"
+            style="border-left: 4px solid #D32F2F; cursor: pointer;"
+            @click="dialogSemNumero = true"
+          >
+            <div class="d-flex align-center justify-space-between mb-2">
+              <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Sem Número</span>
+              <v-icon color="red-darken-2" size="28">mdi-phone-off</v-icon>
+            </div>
+            <div class="text-h5 font-weight-bold" style="color: #D32F2F;">{{ dados.sem_numero_count }}</div>
+            <div class="text-caption mt-1" style="color: #D32F2F;">
+              <v-icon size="12">mdi-eye</v-icon> clique para ver detalhes
+            </div>
+          </v-card>
+        </v-col>
+
+      </v-row>
+
+      <!-- Ranking condomínios -->
+      <v-card elevation="4">
+        <v-card-title class="pa-4 pb-2 d-flex align-center">
+          <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
+          Ranking de Inadimplência por Condomínio
+        </v-card-title>
+        <v-card-text class="pa-0">
+          <v-data-table
+            :headers="headersRanking"
+            :items="rankingCondominios"
+            :items-per-page="15"
+            density="comfortable"
+            class="elevation-0"
+            no-data-text="Nenhum dado disponível"
+          >
+            <template #item.posicao="{ index }">
+              <v-chip
+                :color="index === 0 ? 'amber-darken-2' : index === 1 ? 'grey' : index === 2 ? 'brown-lighten-1' : 'default'"
+                size="x-small"
+                variant="tonal"
+              >{{ index + 1 }}º</v-chip>
+            </template>
+            <template #item.valor="{ item }">
+              <span class="font-weight-bold text-primary">{{ brl(item.valor) }}</span>
+            </template>
+            <template #item.percentual="{ item }">
+              <div class="d-flex align-center gap-2">
+                <v-progress-linear
+                  :model-value="item.percentual"
+                  color="primary"
+                  rounded
+                  height="6"
+                  style="min-width: 80px; max-width: 120px;"
+                />
+                <span class="text-caption">{{ item.percentual.toFixed(1) }}%</span>
+              </div>
+            </template>
+          </v-data-table>
+        </v-card-text>
+      </v-card>
+
+    </template>
+
+    <!-- ── Dialog: Sem número ── -->
+    <v-dialog v-model="dialogSemNumero" max-width="800" scrollable>
+      <v-card>
+        <v-card-title class="pa-4 d-flex align-center">
+          <v-icon class="mr-2" color="red-darken-2">mdi-phone-off</v-icon>
+          Unidades sem número cadastrado
+          <v-spacer />
+          <v-chip color="red-darken-2" variant="tonal" size="small">
+            {{ dados?.sem_numero_count || 0 }} unidades
+          </v-chip>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0">
+          <div class="pa-4 pb-2">
+            <v-text-field
+              v-model="buscaSemNumero"
+              placeholder="Buscar por condomínio, unidade ou nome..."
+              variant="outlined"
+              density="compact"
+              prepend-inner-icon="mdi-magnify"
+              clearable
+              hide-details
+            />
+          </div>
+          <v-data-table
+            :headers="headersSemNumero"
+            :items="semNumeroFiltrado"
+            :items-per-page="15"
+            density="comfortable"
+            class="elevation-0"
+            no-data-text="Nenhuma unidade encontrada"
+          >
+            <template #item.unidade="{ item }">
+              <v-chip size="x-small" color="primary" variant="tonal">{{ item.unidade }}</v-chip>
+            </template>
+            <template #item.nome="{ item }">
+              {{ item.nome || '—' }}
+            </template>
+          </v-data-table>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogSemNumero = false">Fechar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 
-const router = useRouter()
-
-// Estado do upload
-const selectedFile = ref(null)
-const loading = ref(false)
-const errorMessage = ref('')
-const successMessage = ref('')
-const resultDetails = ref(null)
-
-// Estado dos templates
-const templates = ref([])
-const loadingTemplates = ref(false)
-const selectedTemplateId = ref(null)
-
-const selectedTemplate = computed(() =>
-  templates.value.find((t) => t.id === selectedTemplateId.value) || null
-)
+const loading         = ref(false)
+const erro            = ref('')
+const dados           = ref(null)
+const dataPosicao     = ref('')
+const dialogSemNumero = ref(false)
+const buscaSemNumero  = ref('')
 
 const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
 
-const renderPreview = (body) =>
-  body
-    .replace(/\{\{nome\}\}/g, 'João Silva')
-    .replace(/\{\{condominio\}\}/g, 'Residencial Acácias')
-    .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
-    .replace(/\{\{vencimento\}\}/g, '10/04/2025')
-    .replace(/\{\{competencia\}\}/g, '12/10/2025')
-
-const fetchTemplates = async () => {
-  loadingTemplates.value = true
+const brl = (valor) => {
   try {
-    const res = await fetch('/api/templates', { headers: authHeader() })
-    if (res.ok) templates.value = await res.json()
-  } catch (_) {
-    // silencioso — templates são opcionais no dashboard
-  } finally {
-    loadingTemplates.value = false
+    return `R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  } catch {
+    return `R$ ${valor}`
   }
 }
 
-const handleFileUpload = async () => {
-  if (!selectedFile.value) return
-
+const carregar = async (forceRefresh = false) => {
   loading.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
-  resultDetails.value = null
-
-  const formData = new FormData()
-  formData.append('file', selectedFile.value)
-
+  erro.value = ''
   try {
-    const token = localStorage.getItem('access_token')
-    if (!token) throw new Error('Usuário não autenticado')
-
-    // Usa o endpoint dispatch-excel que lê o Excel/CSV do relatório
-    // com colunas: Condomínio | Unidade | Telefones | Total
-    let url = '/api/messages/dispatch-excel'
-    if (selectedTemplateId.value) {
-      url += `?template_id=${selectedTemplateId.value}`
+    // Se forçar, limpa o cache primeiro
+    if (forceRefresh) {
+      await fetch('/api/admin/dashboard/clear-cache', {
+        method: 'POST',
+        headers: authHeader(),
+      })
     }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    })
-
-    const text = await response.text()
-    let data = {}
-    try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
-
-    if (!response.ok) {
-      throw new Error(data.detail || 'Erro ao processar o arquivo')
+    const params = new URLSearchParams()
+    if (dataPosicao.value) {
+      const [ano, mes, dia] = dataPosicao.value.split('-')
+      params.append('data_posicao', `${dia}/${mes}/${ano}`)
     }
-
-    successMessage.value = 'Arquivo processado com sucesso!'
-    resultDetails.value = data.details
-    selectedFile.value = null
-  } catch (error) {
-    errorMessage.value = error.message
-    if (['Usuário não autenticado', 'Token_expired'].includes(error.message)) {
-      logout()
+    const query = params.toString() ? `?${params.toString()}` : ''
+    const res = await fetch(`/api/admin/dashboard${query}`, { headers: authHeader() })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      throw new Error(d.detail || 'Erro ao carregar dashboard')
     }
+    dados.value = await res.json()
+  } catch (e) {
+    erro.value = e.message
   } finally {
     loading.value = false
   }
 }
 
-const logout = () => {
-  localStorage.removeItem('access_token')
-  router.push('/')
-}
+const headersRanking = [
+  { title: '#',          key: 'posicao',    width: 60,  sortable: false },
+  { title: 'Condomínio', key: 'nome',       sortable: true },
+  { title: 'Total (R$)', key: 'valor',      width: 200, sortable: true },
+  { title: '% do Total', key: 'percentual', width: 220, sortable: true },
+]
 
-onMounted(fetchTemplates)
+const headersRankingFull = computed(() => headersRanking)
+
+const rankingCondominios = computed(() => {
+  if (!dados.value?.condo_ranking) return []
+  const total = dados.value.total_inadimplencia || 1
+  return dados.value.condo_ranking.map(c => ({
+    nome:       c.nome,
+    valor:      c.valor,
+    percentual: total > 0 ? (c.valor / total) * 100 : 0,
+  }))
+})
+
+const headersSemNumero = [
+  { title: 'Condomínio', key: 'condominio', sortable: true  },
+  { title: 'Unidade',    key: 'unidade',    width: 120      },
+  { title: 'Nome',       key: 'nome',       sortable: false },
+]
+
+const semNumeroFiltrado = computed(() => {
+  if (!dados.value?.sem_numero) return []
+  const q = buscaSemNumero.value.toLowerCase().trim()
+  if (!q) return dados.value.sem_numero
+  return dados.value.sem_numero.filter(u =>
+    u.condominio.toLowerCase().includes(q) ||
+    u.unidade.toLowerCase().includes(q) ||
+    (u.nome || '').toLowerCase().includes(q)
+  )
+})
+
+onMounted(carregar)
 </script>
