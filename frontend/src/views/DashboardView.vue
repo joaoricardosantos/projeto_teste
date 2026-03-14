@@ -1,6 +1,15 @@
 <template>
   <v-container>
 
+    <!-- Abas -->
+    <v-tabs v-model="aba" color="primary" class="mb-4">
+      <v-tab value="visao">📊 Visão Geral</v-tab>
+      <v-tab value="campanhas">📨 Campanhas</v-tab>
+    </v-tabs>
+
+    <v-window v-model="aba">
+      <v-window-item value="visao">
+
     <!-- Cabeçalho -->
     <v-row class="mb-4" align="center">
       <v-col cols="12" sm="7">
@@ -168,6 +177,15 @@
 
     </template>
 
+      </v-window-item>
+
+      <!-- ── Aba Campanhas ── -->
+      <v-window-item value="campanhas">
+        <CampanhasAba />
+      </v-window-item>
+
+    </v-window>
+
     <!-- ── Dialog: Sem número ── -->
     <v-dialog v-model="dialogSemNumero" max-width="800" scrollable>
       <v-card>
@@ -221,7 +239,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import CampanhasAba from './CampanhasAba.vue'
 
+const aba             = ref('visao')
 const loading         = ref(false)
 const erro            = ref('')
 const dados           = ref(null)
