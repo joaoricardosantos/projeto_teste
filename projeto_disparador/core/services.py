@@ -78,12 +78,46 @@ def process_defaulters_spreadsheet(file_obj):
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
-    # Adiciona unidades sem número ao resultado
     result["sem_numero"] = failures_no_phone
     result["failures"] = result.get("failures", []) + [
         {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
         for f in failures_no_phone
     ]
+
+    # ── Registra campanha e mensagens no banco ────────────────────────────────
+    try:
+        from core.models import Campanha, MensagemEnviada
+        from django.utils import timezone as tz
+
+        campanha_nome = f"Disparo {tz.now().strftime('%d/%m/%Y %H:%M')}"
+        campanha = Campanha.objects.create(
+            nome=campanha_nome,
+            total_enviados=result.get("success", 0),
+            total_erros=result.get("errors", 0),
+            total_sem_numero=len(failures_no_phone),
+        )
+        result["campanha_id"] = str(campanha.id)
+        result["campanha_nome"] = campanha_nome
+
+        # Registra cada contato enviado
+        objs = []
+        import re as _re
+        def _norm(p): return _re.sub(r"\D", "", p)
+        for c in contacts:
+            objs.append(MensagemEnviada(
+                campanha=campanha,
+                condominio=c.get("condominio", ""),
+                unidade=c.get("unidade", ""),
+                nome=c.get("nome", ""),
+                telefone=_norm(c.get("phone", "")),
+                mensagem=c.get("message", ""),
+                status=MensagemEnviada.STATUS_ENVIADO,
+            ))
+        MensagemEnviada.objects.bulk_create(objs)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Erro ao salvar campanha: {e}")
+
     return result
 
 
@@ -115,12 +149,46 @@ def process_defaulters_with_template(file_obj, template_id: str):
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
-    # Adiciona unidades sem número ao resultado
     result["sem_numero"] = failures_no_phone
     result["failures"] = result.get("failures", []) + [
         {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
         for f in failures_no_phone
     ]
+
+    # ── Registra campanha e mensagens no banco ────────────────────────────────
+    try:
+        from core.models import Campanha, MensagemEnviada
+        from django.utils import timezone as tz
+
+        campanha_nome = f"Disparo {tz.now().strftime('%d/%m/%Y %H:%M')}"
+        campanha = Campanha.objects.create(
+            nome=campanha_nome,
+            total_enviados=result.get("success", 0),
+            total_erros=result.get("errors", 0),
+            total_sem_numero=len(failures_no_phone),
+        )
+        result["campanha_id"] = str(campanha.id)
+        result["campanha_nome"] = campanha_nome
+
+        # Registra cada contato enviado
+        objs = []
+        import re as _re
+        def _norm(p): return _re.sub(r"\D", "", p)
+        for c in contacts:
+            objs.append(MensagemEnviada(
+                campanha=campanha,
+                condominio=c.get("condominio", ""),
+                unidade=c.get("unidade", ""),
+                nome=c.get("nome", ""),
+                telefone=_norm(c.get("phone", "")),
+                mensagem=c.get("message", ""),
+                status=MensagemEnviada.STATUS_ENVIADO,
+            ))
+        MensagemEnviada.objects.bulk_create(objs)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Erro ao salvar campanha: {e}")
+
     return result
 
 
@@ -213,11 +281,11 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
             t2 = str(row[idx_tel2]).strip() if idx_tel2 is not None and row[idx_tel2] else "s/n"
 
             if t1.lower() != "s/n":
-                # Tel1 válido → envia para tel1
-                contacts.append({"phone": t1, "message": message})
+                contacts.append({"phone": t1, "message": message,
+                    "condominio": condo_name, "unidade": unidade, "nome": nome})
             elif t2.lower() != "s/n":
-                # Tel1 é s/n mas tel2 é válido → envia para tel2
-                contacts.append({"phone": t2, "message": message})
+                contacts.append({"phone": t2, "message": message,
+                    "condominio": condo_name, "unidade": unidade, "nome": nome})
             else:
                 # Ambos s/n → registra como erro com informação da unidade
                 error_count += 1
@@ -233,7 +301,8 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
             if raw:
                 telefones = [t.strip() for t in str(raw).split("|") if t.strip()]
                 for phone in telefones:
-                    contacts.append({"phone": phone, "message": message})
+                    contacts.append({"phone": phone, "message": message,
+                        "condominio": condo_name, "unidade": unidade, "nome": nome})
             else:
                 error_count += 1
                 failures_no_phone.append({
@@ -246,10 +315,44 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
-    # Adiciona unidades sem número ao resultado
     result["sem_numero"] = failures_no_phone
     result["failures"] = result.get("failures", []) + [
         {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
         for f in failures_no_phone
     ]
+
+    # ── Registra campanha e mensagens no banco ────────────────────────────────
+    try:
+        from core.models import Campanha, MensagemEnviada
+        from django.utils import timezone as tz
+
+        campanha_nome = f"Disparo {tz.now().strftime('%d/%m/%Y %H:%M')}"
+        campanha = Campanha.objects.create(
+            nome=campanha_nome,
+            total_enviados=result.get("success", 0),
+            total_erros=result.get("errors", 0),
+            total_sem_numero=len(failures_no_phone),
+        )
+        result["campanha_id"] = str(campanha.id)
+        result["campanha_nome"] = campanha_nome
+
+        # Registra cada contato enviado
+        objs = []
+        import re as _re
+        def _norm(p): return _re.sub(r"\D", "", p)
+        for c in contacts:
+            objs.append(MensagemEnviada(
+                campanha=campanha,
+                condominio=c.get("condominio", ""),
+                unidade=c.get("unidade", ""),
+                nome=c.get("nome", ""),
+                telefone=_norm(c.get("phone", "")),
+                mensagem=c.get("message", ""),
+                status=MensagemEnviada.STATUS_ENVIADO,
+            ))
+        MensagemEnviada.objects.bulk_create(objs)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Erro ao salvar campanha: {e}")
+
     return result

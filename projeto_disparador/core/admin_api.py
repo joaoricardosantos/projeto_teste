@@ -514,3 +514,58 @@ def get_dashboard(
         }
 
     return 200, resultado
+
+
+# ── Endpoint: listar condomínios ──────────────────────────────────────────────
+
+@admin_router.get("/condominios", response={200: list})
+def listar_condominios(request):
+    """Retorna lista de condomínios com id e nome."""
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+
+    from django.conf import settings
+    from core.superlogica import verificar_condominio
+    import requests as req
+
+    headers = {
+        "app_token":    settings.SUPERLOGICA_APP_TOKEN,
+        "access_token": settings.SUPERLOGICA_ACCESS_TOKEN,
+    }
+
+    # Varre IDs de 1 até SUPERLOGICA_MAX_ID buscando condomínios válidos
+    # Usa /unidades com itensPorPagina=1 para descobrir o nome
+    max_id = getattr(settings, "SUPERLOGICA_MAX_ID", 100)
+    condominios = []
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _checar(cid):
+        try:
+            r = req.get(
+                f"{settings.SUPERLOGICA_BASE_URL}/unidades",
+                headers=headers,
+                params={"idCondominio": cid, "pagina": 1, "itensPorPagina": 1},
+                timeout=15,
+            )
+            if r.status_code != 200:
+                return None
+            dados = r.json()
+            if not dados:
+                return None
+            nome = dados[0].get("st_nome_cond", "").strip()
+            if nome:
+                return {"id": cid, "nome": nome}
+        except Exception:
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_checar, cid): cid for cid in range(1, max_id + 1)}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                condominios.append(result)
+
+    condominios.sort(key=lambda x: x["nome"])
+    return 200, condominios
