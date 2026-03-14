@@ -268,3 +268,89 @@ def export_defaulters(
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+# ── Endpoints de PDF (background job) ────────────────────────────────────────
+
+@admin_router.post("/export-pdf/start", response={202: dict})
+def start_export_pdf(
+    request,
+    id_condominio: Optional[int] = None,
+    data_posicao: Optional[str] = None,
+):
+    """Inicia a geração do PDF em background. Retorna job_id."""
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+
+    from core.superlogica import gerar_pdf_inadimplentes
+
+    job_id = str(uuid.uuid4())
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {"status": "pending", "file": None, "filename": None, "error": None}
+
+    def _run():
+        with _JOBS_LOCK:
+            _JOBS[job_id]["status"] = "running"
+        try:
+            content, filename = gerar_pdf_inadimplentes(
+                id_condominio=id_condominio,
+                data_posicao=data_posicao,
+            )
+            if not content:
+                with _JOBS_LOCK:
+                    _JOBS[job_id]["status"] = "empty"
+                return
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            tmp.write(content)
+            tmp.close()
+            with _JOBS_LOCK:
+                _JOBS[job_id]["status"] = "done"
+                _JOBS[job_id]["file"] = tmp.name
+                _JOBS[job_id]["filename"] = filename
+        except Exception as e:
+            with _JOBS_LOCK:
+                _JOBS[job_id]["status"] = "error"
+                _JOBS[job_id]["error"] = str(e)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return 202, {"job_id": job_id}
+
+
+@admin_router.get("/export-pdf/status/{job_id}", response={200: dict})
+def pdf_job_status(request, job_id: str):
+    """Consulta o status do job de exportação PDF."""
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if not job:
+        raise HttpError(404, "Job_not_found")
+    return 200, {"status": job["status"], "filename": job.get("filename"), "error": job.get("error")}
+
+
+@admin_router.get("/export-pdf/download/{job_id}")
+def download_pdf(request, job_id: str):
+    """Faz o download do PDF gerado."""
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        raise HttpError(403, "Admin_privileges_required")
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if not job:
+        raise HttpError(404, "Job_not_found")
+    if job["status"] != "done":
+        raise HttpError(400, "Job_not_ready")
+    filepath = job["file"]
+    filename = job["filename"]
+    if not filepath or not os.path.exists(filepath):
+        raise HttpError(404, "File_not_found")
+    with open(filepath, "rb") as f:
+        content = f.read()
+    try:
+        os.unlink(filepath)
+    except Exception:
+        pass
+    with _JOBS_LOCK:
+        _JOBS.pop(job_id, None)
+    response = HttpResponse(content, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

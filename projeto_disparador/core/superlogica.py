@@ -518,3 +518,299 @@ def gerar_relatorio_inadimplentes(
     filename = f"inadimplentes{suffix}_{timestamp}.xlsx"
 
     return buffer.getvalue(), filename
+
+
+# ── Geração de PDF ────────────────────────────────────────────────────────────
+
+def gerar_pdf_inadimplentes(
+    id_condominio: Optional[int] = None,
+    data_posicao: Optional[str] = None,
+) -> tuple:
+    """
+    Gera um relatório PDF de inadimplentes com tabela formatada.
+    Reutiliza o mesmo pipeline de dados do Excel.
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph,
+        Spacer, PageBreak, HRFlowable,
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+    # Cores padrão do sistema
+    COR_VERDE       = colors.HexColor("#006837")
+    COR_VERDE_ESC   = colors.HexColor("#004225")
+    COR_ZEBRA       = colors.HexColor("#F2F2F2")
+    COR_BRANCO      = colors.white
+    COR_TEXTO       = colors.HexColor("#1A1A1A")
+    COR_TEXTO_CLARO = colors.HexColor("#666666")
+
+    # ── Busca os dados ────────────────────────────────────────────────────────
+    if not data_posicao:
+        data_posicao_fmt = datetime.today().strftime("%m/%d/%Y")
+    else:
+        partes = data_posicao.split("/")
+        if len(partes) == 3:
+            data_posicao_fmt = f"{partes[1]}/{partes[0]}/{partes[2]}"
+        else:
+            data_posicao_fmt = data_posicao
+
+    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
+
+    todas_resumo = []
+
+    def _processar_condo_pdf(condo_id):
+        acesso, nome_condo = verificar_condominio(condo_id)
+        if not acesso:
+            return []
+        mapa = buscar_unidades(condo_id)
+        if not mapa:
+            return []
+        resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
+        if not resumo:
+            return []
+        linhas = []
+        for uid, vals in resumo.items():
+            tels = vals.get("telefones", [])
+            dados_uni = mapa.get(uid, {})
+            linhas.append({
+                "Condomínio":   nome_condo or "",
+                "condo_id":     condo_id,
+                "Unidade":      dados_uni.get("unidade") or vals["nome_pdf"],
+                "Nome":         dados_uni.get("sacado", ""),
+                "Telefone 1":   tels[0] if len(tels) > 0 else "s/n",
+                "Telefone 2":   tels[1] if len(tels) > 1 else "s/n",
+                "Principal":    vals["principal"],
+                "Juros":        vals["juros"],
+                "Multa":        vals["multa"],
+                "Atualização":  vals["atualizacao"],
+                "Honorários":   vals["honorarios"],
+                "Total":        vals["total"],
+            })
+        return linhas
+
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS_CONDOMINIOS) as executor:
+        futures = {executor.submit(_processar_condo_pdf, cid): cid for cid in ids_range}
+        for future in as_completed(futures):
+            try:
+                todas_resumo.extend(future.result())
+            except Exception:
+                pass
+
+    if not todas_resumo:
+        return None, None
+
+    todas_resumo.sort(key=lambda r: (r["Condomínio"], r["Unidade"]))
+
+    # ── Monta o PDF ───────────────────────────────────────────────────────────
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=1.5*cm, rightMargin=1.5*cm,
+        topMargin=2*cm,    bottomMargin=2*cm,
+    )
+
+    styles = getSampleStyleSheet()
+    style_title = ParagraphStyle(
+        "titulo", fontSize=16, textColor=COR_VERDE,
+        fontName="Helvetica-Bold", alignment=TA_LEFT, spaceAfter=4,
+    )
+    style_sub = ParagraphStyle(
+        "sub", fontSize=9, textColor=COR_TEXTO_CLARO,
+        fontName="Helvetica", alignment=TA_LEFT, spaceAfter=2,
+    )
+    style_cell = ParagraphStyle(
+        "cell", fontSize=7, textColor=COR_TEXTO,
+        fontName="Helvetica", leading=9,
+    )
+    style_cell_bold = ParagraphStyle(
+        "cell_bold", fontSize=7, textColor=COR_BRANCO,
+        fontName="Helvetica-Bold", leading=9, alignment=TA_CENTER,
+    )
+
+    def brl(valor):
+        """Formata Decimal como R$ 1.234,56"""
+        try:
+            v = float(valor)
+            return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(valor)
+
+    def p(txt, style=None):
+        return Paragraph(str(txt) if txt else "", style or style_cell)
+
+    story = []
+
+    # Título
+    data_label = data_posicao or datetime.today().strftime("%d/%m/%Y")
+    titulo_txt = "Relatório de Inadimplentes"
+    if id_condominio:
+        titulo_txt += f" — Condomínio {id_condominio}"
+    story.append(Paragraph(titulo_txt, style_title))
+    story.append(Paragraph(f"Data de posição: {data_label}  |  Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  Total de unidades: {len(todas_resumo)}", style_sub))
+    story.append(HRFlowable(width="100%", thickness=2, color=COR_VERDE, spaceAfter=10))
+
+    # Acumuladores do total geral
+    grand_principal = grand_juros = grand_multa = grand_atualiz = grand_honor = grand_total = Decimal("0")
+
+    # Agrupa por condomínio para uma tabela por condomínio
+    from itertools import groupby
+    for (nome_condo, cid), grupo in groupby(todas_resumo, key=lambda r: (r["Condomínio"], r["condo_id"])):
+        rows = list(grupo)
+
+        story.append(Paragraph(
+            f"[ID {cid}] {nome_condo or 'Sem nome'}",
+            ParagraphStyle(
+                "condo_header", fontSize=10, textColor=COR_VERDE,
+                fontName="Helvetica-Bold", spaceAfter=4, spaceBefore=10,
+            )
+        ))
+
+        # Cabeçalho da tabela
+        cabecalho = [
+            p("Unidade", style_cell_bold),
+            p("Nome", style_cell_bold),
+            p("Telefone 1", style_cell_bold),
+            p("Telefone 2", style_cell_bold),
+            p("Principal", style_cell_bold),
+            p("Juros", style_cell_bold),
+            p("Multa", style_cell_bold),
+            p("Atualização", style_cell_bold),
+            p("Honorários", style_cell_bold),
+            p("Total", style_cell_bold),
+        ]
+
+        dados_tabela = [cabecalho]
+        tot_principal = tot_juros = tot_multa = tot_atualiz = tot_honor = tot_total = Decimal("0")
+
+        for i, row in enumerate(rows):
+            dados_tabela.append([
+                p(row["Unidade"]),
+                p(row["Nome"]),
+                p(row["Telefone 1"]),
+                p(row["Telefone 2"]),
+                p(brl(row["Principal"])),
+                p(brl(row["Juros"])),
+                p(brl(row["Multa"])),
+                p(brl(row["Atualização"])),
+                p(brl(row["Honorários"])),
+                p(brl(row["Total"])),
+            ])
+            tot_principal += Decimal(str(row["Principal"]))
+            tot_juros     += Decimal(str(row["Juros"]))
+            tot_multa     += Decimal(str(row["Multa"]))
+            tot_atualiz   += Decimal(str(row["Atualização"]))
+            tot_honor     += Decimal(str(row["Honorários"]))
+            tot_total     += Decimal(str(row["Total"]))
+            grand_principal += Decimal(str(row["Principal"]))
+            grand_juros     += Decimal(str(row["Juros"]))
+            grand_multa     += Decimal(str(row["Multa"]))
+            grand_atualiz   += Decimal(str(row["Atualização"]))
+            grand_honor     += Decimal(str(row["Honorários"]))
+            grand_total     += Decimal(str(row["Total"]))
+
+        # Linha de totais
+        style_tot = ParagraphStyle("tot", fontSize=7, textColor=COR_BRANCO,
+                                   fontName="Helvetica-Bold", alignment=TA_CENTER)
+        dados_tabela.append([
+            p("TOTAL", style_tot),
+            p("", style_tot),
+            p("", style_tot),
+            p("", style_tot),
+            p(brl(tot_principal), style_tot),
+            p(brl(tot_juros), style_tot),
+            p(brl(tot_multa), style_tot),
+            p(brl(tot_atualiz), style_tot),
+            p(brl(tot_honor), style_tot),
+            p(brl(tot_total), style_tot),
+        ])
+
+        # Larguras das colunas (total ~26cm em landscape A4)
+        col_widths = [2.5*cm, 5*cm, 3*cm, 3*cm, 2.5*cm, 2*cm, 2*cm, 2.5*cm, 2.5*cm, 3*cm]
+
+        table_style = [
+            # Cabeçalho
+            ("BACKGROUND",  (0, 0), (-1, 0),  COR_VERDE),
+            ("TEXTCOLOR",   (0, 0), (-1, 0),  COR_BRANCO),
+            ("FONTNAME",    (0, 0), (-1, 0),  "Helvetica-Bold"),
+            ("FONTSIZE",    (0, 0), (-1, 0),  7),
+            ("ALIGN",       (0, 0), (-1, 0),  "CENTER"),
+            ("VALIGN",      (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUND", (0, 1), (-1, -2),
+             [COR_BRANCO if i % 2 == 0 else COR_ZEBRA for i in range(len(rows))]),
+            # Totais
+            ("BACKGROUND",  (0, -1), (-1, -1), COR_VERDE_ESC),
+            ("TEXTCOLOR",   (0, -1), (-1, -1), COR_BRANCO),
+            # Grade
+            ("GRID",        (0, 0), (-1, -1),  0.4, colors.HexColor("#CCCCCC")),
+            ("TOPPADDING",  (0, 0), (-1, -1),  4),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1),  4),
+            ("RIGHTPADDING",(0, 0), (-1, -1),  4),
+        ]
+
+        tabela = Table(dados_tabela, colWidths=col_widths, repeatRows=1)
+        tabela.setStyle(TableStyle(table_style))
+        story.append(tabela)
+        story.append(Spacer(1, 0.3*cm))
+
+    # ── Tabela de TOTAL GERAL (todos os condomínios) ─────────────────────────
+    story.append(Spacer(1, 0.5*cm))
+    story.append(HRFlowable(width="100%", thickness=2, color=COR_VERDE_ESC, spaceAfter=6))
+    story.append(Paragraph("TOTAL GERAL — Todos os Condomínios", ParagraphStyle(
+        "grand_title", fontSize=11, textColor=COR_VERDE_ESC,
+        fontName="Helvetica-Bold", spaceAfter=6,
+    )))
+
+    style_grand = ParagraphStyle("grand", fontSize=8, textColor=COR_BRANCO,
+                                  fontName="Helvetica-Bold", alignment=TA_CENTER)
+    style_grand_lbl = ParagraphStyle("grand_lbl", fontSize=8, textColor=COR_BRANCO,
+                                      fontName="Helvetica-Bold", alignment=TA_LEFT)
+
+    dados_grand = [
+        [
+            Paragraph("Principal", style_grand),
+            Paragraph("Juros", style_grand),
+            Paragraph("Multa", style_grand),
+            Paragraph("Atualização", style_grand),
+            Paragraph("Honorários", style_grand),
+            Paragraph("TOTAL GERAL", style_grand),
+        ],
+        [
+            Paragraph(brl(grand_principal), style_grand),
+            Paragraph(brl(grand_juros), style_grand),
+            Paragraph(brl(grand_multa), style_grand),
+            Paragraph(brl(grand_atualiz), style_grand),
+            Paragraph(brl(grand_honor), style_grand),
+            Paragraph(brl(grand_total), style_grand),
+        ],
+    ]
+
+    tabela_grand = Table(
+        dados_grand,
+        colWidths=[4*cm, 3.5*cm, 3.5*cm, 4*cm, 4*cm, 5*cm],
+    )
+    tabela_grand.setStyle(TableStyle([
+        ("BACKGROUND",   (0, 0), (-1, 0),  COR_VERDE),
+        ("BACKGROUND",   (0, 1), (-1, 1),  COR_VERDE_ESC),
+        ("GRID",         (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",   (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(tabela_grand)
+
+    doc.build(story)
+    buffer.seek(0)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    suffix = f"_condo{id_condominio}" if id_condominio else "_todos"
+    filename = f"inadimplentes{suffix}_{timestamp}.pdf"
+
+    return buffer.getvalue(), filename

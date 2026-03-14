@@ -47,17 +47,30 @@
           />
         </v-col>
 
-        <v-col cols="12" sm="4">
+        <v-col cols="12" sm="2">
           <v-btn
             color="primary"
             block
             size="large"
             prepend-icon="mdi-microsoft-excel"
-            :loading="isExporting"
+            :loading="isExporting && exportFormat === 'xlsx'"
             :disabled="isExporting"
-            @click="exportDefaulters"
+            @click="startExport('xlsx')"
           >
-            {{ isExporting ? 'Gerando...' : 'Exportar Excel' }}
+            {{ isExporting && exportFormat === 'xlsx' ? 'Gerando...' : 'Excel' }}
+          </v-btn>
+        </v-col>
+        <v-col cols="12" sm="2">
+          <v-btn
+            color="red-darken-2"
+            block
+            size="large"
+            prepend-icon="mdi-file-pdf-box"
+            :loading="isExporting && exportFormat === 'pdf'"
+            :disabled="isExporting"
+            @click="startExport('pdf')"
+          >
+            {{ isExporting && exportFormat === 'pdf' ? 'Gerando...' : 'PDF' }}
           </v-btn>
         </v-col>
       </v-row>
@@ -179,6 +192,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 // ── Estado exportação ─────────────────────────────────────────────────────────
 const isExporting     = ref(false)
+const exportFormat    = ref('xlsx')   // 'xlsx' | 'pdf'
 const exportError     = ref('')
 const exportSuccess   = ref('')
 const idCondominio    = ref(null)
@@ -222,16 +236,21 @@ const fetchTemplates = async () => {
   finally { loadingTemplates.value = false }
 }
 
-// ── Exportar Excel (assíncrono com polling) ───────────────────────────────────
-const exportDefaulters = async () => {
+// ── Exportar Excel ou PDF (assíncrono com polling) ────────────────────────────
+const startExport = async (formato) => {
+  exportFormat.value  = formato
   isExporting.value   = true
   exportError.value   = ''
   exportSuccess.value = ''
   pollingSeconds      = 0
-  progressMessage.value = 'Iniciando geração do relatório...'
+  progressMessage.value = `Iniciando geração do relatório ${formato.toUpperCase()}...`
+
+  const baseStart    = formato === 'pdf' ? '/api/admin/export-pdf/start'    : '/api/admin/export-defaulters/start'
+  const baseStatus   = formato === 'pdf' ? '/api/admin/export-pdf/status'   : '/api/admin/export-defaulters/status'
+  const baseDownload = formato === 'pdf' ? '/api/admin/export-pdf/download'  : '/api/admin/export-defaulters/download'
+  const mimeType     = formato === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
   try {
-    // 1. Dispara o job em background
     const params = new URLSearchParams()
     if (idCondominio.value) params.append('id_condominio', idCondominio.value)
     if (dataPosicao.value) {
@@ -240,54 +259,45 @@ const exportDefaulters = async () => {
     }
     const query = params.toString() ? `?${params.toString()}` : ''
 
-    const startRes = await fetch(`/api/admin/export-defaulters/start${query}`, {
+    const startRes = await fetch(`${baseStart}${query}`, {
       method: 'POST',
       headers: authHeader(),
     })
-
     if (!startRes.ok) {
       const d = await startRes.json().catch(() => ({}))
       exportError.value = d.detail || 'Erro ao iniciar exportação.'
       isExporting.value = false
       return
     }
-
     const { job_id } = await startRes.json()
 
-    // 2. Polling de status a cada 3 segundos
     pollingInterval = setInterval(async () => {
       pollingSeconds += 3
       const mins = Math.floor(pollingSeconds / 60)
       const secs = pollingSeconds % 60
       const tempo = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
-      progressMessage.value = `Processando... (${tempo} aguardando)`
+      progressMessage.value = `Processando ${formato.toUpperCase()}... (${tempo} aguardando)`
 
       try {
-        const statusRes = await fetch(`/api/admin/export-defaulters/status/${job_id}`, {
-          headers: authHeader(),
-        })
+        const statusRes = await fetch(`${baseStatus}/${job_id}`, { headers: authHeader() })
         if (!statusRes.ok) return
-
         const { status, filename, error } = await statusRes.json()
 
         if (status === 'done') {
           clearInterval(pollingInterval)
           pollingInterval = null
-          await downloadJob(job_id, filename)
-
+          await downloadJob(job_id, filename, baseDownload)
         } else if (status === 'empty') {
           clearInterval(pollingInterval)
           pollingInterval = null
           exportError.value = 'Nenhum inadimplente encontrado para os filtros informados.'
           isExporting.value = false
-
         } else if (status === 'error') {
           clearInterval(pollingInterval)
           pollingInterval = null
           exportError.value = error || 'Erro ao gerar relatório.'
           isExporting.value = false
         }
-        // pending ou running → continua polling
       } catch (_) {}
     }, 3000)
 
@@ -297,20 +307,17 @@ const exportDefaulters = async () => {
   }
 }
 
-const downloadJob = async (jobId, filename) => {
+const downloadJob = async (jobId, filename, baseDownload) => {
   try {
-    const dlRes = await fetch(`/api/admin/export-defaulters/download/${jobId}`, {
-      headers: authHeader(),
-    })
+    const dlRes = await fetch(`${baseDownload}/${jobId}`, { headers: authHeader() })
     if (!dlRes.ok) {
       exportError.value = 'Erro ao baixar o arquivo gerado.'
       isExporting.value = false
       return
     }
-
     const disposition = dlRes.headers.get('Content-Disposition') || ''
     const match = disposition.match(/filename="(.+)"/)
-    const fname = match ? match[1] : filename || 'inadimplentes.xlsx'
+    const fname = match ? match[1] : filename || 'inadimplentes'
 
     const blob = await dlRes.blob()
     const url  = window.URL.createObjectURL(blob)
@@ -322,7 +329,7 @@ const downloadJob = async (jobId, filename) => {
     a.remove()
     window.URL.revokeObjectURL(url)
 
-    exportSuccess.value = `Arquivo "${fname}" baixado com sucesso! Agora faça o upload abaixo para disparar as mensagens.`
+    exportSuccess.value = `Arquivo "${fname}" baixado com sucesso!`
   } catch (err) {
     exportError.value = err.message || 'Erro ao baixar arquivo.'
   } finally {
