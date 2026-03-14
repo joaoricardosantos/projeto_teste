@@ -78,6 +78,12 @@ def process_defaulters_spreadsheet(file_obj):
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
+    # Adiciona unidades sem número ao resultado
+    result["sem_numero"] = failures_no_phone
+    result["failures"] = result.get("failures", []) + [
+        {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
+        for f in failures_no_phone
+    ]
     return result
 
 
@@ -109,6 +115,12 @@ def process_defaulters_with_template(file_obj, template_id: str):
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
+    # Adiciona unidades sem número ao resultado
+    result["sem_numero"] = failures_no_phone
+    result["failures"] = result.get("failures", []) + [
+        {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
+        for f in failures_no_phone
+    ]
     return result
 
 
@@ -156,8 +168,14 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
 
     contacts = []
     error_count = 0
+    failures_no_phone = []  # unidades sem número cadastrado
 
     for row in ws.iter_rows(min_row=2, values_only=True):
+        # Pula linha de totais
+        first_val = str(row[0]).strip() if row[0] else ""
+        if first_val.upper() in ("TOTAL GERAL", "TOTAL"):
+            continue
+
         condo_name  = str(row[idx_condo])      if idx_condo      is not None and row[idx_condo]      else ""
         unidade     = str(row[idx_unidade])    if idx_unidade    is not None and row[idx_unidade]    else ""
         nome        = str(row[idx_nome])       if idx_nome       is not None and row[idx_nome]       else ""
@@ -171,24 +189,6 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
             valor_fmt = f"R$ {float(total_raw):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except (ValueError, TypeError):
             valor_fmt = str(total_raw) if total_raw else ""
-
-        # Coleta telefones (novo formato ou legado)
-        telefones = []
-        if idx_tel1 is not None:
-            t1 = str(row[idx_tel1]).strip() if row[idx_tel1] else ""
-            t2 = str(row[idx_tel2]).strip() if idx_tel2 is not None and row[idx_tel2] else ""
-            if t1 and t1.lower() != "s/n":
-                telefones.append(t1)
-            if t2 and t2.lower() != "s/n":
-                telefones.append(t2)
-        elif idx_telefones_legado is not None:
-            raw = row[idx_telefones_legado]
-            if raw:
-                telefones = [t.strip() for t in str(raw).split("|") if t.strip()]
-
-        if not telefones:
-            error_count += 1
-            continue
 
         # Monta mensagem
         if template_body:
@@ -207,9 +207,49 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
                 condo_name, unidade, nome, vencimento, competencia, valor_fmt, qtd
             )
 
-        for phone in telefones:
-            contacts.append({"phone": phone, "message": message})
+        # Lógica de fallback: tenta tel1, se s/n tenta tel2, se ambos s/n registra sem número
+        if idx_tel1 is not None:
+            t1 = str(row[idx_tel1]).strip() if row[idx_tel1] else "s/n"
+            t2 = str(row[idx_tel2]).strip() if idx_tel2 is not None and row[idx_tel2] else "s/n"
+
+            if t1.lower() != "s/n":
+                # Tel1 válido → envia para tel1
+                contacts.append({"phone": t1, "message": message})
+            elif t2.lower() != "s/n":
+                # Tel1 é s/n mas tel2 é válido → envia para tel2
+                contacts.append({"phone": t2, "message": message})
+            else:
+                # Ambos s/n → registra como erro com informação da unidade
+                error_count += 1
+                failures_no_phone.append({
+                    "unidade": f"{condo_name} - {unidade}",
+                    "nome": nome,
+                    "motivo": "Nenhum número cadastrado",
+                })
+
+        elif idx_telefones_legado is not None:
+            # Formato legado com coluna "Telefones"
+            raw = row[idx_telefones_legado]
+            if raw:
+                telefones = [t.strip() for t in str(raw).split("|") if t.strip()]
+                for phone in telefones:
+                    contacts.append({"phone": phone, "message": message})
+            else:
+                error_count += 1
+                failures_no_phone.append({
+                    "unidade": f"{condo_name} - {unidade}",
+                    "nome": nome,
+                    "motivo": "Nenhum número cadastrado",
+                })
+        else:
+            error_count += 1
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
+    # Adiciona unidades sem número ao resultado
+    result["sem_numero"] = failures_no_phone
+    result["failures"] = result.get("failures", []) + [
+        {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
+        for f in failures_no_phone
+    ]
     return result

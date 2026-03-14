@@ -173,12 +173,33 @@
       </v-alert>
 
       <v-alert v-if="dispatchResult" type="success" class="mt-5" closable @click:close="dispatchResult = null">
-        <div class="font-weight-bold mb-1">Disparo concluído!</div>
+        <div class="font-weight-bold mb-2">Disparo concluído!</div>
         <div>✅ Enviados com sucesso: <strong>{{ dispatchResult.success }}</strong></div>
-        <div>❌ Erros: <strong>{{ dispatchResult.errors }}</strong></div>
-        <div v-if="dispatchResult.failures && dispatchResult.failures.length" class="mt-2">
-          <div class="text-caption text-medium-emphasis mb-1">Números com falha:</div>
-          <div v-for="f in dispatchResult.failures" :key="f.phone" class="text-caption">
+        <div>❌ Falhas no envio: <strong>{{ envioFailures(dispatchResult).length }}</strong></div>
+        <div>📵 Sem número cadastrado: <strong>{{ dispatchResult.sem_numero?.length || 0 }}</strong></div>
+
+        <!-- Unidades sem número -->
+        <div v-if="dispatchResult.sem_numero && dispatchResult.sem_numero.length" class="mt-3">
+          <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
+            📵 Unidades sem número cadastrado:
+          </div>
+          <v-sheet color="orange-lighten-5" rounded class="pa-2">
+            <div
+              v-for="(f, i) in dispatchResult.sem_numero"
+              :key="i"
+              class="text-caption py-1"
+              :style="i < dispatchResult.sem_numero.length - 1 ? 'border-bottom: 1px solid rgba(0,0,0,0.08)' : ''"
+            >
+              <strong>{{ f.unidade }}</strong>
+              <span v-if="f.nome"> — {{ f.nome }}</span>
+            </div>
+          </v-sheet>
+        </div>
+
+        <!-- Falhas de envio -->
+        <div v-if="envioFailures(dispatchResult).length" class="mt-3">
+          <div class="text-caption font-weight-bold text-medium-emphasis mb-1">Falhas no envio:</div>
+          <div v-for="f in envioFailures(dispatchResult)" :key="f.phone" class="text-caption">
             {{ f.phone }} — {{ f.error }}
           </div>
         </div>
@@ -375,6 +396,12 @@ const dispatchMessages = async () => {
   } finally {
     isDispatching.value = false
   }
+}
+
+// Filtra apenas falhas reais de envio (exclui "sem número")
+const envioFailures = (result) => {
+  if (!result?.failures) return []
+  return result.failures.filter(f => f.phone !== '—')
 }
 
 onMounted(fetchTemplates)
