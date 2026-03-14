@@ -1,71 +1,94 @@
 import csv
 import openpyxl
-from io import StringIO, BytesIO
+from io import StringIO
+from django.conf import settings
 from core.evolution_service import send_whatsapp_bulk
 
 
-def _render_template(body: str, condo_name: str, contact: str, debt_amount: str, vencimento: str = "", competencia: str = "") -> str:
-    """Substitui variáveis no corpo do template."""
+def _render_template(
+    body: str,
+    condo_name: str = "",
+    unidade: str = "",
+    nome: str = "",
+    qtd_inadimpl: str = "",
+    competencia: str = "",
+    vencimento: str = "",
+    valor: str = "",
+) -> str:
+    """
+    Substitui todas as variáveis disponíveis no corpo do template.
+    Variáveis:
+      {{condominio}}  → nome do condomínio
+      {{unidade}}     → código da unidade (ex: 315 SALA)
+      {{nome}}        → nome do proprietário/sacado
+      {{qtd}}         → quantidade de inadimplências em aberto
+      {{competencia}} → competência da cobrança
+      {{vencimento}}  → data de vencimento
+      {{valor}}       → valor total devido (R$ formatado)
+    """
     return (
         body
-        .replace("{{nome}}", contact)
-        .replace("{{condominio}}", condo_name)
-        .replace("{{valor}}", debt_amount)
-        .replace("{{vencimento}}", vencimento)
+        .replace("{{condominio}}",  condo_name)
+        .replace("{{unidade}}",     unidade)
+        .replace("{{nome}}",        nome)
+        .replace("{{qtd}}",         str(qtd_inadimpl))
         .replace("{{competencia}}", competencia)
+        .replace("{{vencimento}}",  vencimento)
+        .replace("{{valor}}",       valor)
     )
 
 
-def _build_default_message(condo_name: str, debt_amount: str) -> str:
-    return f"Prezado condomínio {condo_name}, consta um débito de {debt_amount}."
-
-
-def _read_spreadsheet_rows(file_obj) -> list:
-    """
-    Lê CSV ou XLSX e retorna lista de dicts com as colunas.
-    Detecta o formato pelo atributo .name do arquivo.
-    """
-    filename = getattr(file_obj, "name", "").lower()
-
-    if filename.endswith(".xlsx"):
-        wb = openpyxl.load_workbook(BytesIO(file_obj.read()))
-        ws = wb.active
-        headers = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
-        rows = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            rows.append({
-                headers[i]: (str(v).strip() if v is not None else "")
-                for i, v in enumerate(row)
-            })
-        return rows
-    else:
-        decoded = file_obj.read().decode("utf-8")
-        return list(csv.DictReader(StringIO(decoded)))
+def _build_default_message(
+    condo_name: str,
+    unidade: str,
+    nome: str,
+    vencimento: str,
+    competencia: str,
+    valor: str,
+    qtd: str,
+) -> str:
+    return (
+        f"Olá{', ' + nome if nome else ''}! Identificamos débito em aberto referente à unidade "
+        f"*{unidade}* do condomínio *{condo_name}*.\n"
+        f"Competência: *{competencia}* | Vencimento: *{vencimento}*\n"
+        f"Qtd de inadimplências: *{qtd}*\n"
+        f"Valor total com encargos: *{valor}*.\n"
+        f"Entre em contato para regularização."
+    )
 
 
 def process_defaulters_spreadsheet(file_obj):
-    """Processa CSV ou XLSX com mensagem padrão e envia via WhatsApp."""
+    """Processa CSV com mensagem padrão e envia via WhatsApp."""
+    decoded_file = file_obj.read().decode("utf-8")
+    csv_reader = csv.DictReader(StringIO(decoded_file))
+
     contacts = []
     error_count = 0
 
-    for row in _read_spreadsheet_rows(file_obj):
+    for row in csv_reader:
         condo_name  = (row.get("condominio") or "").strip()
         contact     = (row.get("contato") or "").strip()
         debt_amount = (row.get("valor_debito") or "").strip()
 
         if condo_name and contact and debt_amount:
-            message = _build_default_message(condo_name, debt_amount)
+            message = _build_default_message(condo_name, "", "", "", "", debt_amount, "")
             contacts.append({"phone": contact, "message": message})
         else:
             error_count += 1
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
+    # Adiciona unidades sem número ao resultado
+    result["sem_numero"] = failures_no_phone
+    result["failures"] = result.get("failures", []) + [
+        {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
+        for f in failures_no_phone
+    ]
     return result
 
 
 def process_defaulters_with_template(file_obj, template_id: str):
-    """Processa CSV ou XLSX com template específico e envia via WhatsApp."""
+    """Processa CSV com template específico e envia via WhatsApp."""
     from core.models import MessageTemplate
 
     try:
@@ -73,30 +96,38 @@ def process_defaulters_with_template(file_obj, template_id: str):
     except MessageTemplate.DoesNotExist:
         raise ValueError("Template_not_found")
 
+    decoded_file = file_obj.read().decode("utf-8")
+    csv_reader = csv.DictReader(StringIO(decoded_file))
+
     contacts = []
     error_count = 0
 
-    for row in _read_spreadsheet_rows(file_obj):
+    for row in csv_reader:
         condo_name  = (row.get("condominio") or "").strip()
         contact     = (row.get("contato") or "").strip()
         debt_amount = (row.get("valor_debito") or "").strip()
 
         if condo_name and contact and debt_amount:
-            message = _render_template(template.body, condo_name, contact, debt_amount)
+            message = _render_template(template.body, condo_name=condo_name, nome=contact, valor=debt_amount)
             contacts.append({"phone": contact, "message": message})
         else:
             error_count += 1
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
+    # Adiciona unidades sem número ao resultado
+    result["sem_numero"] = failures_no_phone
+    result["failures"] = result.get("failures", []) + [
+        {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
+        for f in failures_no_phone
+    ]
     return result
 
 
 def process_excel_report_dispatch(file_obj, template_id: str = None):
     """
-    Lê CSV ou XLSX do relatório (aba Resumo ou primeira aba) e envia WhatsApp
-    para cada número da coluna 'Telefones'.
-    Colunas esperadas: Condomínio | Unidade | Telefones | Vencimento | Competência | Total
+    Lê o Excel gerado pelo relatório (aba Resumo) e envia WhatsApp
+    para Telefone 1 e Telefone 2 de cada unidade inadimplente.
     """
     from core.models import MessageTemplate
 
@@ -108,87 +139,117 @@ def process_excel_report_dispatch(file_obj, template_id: str = None):
         except MessageTemplate.DoesNotExist:
             raise ValueError("Template_not_found")
 
-    filename = getattr(file_obj, "name", "").lower()
+    wb = openpyxl.load_workbook(file_obj)
+    ws = wb["Resumo"] if "Resumo" in wb.sheetnames else wb.active
 
-    # ── Leitura do arquivo ────────────────────────────────────────────────────
-    if filename.endswith(".csv"):
-        decoded = file_obj.read().decode("utf-8")
-        raw_rows = list(csv.DictReader(StringIO(decoded)))
-        use_dict = True
-        rows_iter = raw_rows
-        headers = list(raw_rows[0].keys()) if raw_rows else []
-    else:
-        wb = openpyxl.load_workbook(file_obj)
-        ws = wb["Resumo"] if "Resumo" in wb.sheetnames else wb.active
-        headers = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
-        rows_iter = list(ws.iter_rows(min_row=2, values_only=True))
-        use_dict = False
+    headers = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
 
-    # ── Índices das colunas (para XLSX) ───────────────────────────────────────
-    def col_idx(name):
+    def col(name):
         try:
             return headers.index(name)
         except ValueError:
             return None
 
-    idx_condo       = col_idx("Condomínio")
-    idx_unidade     = col_idx("Unidade")
-    idx_telefones   = col_idx("Telefones")
-    idx_vencimento  = col_idx("Vencimento")
-    idx_competencia = col_idx("Competência")
-    idx_total       = col_idx("Total")
+    idx_condo       = col("Condomínio")
+    idx_unidade     = col("Unidade")
+    idx_nome        = col("Nome")
+    idx_tel1        = col("Telefone 1")
+    idx_tel2        = col("Telefone 2")
+    idx_qtd         = col("Qtd Inadimpl.")
+    idx_vencimento  = col("Vencimento")
+    idx_competencia = col("Competência")
+    idx_total       = col("Total")
 
-    if not use_dict and idx_telefones is None:
-        raise ValueError("Coluna_Telefones_nao_encontrada")
+    # Fallback para planilhas antigas com coluna "Telefones"
+    idx_telefones_legado = col("Telefones")
+
+    if idx_tel1 is None and idx_telefones_legado is None:
+        raise ValueError("Coluna_Telefone_nao_encontrada")
 
     contacts = []
     error_count = 0
+    failures_no_phone = []  # unidades sem número cadastrado
 
-    for row in rows_iter:
-        if use_dict:
-            telefones_raw = row.get("Telefones", "") or ""
-            condo_name    = str(row.get("Condomínio", "") or "")
-            unidade       = str(row.get("Unidade", "") or "")
-            vencimento    = str(row.get("Vencimento", "") or "")
-            competencia   = str(row.get("Competência", "") or "")
-            total         = str(row.get("Total", "") or "")
-        else:
-            telefones_raw = row[idx_telefones] if idx_telefones is not None else None
-            condo_name    = str(row[idx_condo])       if idx_condo       is not None and row[idx_condo]       else ""
-            unidade       = str(row[idx_unidade])     if idx_unidade     is not None and row[idx_unidade]     else ""
-            vencimento    = str(row[idx_vencimento])  if idx_vencimento  is not None and row[idx_vencimento]  else ""
-            competencia   = str(row[idx_competencia]) if idx_competencia is not None and row[idx_competencia] else ""
-            total         = str(row[idx_total])       if idx_total       is not None and row[idx_total]       else ""
-
-        if not telefones_raw:
-            error_count += 1
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        # Pula linha de totais
+        first_val = str(row[0]).strip() if row[0] else ""
+        if first_val.upper() in ("TOTAL GERAL", "TOTAL"):
             continue
 
-        telefones = [t.strip() for t in str(telefones_raw).split("|") if t.strip()]
-        if not telefones:
-            error_count += 1
-            continue
+        condo_name  = str(row[idx_condo])      if idx_condo      is not None and row[idx_condo]      else ""
+        unidade     = str(row[idx_unidade])    if idx_unidade    is not None and row[idx_unidade]    else ""
+        nome        = str(row[idx_nome])       if idx_nome       is not None and row[idx_nome]       else ""
+        qtd         = str(row[idx_qtd])        if idx_qtd        is not None and row[idx_qtd]        else ""
+        vencimento  = str(row[idx_vencimento]) if idx_vencimento is not None and row[idx_vencimento] else ""
+        competencia = str(row[idx_competencia])if idx_competencia is not None and row[idx_competencia] else ""
+        total_raw   = row[idx_total]           if idx_total      is not None else None
 
         # Formata valor BRL
         try:
-            valor_fmt = f"R$ {float(total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            valor_fmt = f"R$ {float(total_raw):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except (ValueError, TypeError):
-            valor_fmt = total
+            valor_fmt = str(total_raw) if total_raw else ""
 
+        # Monta mensagem
         if template_body:
-            message = _render_template(template_body, condo_name, unidade, valor_fmt, vencimento, competencia)
+            message = _render_template(
+                template_body,
+                condo_name=condo_name,
+                unidade=unidade,
+                nome=nome,
+                qtd_inadimpl=qtd,
+                competencia=competencia,
+                vencimento=vencimento,
+                valor=valor_fmt,
+            )
         else:
-            message = (
-                f"Olá! Identificamos débito em aberto referente à unidade *{unidade}* "
-                f"do condomínio *{condo_name}*.\n"
-                f"Vencimento: *{vencimento}* | Competência: *{competencia}*\n"
-                f"Valor total com encargos: *{valor_fmt}*.\n"
-                f"Entre em contato para regularização."
+            message = _build_default_message(
+                condo_name, unidade, nome, vencimento, competencia, valor_fmt, qtd
             )
 
-        for phone in telefones:
-            contacts.append({"phone": phone, "message": message})
+        # Lógica de fallback: tenta tel1, se s/n tenta tel2, se ambos s/n registra sem número
+        if idx_tel1 is not None:
+            t1 = str(row[idx_tel1]).strip() if row[idx_tel1] else "s/n"
+            t2 = str(row[idx_tel2]).strip() if idx_tel2 is not None and row[idx_tel2] else "s/n"
+
+            if t1.lower() != "s/n":
+                # Tel1 válido → envia para tel1
+                contacts.append({"phone": t1, "message": message})
+            elif t2.lower() != "s/n":
+                # Tel1 é s/n mas tel2 é válido → envia para tel2
+                contacts.append({"phone": t2, "message": message})
+            else:
+                # Ambos s/n → registra como erro com informação da unidade
+                error_count += 1
+                failures_no_phone.append({
+                    "unidade": f"{condo_name} - {unidade}",
+                    "nome": nome,
+                    "motivo": "Nenhum número cadastrado",
+                })
+
+        elif idx_telefones_legado is not None:
+            # Formato legado com coluna "Telefones"
+            raw = row[idx_telefones_legado]
+            if raw:
+                telefones = [t.strip() for t in str(raw).split("|") if t.strip()]
+                for phone in telefones:
+                    contacts.append({"phone": phone, "message": message})
+            else:
+                error_count += 1
+                failures_no_phone.append({
+                    "unidade": f"{condo_name} - {unidade}",
+                    "nome": nome,
+                    "motivo": "Nenhum número cadastrado",
+                })
+        else:
+            error_count += 1
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
+    # Adiciona unidades sem número ao resultado
+    result["sem_numero"] = failures_no_phone
+    result["failures"] = result.get("failures", []) + [
+        {"phone": "—", "error": f"{f['unidade']} ({f['nome']}): {f['motivo']}"}
+        for f in failures_no_phone
+    ]
     return result
