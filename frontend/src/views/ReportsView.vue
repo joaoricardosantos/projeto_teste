@@ -18,10 +18,12 @@
 
       <v-row align="center">
         <v-col cols="12" sm="4">
-          <v-text-field
-            v-model.number="idCondominio"
-            label="ID do condomínio (opcional)"
-            type="number"
+          <v-autocomplete
+            v-model="idCondominio"
+            :items="condominios"
+            item-title="label"
+            item-value="id"
+            label="Condomínio (opcional)"
             variant="outlined"
             density="comfortable"
             clearable
@@ -29,6 +31,9 @@
             hint="Deixe em branco para todos"
             persistent-hint
             :disabled="isExporting"
+            :loading="loadingCondominios"
+            no-data-text="Nenhum condomínio encontrado"
+            placeholder="Buscar por nome ou ID..."
           />
         </v-col>
 
@@ -47,31 +52,40 @@
           />
         </v-col>
 
-        <v-col cols="12" sm="2">
-          <v-btn
-            color="primary"
-            block
-            size="large"
-            prepend-icon="mdi-microsoft-excel"
-            :loading="isExporting && exportFormat === 'xlsx'"
-            :disabled="isExporting"
-            @click="startExport('xlsx')"
-          >
-            {{ isExporting && exportFormat === 'xlsx' ? 'Gerando...' : 'Excel' }}
-          </v-btn>
-        </v-col>
-        <v-col cols="12" sm="2">
-          <v-btn
-            color="red-darken-2"
-            block
-            size="large"
-            prepend-icon="mdi-file-pdf-box"
-            :loading="isExporting && exportFormat === 'pdf'"
-            :disabled="isExporting"
-            @click="startExport('pdf')"
-          >
-            {{ isExporting && exportFormat === 'pdf' ? 'Gerando...' : 'PDF' }}
-          </v-btn>
+        <v-col cols="12" sm="4">
+          <v-menu :disabled="isExporting">
+            <template #activator="{ props }">
+              <v-btn
+                color="primary"
+                block
+                size="large"
+                prepend-icon="mdi-file-export"
+                append-icon="mdi-chevron-down"
+                :loading="isExporting"
+                :disabled="isExporting"
+                v-bind="props"
+              >
+                {{ isExporting ? 'Gerando...' : 'Exportar relatório' }}
+              </v-btn>
+            </template>
+
+            <v-list elevation="4" rounded="lg" min-width="200">
+              <v-list-item
+                prepend-icon="mdi-microsoft-excel"
+                title="Excel (.xlsx)"
+                subtitle="Planilha com abas Resumo e Detalhado"
+                @click="startExport('xlsx')"
+              />
+              <v-divider />
+              <v-list-item
+                prepend-icon="mdi-file-pdf-box"
+                title="PDF"
+                subtitle="Relatório formatado por condomínio"
+                color="red-darken-2"
+                @click="startExport('pdf')"
+              />
+            </v-list>
+          </v-menu>
         </v-col>
       </v-row>
 
@@ -212,15 +226,17 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 // ── Estado exportação ─────────────────────────────────────────────────────────
-const isExporting     = ref(false)
-const exportFormat    = ref('xlsx')   // 'xlsx' | 'pdf'
-const exportError     = ref('')
-const exportSuccess   = ref('')
-const idCondominio    = ref(null)
-const dataPosicao     = ref('')
-const progressMessage = ref('Iniciando geração do relatório...')
-let   pollingInterval = null
-let   pollingSeconds  = 0
+const isExporting        = ref(false)
+const exportFormat       = ref('xlsx')
+const exportError        = ref('')
+const exportSuccess      = ref('')
+const idCondominio       = ref(null)
+const dataPosicao        = ref('')
+const progressMessage    = ref('Iniciando geração do relatório...')
+const condominios        = ref([])
+const loadingCondominios = ref(false)
+let   pollingInterval    = null
+let   pollingSeconds     = 0
 
 // ── Estado disparo ────────────────────────────────────────────────────────────
 const isDispatching      = ref(false)
@@ -259,6 +275,22 @@ const fetchTemplates = async () => {
     if (res.ok) templates.value = await res.json()
   } catch (_) {}
   finally { loadingTemplates.value = false }
+}
+
+const carregarCondominios = async () => {
+  loadingCondominios.value = true
+  try {
+    const res = await fetch('/api/admin/condominios', { headers: authHeader() })
+    if (res.ok) {
+      const lista = await res.json()
+      condominios.value = lista.map(c => ({
+        id:    c.id,
+        nome:  c.nome,
+        label: `[${c.id}] ${c.nome}`,
+      }))
+    }
+  } catch (_) {}
+  finally { loadingCondominios.value = false }
 }
 
 // ── Exportar Excel ou PDF (assíncrono com polling) ────────────────────────────
@@ -404,6 +436,9 @@ const envioFailures = (result) => {
   return result.failures.filter(f => f.phone !== '—')
 }
 
-onMounted(fetchTemplates)
+onMounted(() => {
+  fetchTemplates()
+  carregarCondominios()
+})
 onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 </script>
