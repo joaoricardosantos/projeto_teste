@@ -6,7 +6,7 @@
         <h1 class="text-h5 font-weight-bold">Templates de Mensagem</h1>
         <p class="text-body-2 text-medium-emphasis mt-1">
           Crie e gerencie templates reutilizáveis para os disparos.
-          Use <code>{{nome}}</code>, <code>{{condominio}}</code> e <code>{{valor}}</code> como variáveis dinâmicas.
+          Use variáveis como <code>{{condominio}}</code>, <code>{{unidade}}</code>, <code>{{nome}}</code>, <code>{{qtd}}</code>, <code>{{competencia}}</code>, <code>{{vencimento}}</code> e <code>{{valor}}</code>.
         </p>
       </v-col>
       <v-col cols="12" sm="4" class="text-sm-right">
@@ -201,7 +201,6 @@
 
                 <!-- Balão de mensagem -->
                 <div v-else class="d-flex flex-column align-end">
-                  <!-- Hora fake + balão -->
                   <div
                     class="pa-3 rounded-lg mb-1"
                     style="
@@ -314,11 +313,13 @@ const errorMessage = ref('')
 
 // ── Variáveis disponíveis ─────────────────────────────────────────────────────
 const availableVariables = [
-  { label: 'Nome',        value: '{{nome}}'        },
-  { label: 'Condomínio',  value: '{{condominio}}'  },
-  { label: 'Valor',       value: '{{valor}}'       },
-  { label: 'Vencimento',  value: '{{vencimento}}'  },
-  { label: 'Competência', value: '{{competencia}}' },
+  { label: 'Condomínio',         value: '{{condominio}}' },
+  { label: 'Unidade',            value: '{{unidade}}'    },
+  { label: 'Nome',               value: '{{nome}}'       },
+  { label: 'Qtd Inadimplências', value: '{{qtd}}'        },
+  { label: 'Competência',        value: '{{competencia}}'},
+  { label: 'Vencimento',         value: '{{vencimento}}' },
+  { label: 'Valor Total',        value: '{{valor}}'      },
 ]
 
 // ── Hora atual para o preview ─────────────────────────────────────────────────
@@ -360,11 +361,13 @@ const extractVariables = (body) => {
 
 const renderPreview = (body) =>
   body
-    .replace(/\{\{nome\}\}/g, 'João Silva')
     .replace(/\{\{condominio\}\}/g, 'Residencial Acácias')
+    .replace(/\{\{unidade\}\}/g, '315 SALA')
+    .replace(/\{\{nome\}\}/g, 'João Silva')
+    .replace(/\{\{qtd\}\}/g, '5')
+    .replace(/\{\{competencia\}\}/g, '10/2025')
+    .replace(/\{\{vencimento\}\}/g, '01/11/2025')
     .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
-    .replace(/\{\{vencimento\}\}/g, '10/04/2025')
-    .replace(/\{\{competencia\}\}/g, '12/10/2025')
 
 // ── Inserção de variável na posição do cursor ─────────────────────────────────
 const insertVariable = async (variable) => {

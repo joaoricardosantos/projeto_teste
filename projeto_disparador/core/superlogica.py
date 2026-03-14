@@ -234,6 +234,7 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
 
         detalhado.append({
             "Condomínio":  None,
+            "id_unidade":  id_unidade,
             "Unidade":     nome_pdf,
             "Código":      id_receb,
             "Vencimento":  _formatar_data(vencimento),
@@ -311,6 +312,7 @@ _LARGURAS_FIXAS = {
     "Nome":        45,
     "Telefone 1":  22,
     "Telefone 2":  22,
+    "Qtd Inadimpl.": 14,
     "Vencimento":  16,
     "Competência": 16,
     "Principal":   16,
@@ -335,31 +337,42 @@ def _ajustar_larguras(ws):
         ws.row_dimensions[row[0].row].height = 30
 
 
-def _aplicar_grade_e_zebra(ws):
+def _aplicar_grade_e_zebra(ws, skip_rows=0):
     """Aplica borda em todas as células e alterna cores por linha (zebra)."""
     max_row = ws.max_row
     max_col = ws.max_column
-    for row_idx in range(2, max_row + 1):  # pula cabeçalho (linha 1)
+    data_start = skip_rows + 2  # linha após o cabeçalho
+    header_row = skip_rows + 1
+
+    # Descobre índice da coluna "Qtd Inadimpl." para forçar alinhamento à esquerda
+    qtd_col_idx = None
+    for col_idx in range(1, max_col + 1):
+        if ws.cell(row=header_row, column=col_idx).value == "Qtd Inadimpl.":
+            qtd_col_idx = col_idx
+            break
+
+    for row_idx in range(data_start, max_row + 1):
         fill = _FILL_PAR if row_idx % 2 == 0 else _FILL_IMPAR
         for col_idx in range(1, max_col + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.border = _BORDA
-            cell.alignment = Alignment(vertical="center", wrap_text=False)
-            # Ativa quebra de texto nas colunas de texto longas (col 1=Condomínio, col 3=Nome)
             if col_idx in (1, 3):
                 cell.alignment = Alignment(vertical="center", wrap_text=True)
-            # Não sobrescreve a cor da linha de totais (última linha)
+            elif col_idx == qtd_col_idx:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+            else:
+                cell.alignment = Alignment(vertical="center", wrap_text=False)
             if row_idx < max_row:
                 cell.fill = fill
     # Borda também no cabeçalho
-    for cell in ws[1]:
+    for cell in ws[header_row]:
         cell.border = _BORDA
 
 
-def _estilizar_cabecalho(ws):
+def _estilizar_cabecalho(ws, header_row=1):
     header_fill = PatternFill(start_color="006837", end_color="006837", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
-    for cell in ws[1]:
+    for cell in ws[header_row]:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -405,26 +418,37 @@ def gerar_relatorio_inadimplentes(
         if not resumo:
             return [], []
 
+        # Conta inadimplências por unidade a partir do detalhado
+        contagem_por_unidade = {}
+        for row_det in detalhado:
+            uid = row_det.get("id_unidade")
+            nome_uni = row_det.get("Unidade", "")
+            chave = uid or nome_uni
+            contagem_por_unidade[chave] = contagem_por_unidade.get(chave, 0) + 1
+
         linhas_resumo = []
         for unidade_id, valores in resumo.items():
             telefones = valores.get("telefones", [])
             dados_uni = mapa_unidades.get(unidade_id, {})
             tel1 = telefones[0] if len(telefones) > 0 else "s/n"
             tel2 = telefones[1] if len(telefones) > 1 else "s/n"
+            nome_uni = dados_uni.get("unidade") or valores["nome_pdf"]
+            qtd = contagem_por_unidade.get(unidade_id) or contagem_por_unidade.get(nome_uni, 0)
             linhas_resumo.append({
-                "Condomínio":  nome_condominio,
-                "Unidade":     dados_uni.get("unidade") or valores["nome_pdf"],
-                "Nome":        dados_uni.get("sacado", ""),
-                "Telefone 1":  tel1,
-                "Telefone 2":  tel2,
-                "Vencimento":  valores.get("vencimento", ""),
-                "Competência": valores.get("competencia", ""),
-                "Principal":   valores["principal"],
-                "Juros":       valores["juros"],
-                "Multa":       valores["multa"],
-                "Atualização": valores["atualizacao"],
-                "Honorários":  valores["honorarios"],
-                "Total":       valores["total"],
+                "Condomínio":       nome_condominio,
+                "Unidade":          nome_uni,
+                "Nome":             dados_uni.get("sacado", ""),
+                "Telefone 1":       tel1,
+                "Telefone 2":       tel2,
+                "Qtd Inadimpl.":    qtd,
+                "Vencimento":       valores.get("vencimento", ""),
+                "Competência":      valores.get("competencia", ""),
+                "Principal":        valores["principal"],
+                "Juros":            valores["juros"],
+                "Multa":            valores["multa"],
+                "Atualização":      valores["atualizacao"],
+                "Honorários":       valores["honorarios"],
+                "Total":            valores["total"],
             })
 
         for row in detalhado:
@@ -454,7 +478,8 @@ def gerar_relatorio_inadimplentes(
     # ── Aba Resumo ──────────────────────────────────────────────────────────
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = ["Condomínio", "Unidade", "Nome", "Telefone 1", "Telefone 2", "Vencimento", "Competência",
+    headers_resumo = ["Condomínio", "Unidade", "Nome", "Telefone 1", "Telefone 2", "Qtd Inadimpl.",
+                      "Vencimento", "Competência",
                       "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_resumo.append(headers_resumo)
     for row in todas_resumo:
@@ -462,7 +487,7 @@ def gerar_relatorio_inadimplentes(
 
     # Linha de totais
     num_rows = len(todas_resumo)
-    totais_resumo = ["TOTAL GERAL", "", "", "", "", "", ""]
+    totais_resumo = ["TOTAL GERAL", "", "", "", "", "", "", ""]
     cols_num = ["Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     for col in cols_num:
         totais_resumo.append(round(sum(r[col] for r in todas_resumo), 2))
@@ -650,7 +675,28 @@ def gerar_pdf_inadimplentes(
     titulo_txt = "Relatório de Inadimplentes"
     if id_condominio:
         titulo_txt += f" — Condomínio {id_condominio}"
-    story.append(Paragraph(titulo_txt, style_title))
+    # Logo + Título lado a lado
+    import os as _os
+    from reportlab.platypus import Image as RLImage
+    _logo_path = _os.path.join(_os.path.dirname(__file__), "logo_pratika.png")
+
+    if _os.path.exists(_logo_path):
+        logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+    else:
+        logo_img = Paragraph("", style_sub)
+
+    header_table = Table(
+        [[logo_img, Paragraph(titulo_txt, style_title)]],
+        colWidths=[4*cm, None],
+    )
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header_table)
     story.append(Paragraph(f"Data de posição: {data_label}  |  Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  Total de unidades: {len(todas_resumo)}", style_sub))
     story.append(HRFlowable(width="100%", thickness=2, color=COR_VERDE, spaceAfter=10))
 

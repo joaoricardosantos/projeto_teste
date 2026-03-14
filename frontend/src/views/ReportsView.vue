@@ -222,8 +222,12 @@ const authHeader = () => ({
 
 const renderPreview = (body) =>
   body
-    .replace(/\{\{nome\}\}/g, 'João Silva')
     .replace(/\{\{condominio\}\}/g, 'Residencial Acácias')
+    .replace(/\{\{unidade\}\}/g, '315 SALA')
+    .replace(/\{\{nome\}\}/g, 'João Silva')
+    .replace(/\{\{qtd\}\}/g, '5')
+    .replace(/\{\{competencia\}\}/g, '10/2025')
+    .replace(/\{\{vencimento\}\}/g, '01/11/2025')
     .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
 
 // ── Buscar templates ──────────────────────────────────────────────────────────
