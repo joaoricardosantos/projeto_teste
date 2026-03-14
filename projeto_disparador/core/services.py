@@ -64,6 +64,7 @@ def process_defaulters_spreadsheet(file_obj):
 
     contacts = []
     error_count = 0
+    failures_no_phone = []  # unidades sem número cadastrado
 
     for row in csv_reader:
         condo_name  = (row.get("condominio") or "").strip()
@@ -75,6 +76,11 @@ def process_defaulters_spreadsheet(file_obj):
             contacts.append({"phone": contact, "message": message})
         else:
             error_count += 1
+            failures_no_phone.append({
+                "unidade": condo_name,
+                "nome": contact,
+                "motivo": "Nenhum número cadastrado",
+            })
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
@@ -135,6 +141,7 @@ def process_defaulters_with_template(file_obj, template_id: str):
 
     contacts = []
     error_count = 0
+    failures_no_phone = []  # unidades sem número cadastrado
 
     for row in csv_reader:
         condo_name  = (row.get("condominio") or "").strip()
@@ -146,6 +153,11 @@ def process_defaulters_with_template(file_obj, template_id: str):
             contacts.append({"phone": contact, "message": message})
         else:
             error_count += 1
+            failures_no_phone.append({
+                "unidade": condo_name,
+                "nome": contact,
+                "motivo": "Nenhum número cadastrado",
+            })
 
     result = send_whatsapp_bulk(contacts)
     result["errors"] += error_count
