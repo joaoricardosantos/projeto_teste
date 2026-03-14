@@ -4,7 +4,7 @@
       <v-col cols="12" sm="10" md="8" lg="6">
         <v-card elevation="8">
           <v-card-title class="text-h5 font-weight-bold pa-4">
-            Upload de Planilha (CSV)
+            Upload de Planilha (CSV ou Excel)
           </v-card-title>
           <v-card-text class="pa-4">
             <v-form @submit.prevent="handleFileUpload">
@@ -40,25 +40,74 @@
 
               <v-file-input
                 v-model="selectedFile"
-                accept=".csv"
-                label="Selecione o arquivo CSV"
+                accept=".csv,.xlsx"
+                label="Selecione o arquivo (.csv ou .xlsx)"
                 variant="outlined"
-                prepend-icon="mdi-file-delimited"
+                prepend-icon="mdi-file-table"
                 show-size
                 required
               />
 
-              <v-alert v-if="errorMessage" type="error" class="mt-4" dense>{{ errorMessage }}</v-alert>
-              <v-alert v-if="successMessage" type="success" class="mt-4" dense>
-                {{ successMessage }}
-                <div v-if="resultDetails" class="mt-2">
-                  <strong>Sucessos:</strong> {{ resultDetails.success }}<br />
-                  <strong>Erros:</strong> {{ resultDetails.errors }}
+              <v-alert v-if="errorMessage" type="error" class="mt-4" dense>
+                {{ errorMessage }}
+              </v-alert>
+
+              <!-- Resultado do processamento -->
+              <v-alert
+                v-if="resultDetails"
+                type="success"
+                class="mt-4"
+                closable
+                @click:close="resultDetails = null; successMessage = ''"
+              >
+                <div class="font-weight-bold mb-2">{{ successMessage }}</div>
+
+                <div>✅ Enviados com sucesso: <strong>{{ resultDetails.success }}</strong></div>
+                <div>❌ Falhas no envio: <strong>{{ envioFailures.length }}</strong></div>
+                <div>📵 Sem número cadastrado: <strong>{{ resultDetails.sem_numero?.length || 0 }}</strong></div>
+
+                <!-- Unidades sem número -->
+                <div v-if="resultDetails.sem_numero && resultDetails.sem_numero.length" class="mt-3">
+                  <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
+                    📵 Unidades sem número cadastrado:
+                  </div>
+                  <v-sheet color="orange-lighten-5" rounded class="pa-2">
+                    <div
+                      v-for="(f, i) in resultDetails.sem_numero"
+                      :key="i"
+                      class="text-caption py-1"
+                      :style="i < resultDetails.sem_numero.length - 1 ? 'border-bottom: 1px solid rgba(0,0,0,0.08)' : ''"
+                    >
+                      <strong>{{ f.unidade }}</strong>
+                      <span v-if="f.nome"> — {{ f.nome }}</span>
+                    </div>
+                  </v-sheet>
+                </div>
+
+                <!-- Falhas de envio reais -->
+                <div v-if="envioFailures.length" class="mt-3">
+                  <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
+                    ❌ Falhas no envio:
+                  </div>
+                  <div
+                    v-for="f in envioFailures"
+                    :key="f.phone"
+                    class="text-caption"
+                  >
+                    {{ f.phone }} — {{ f.error }}
+                  </div>
                 </div>
               </v-alert>
 
-              <v-btn type="submit" color="primary" block size="large" class="mt-6"
-                :loading="loading" :disabled="!selectedFile">
+              <v-btn
+                type="submit"
+                color="primary"
+                block
+                size="large"
+                class="mt-6"
+                :loading="loading"
+                :disabled="!selectedFile"
+              >
                 Processar e Enviar Mensagens
               </v-btn>
             </v-form>
@@ -84,6 +133,12 @@ const selectedTemplateId = ref(null)
 const selectedTemplate = computed(() =>
   templates.value.find(t => t.id === selectedTemplateId.value) || null
 )
+
+// Filtra apenas falhas reais de envio (exclui entradas de "sem número")
+const envioFailures = computed(() => {
+  if (!resultDetails.value?.failures) return []
+  return resultDetails.value.failures.filter(f => f.phone !== '—')
+})
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` })
 
