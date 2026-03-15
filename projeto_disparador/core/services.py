@@ -89,7 +89,7 @@ def _registrar_campanha(contacts: list, result: dict, failures_no_phone: list):
         from django.utils import timezone as tz
         import re as _re
 
-        campanha_nome = f"Disparo {tz.now().strftime('%d/%m/%Y %H:%M')}"
+        campanha_nome = "Novo disparo"
         campanha = Campanha.objects.create(
             nome=campanha_nome,
             total_enviados=result.get("success", 0),

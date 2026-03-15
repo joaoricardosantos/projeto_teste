@@ -17,7 +17,8 @@
       </p>
 
       <v-row align="center">
-        <v-col cols="12" sm="4">
+                <v-col cols="12" sm="4">
+          <!-- Campo de condomínio com barra de loading visível -->
           <v-autocomplete
             v-model="idCondominio"
             :items="condominios"
@@ -27,14 +28,45 @@
             variant="outlined"
             density="comfortable"
             clearable
-            hide-details="auto"
-            hint="Deixe em branco para todos"
-            persistent-hint
-            :disabled="isExporting"
-            :loading="loadingCondominios"
+            hide-details
+            :disabled="isExporting || loadingCondominios"
             no-data-text="Nenhum condomínio encontrado"
             placeholder="Buscar por nome ou ID..."
           />
+ 
+          <!-- Status de carregamento abaixo do campo -->
+          <div style="min-height: 28px; padding-top: 4px;">
+            <v-expand-transition>
+              <div v-if="loadingCondominios" key="loading">
+                <v-progress-linear
+                  indeterminate
+                  color="primary"
+                  height="3"
+                  rounded
+                  style="border-radius: 99px;"
+                />
+                <p style="font-size: 11px; color: #006837; margin-top: 5px; display: flex; align-items: center; gap: 4px;">
+                  <v-icon size="12" color="primary">mdi-office-building-outline</v-icon>
+                  Buscando condomínios na Superlógica...
+                </p>
+              </div>
+              <p
+                v-else-if="condominios.length > 0"
+                key="done"
+                style="font-size: 11px; color: #6b7280; margin-top: 5px; display: flex; align-items: center; gap: 4px;"
+              >
+                <v-icon size="12" color="success">mdi-check-circle-outline</v-icon>
+                {{ condominios.length }} condomínios disponíveis · Deixe vazio para todos
+              </p>
+              <p
+                v-else
+                key="hint"
+                style="font-size: 11px; color: #9ca3af; margin-top: 5px;"
+              >
+                Deixe em branco para varrer todos os condomínios
+              </p>
+            </v-expand-transition>
+          </div>
         </v-col>
 
         <v-col cols="12" sm="4">
