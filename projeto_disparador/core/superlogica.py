@@ -273,6 +273,10 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
     for campo in ("principal", "juros", "multa", "atualizacao", "honorarios", "total"):
         resumo[campo] = _d2f(resumo[campo])
 
+    # Se todos os valores são zero (filtro removeu tudo), exclui a unidade
+    if resumo["total"] == 0.0 and not detalhado:
+        return None, None
+
     return resumo, detalhado
 
 

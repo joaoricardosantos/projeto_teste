@@ -34,8 +34,7 @@
                 :color="ultimos5anos ? 'primary' : 'default'"
                 :variant="ultimos5anos ? 'flat' : 'outlined'"
                 prepend-icon="mdi-calendar-clock"
-                :style="!ultimos5anos ? 'border-color: rgba(0,104,55,0.4); color: #006837;' : ''"
-                @click="ultimos5anos = !ultimos5anos; carregar(true)"
+                @click="toggleFiltro"
               >
                 Últimos 5 anos
               </v-btn>
@@ -77,27 +76,15 @@
           {{ erro }}
         </v-alert>
 
-        <!-- Loading inicial (só mostra spinner se ainda não há dados) -->
-        <v-row v-if="loading && !dados" justify="center" class="my-16">
-          <v-col cols="12" class="text-center">
+        <!-- Loading: sempre esconde os dados e mostra spinner enquanto carrega -->
+        <Transition name="dados-fade" mode="out-in">
+          <div v-if="loading" key="loading" class="d-flex flex-column align-center justify-center my-16">
             <v-progress-circular indeterminate color="primary" size="56" />
             <p class="text-body-2 text-medium-emphasis mt-4">Consultando todos os condomínios...</p>
             <p class="text-caption text-medium-emphasis">Isso pode levar alguns minutos</p>
-          </v-col>
-        </v-row>
+          </div>
 
-        <!-- Barra de progresso sutil ao recarregar com dados existentes -->
-        <v-progress-linear
-          v-if="loading && dados"
-          indeterminate
-          color="primary"
-          height="3"
-          rounded
-          class="mb-4"
-          style="border-radius: 99px;"
-        />
-
-        <template v-if="dados">
+          <div v-else-if="dados" key="dados">
 
           <!-- KPI Cards -->
           <v-row class="mb-4">
@@ -201,7 +188,8 @@
             </v-card-text>
           </v-card>
 
-        </template>
+          </div>
+        </Transition>
 
       </v-window-item>
 
@@ -276,6 +264,9 @@ const ultimos5anos    = ref(false)
 const dialogSemNumero = ref(false)
 const buscaSemNumero  = ref('')
 
+// Cache local por chave — evita rebuscar ao alternar filtro
+const localCache = {}
+
 const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
@@ -288,34 +279,96 @@ const brl = (valor) => {
   }
 }
 
+const cacheKey = (filtro5a = ultimos5anos.value) => {
+  const dp = dataPosicao.value || 'hoje'
+  return `${dp}_${filtro5a ? '5a' : 'all'}`
+}
+
+// Busca dados da API e salva no cache local
+const fetchDados = async (filtro5a) => {
+  const params = new URLSearchParams()
+  if (dataPosicao.value) {
+    const [ano, mes, dia] = dataPosicao.value.split('-')
+    params.append('data_posicao', `${dia}/${mes}/${ano}`)
+  }
+  if (filtro5a) params.append('ultimos_5_anos', 'true')
+  const query = params.toString() ? `?${params.toString()}` : ''
+  const res = await fetch(`/api/admin/dashboard${query}`, { headers: authHeader() })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || 'Erro ao carregar dashboard')
+  }
+  const resultado = await res.json()
+  localCache[cacheKey(filtro5a)] = resultado
+  return resultado
+}
+
 const carregar = async (forceRefresh = false) => {
+  const key = cacheKey()
+
+  if (forceRefresh) {
+    // Limpa cache do servidor e local
+    await fetch('/api/admin/dashboard/clear-cache', { method: 'POST', headers: authHeader() })
+    Object.keys(localCache).forEach(k => delete localCache[k])
+  }
+
+  // Se está no cache local, usa direto (sem mostrar loading)
+  if (!forceRefresh && localCache[key]) {
+    dados.value = localCache[key]
+    // Pré-carrega oposto em background
+    preCarregarOposto()
+    return
+  }
+
+  // Precisa buscar: mostra loading e esconde dados
   loading.value = true
+  dados.value   = null
   erro.value    = ''
   try {
-    if (forceRefresh) {
-      await fetch('/api/admin/dashboard/clear-cache', {
-        method:  'POST',
-        headers: authHeader(),
-      })
-    }
-    const params = new URLSearchParams()
-    if (dataPosicao.value) {
-      const [ano, mes, dia] = dataPosicao.value.split('-')
-      params.append('data_posicao', `${dia}/${mes}/${ano}`)
-    }
-    if (ultimos5anos.value) params.append('ultimos_5_anos', 'true')
-    const query = params.toString() ? `?${params.toString()}` : ''
-    const res = await fetch(`/api/admin/dashboard${query}`, { headers: authHeader() })
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      throw new Error(d.detail || 'Erro ao carregar dashboard')
-    }
-    dados.value = await res.json()
+    dados.value = await fetchDados(ultimos5anos.value)
+    // Pré-carrega oposto em background
+    preCarregarOposto()
   } catch (e) {
     erro.value = e.message
   } finally {
     loading.value = false
   }
+}
+
+// Ao clicar no toggle
+const toggleFiltro = async () => {
+  ultimos5anos.value = !ultimos5anos.value
+  const key = cacheKey()
+
+  if (localCache[key]) {
+    // Cache disponível — troca instantânea com animação (loading breve para acionar o fade)
+    loading.value = true
+    dados.value   = null
+    await new Promise(r => setTimeout(r, 120))
+    dados.value   = localCache[key]
+    loading.value = false
+  } else {
+    // Precisa buscar — mostra loading completo
+    loading.value = true
+    dados.value   = null
+    erro.value    = ''
+    try {
+      dados.value = await fetchDados(ultimos5anos.value)
+    } catch (e) {
+      erro.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+  preCarregarOposto()
+}
+
+// Pré-carrega o estado oposto silenciosamente em background
+const preCarregarOposto = () => {
+  const outroFiltro = !ultimos5anos.value
+  const outraKey = cacheKey(outroFiltro)
+  if (localCache[outraKey]) return
+  fetchDados(outroFiltro).catch(() => {})
 }
 
 const headersRanking = [
@@ -399,4 +452,10 @@ onMounted(carregar)
 }
 
 
+
+/* ── Transição suave ao trocar filtro ── */
+.dados-fade-enter-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.dados-fade-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.dados-fade-enter-from   { opacity: 0; transform: translateY(8px); }
+.dados-fade-leave-to     { opacity: 0; transform: translateY(-4px); }
 </style>
