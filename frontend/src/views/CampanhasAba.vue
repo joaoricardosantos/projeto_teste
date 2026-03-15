@@ -297,6 +297,8 @@ const selecionarTodosAguardando = () => {
   selecionados.value = mensagensAguardando.value.map(m => m.id)
 }
 
+// Substitua APENAS a função `reenviar` no CampanhasAba.vue por esta versão:
+
 const reenviar = async () => {
   reenviando.value = true
   try {
@@ -308,16 +310,27 @@ const reenviar = async () => {
         template_id: templateReenvio.value || null,
       }),
     })
-    const data = await res.json()
+
+    // Parse seguro: evita "JSON.parse: unexpected character" caso o backend
+    // retorne HTML de erro (ex: 500 Internal Server Error)
+    const text = await res.text()
+    let data = {}
+    try {
+      data = JSON.parse(text)
+    } catch (_) {
+      data = { detail: `Resposta inválida do servidor (HTTP ${res.status})` }
+    }
+
     if (!res.ok) throw new Error(data.detail || 'Erro ao reenviar')
 
     snackbar.value = {
-      show: true,
-      text: `Reenvio concluído! ✅ ${data.success} enviados, ❌ ${data.errors} erros`,
+      show:  true,
+      text:  `Reenvio concluído! ✅ ${data.success} enviados, ❌ ${data.errors} erros`,
       color: data.errors > 0 ? 'warning' : 'success',
     }
     dialogReenviar.value = false
-    selecionados.value = []
+    selecionados.value   = []
+    templateReenvio.value = null
     await carregarMensagens(campanhaAtiva.value.id)
     await carregarCampanhas()
   } catch (e) {

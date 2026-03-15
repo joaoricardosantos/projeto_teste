@@ -23,6 +23,21 @@ def _fmt(dt):
     return local.strftime("%d/%m/%Y %H:%M")
 
 
+def _aggregate_bulk_results(results: list) -> dict:
+    """
+    Converte a lista retornada por send_whatsapp_bulk em
+    { success, errors, failures }.
+    """
+    success  = sum(1 for r in results if r.get("status") == "success")
+    errors   = sum(1 for r in results if r.get("status") != "success")
+    failures = [
+        {"phone": r.get("phone", ""), "error": r.get("error", "Erro desconhecido")}
+        for r in results
+        if r.get("status") != "success"
+    ]
+    return {"success": success, "errors": errors, "failures": failures}
+
+
 @campanha_router.get("/", response={200: list})
 def listar_campanhas(request):
     """Lista todas as campanhas ordenadas por data."""
@@ -120,13 +135,12 @@ def reenviar_mensagens(request, campanha_id: UUID4, payload: ReenviarIn):
     if not ids:
         raise HttpError(400, "Nenhum_ID_informado")
 
-    # Busca mensagens
     mensagens = MensagemEnviada.objects.filter(
         id__in=ids,
         campanha=campanha,
     )
 
-    if not mensagens:
+    if not mensagens.exists():
         raise HttpError(404, "Mensagens_not_found")
 
     # Template opcional
@@ -152,7 +166,9 @@ def reenviar_mensagens(request, campanha_id: UUID4, payload: ReenviarIn):
 
         contacts.append({"phone": m.telefone, "message": msg, "_id": str(m.id)})
 
-    result = send_whatsapp_bulk(contacts)
+    # send_whatsapp_bulk retorna uma lista de resultados — agregar antes de usar
+    raw_results = send_whatsapp_bulk(contacts)
+    result = _aggregate_bulk_results(raw_results)
 
     # Atualiza status das mensagens reenviadas
     from django.utils import timezone
@@ -164,7 +180,7 @@ def reenviar_mensagens(request, campanha_id: UUID4, payload: ReenviarIn):
     )
 
     return 200, {
-        "success":  result.get("success", 0),
-        "errors":   result.get("errors", 0),
-        "failures": result.get("failures", []),
+        "success":  result["success"],
+        "errors":   result["errors"],
+        "failures": result["failures"],
     }
