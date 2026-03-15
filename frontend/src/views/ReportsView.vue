@@ -16,9 +16,29 @@
         1. Gerar planilha Excel
       </p>
 
-      <v-row align="center">
-                <v-col cols="12" sm="4">
-          <!-- Campo de condomínio com barra de loading visível -->
+      <!-- Toggle últimos 5 anos -->
+      <div class="d-flex align-center gap-3 mb-5">
+        <v-btn
+          :color="ultimos5anos ? 'primary' : 'default'"
+          :variant="ultimos5anos ? 'flat' : 'outlined'"
+          size="small"
+          prepend-icon="mdi-calendar-clock"
+          :disabled="isExporting"
+          @click="ultimos5anos = !ultimos5anos"
+        >
+          Últimos 5 anos
+        </v-btn>
+        <v-expand-transition>
+          <span v-if="ultimos5anos" class="text-caption text-medium-emphasis">
+            <v-icon size="13" color="primary" class="mr-1">mdi-information-outline</v-icon>
+            Filtrando vencimentos a partir de {{ dataInicio5anos }}
+          </span>
+        </v-expand-transition>
+      </div>
+
+      <v-row align="start">
+        <v-col cols="12" sm="4">
+          <!-- Campo condomínio com loading visível -->
           <v-autocomplete
             v-model="idCondominio"
             :items="condominios"
@@ -33,36 +53,21 @@
             no-data-text="Nenhum condomínio encontrado"
             placeholder="Buscar por nome ou ID..."
           />
- 
-          <!-- Status de carregamento abaixo do campo -->
           <div style="min-height: 28px; padding-top: 4px;">
             <v-expand-transition>
               <div v-if="loadingCondominios" key="loading">
-                <v-progress-linear
-                  indeterminate
-                  color="primary"
-                  height="3"
-                  rounded
-                  style="border-radius: 99px;"
-                />
-                <p style="font-size: 11px; color: #006837; margin-top: 5px; display: flex; align-items: center; gap: 4px;">
+                <v-progress-linear indeterminate color="primary" height="3" rounded style="border-radius:99px;" />
+                <p style="font-size:11px;color:#006837;margin-top:5px;display:flex;align-items:center;gap:4px;">
                   <v-icon size="12" color="primary">mdi-office-building-outline</v-icon>
                   Buscando condomínios na Superlógica...
                 </p>
               </div>
-              <p
-                v-else-if="condominios.length > 0"
-                key="done"
-                style="font-size: 11px; color: #6b7280; margin-top: 5px; display: flex; align-items: center; gap: 4px;"
-              >
+              <p v-else-if="condominios.length > 0" key="done"
+                style="font-size:11px;color:#6b7280;margin-top:5px;display:flex;align-items:center;gap:4px;">
                 <v-icon size="12" color="success">mdi-check-circle-outline</v-icon>
                 {{ condominios.length }} condomínios disponíveis · Deixe vazio para todos
               </p>
-              <p
-                v-else
-                key="hint"
-                style="font-size: 11px; color: #9ca3af; margin-top: 5px;"
-              >
+              <p v-else key="hint" style="font-size:11px;color:#9ca3af;margin-top:5px;">
                 Deixe em branco para varrer todos os condomínios
               </p>
             </v-expand-transition>
@@ -128,12 +133,7 @@
             <v-icon color="primary" class="mr-2" size="small">mdi-timer-sand</v-icon>
             <span class="text-body-2 text-medium-emphasis">{{ progressMessage }}</span>
           </div>
-          <v-progress-linear
-            indeterminate
-            color="primary"
-            rounded
-            height="6"
-          />
+          <v-progress-linear indeterminate color="primary" rounded height="6" />
           <p class="text-caption text-medium-emphasis mt-2">
             Para todos os condomínios esse processo pode levar alguns minutos. Não feche esta página.
           </p>
@@ -264,11 +264,19 @@ const exportError        = ref('')
 const exportSuccess      = ref('')
 const idCondominio       = ref(null)
 const dataPosicao        = ref('')
+const ultimos5anos       = ref(false)
 const progressMessage    = ref('Iniciando geração do relatório...')
 const condominios        = ref([])
 const loadingCondominios = ref(false)
 let   pollingInterval    = null
 let   pollingSeconds     = 0
+
+// Data de início calculada dinamicamente: hoje - 5 anos
+const dataInicio5anos = computed(() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 5)
+  return d.toLocaleDateString('pt-BR')
+})
 
 // ── Estado disparo ────────────────────────────────────────────────────────────
 const isDispatching      = ref(false)
@@ -309,6 +317,7 @@ const fetchTemplates = async () => {
   finally { loadingTemplates.value = false }
 }
 
+// ── Buscar condomínios ────────────────────────────────────────────────────────
 const carregarCondominios = async () => {
   loadingCondominios.value = true
   try {
@@ -327,17 +336,16 @@ const carregarCondominios = async () => {
 
 // ── Exportar Excel ou PDF (assíncrono com polling) ────────────────────────────
 const startExport = async (formato) => {
-  exportFormat.value  = formato
-  isExporting.value   = true
-  exportError.value   = ''
-  exportSuccess.value = ''
-  pollingSeconds      = 0
+  exportFormat.value    = formato
+  isExporting.value     = true
+  exportError.value     = ''
+  exportSuccess.value   = ''
+  pollingSeconds        = 0
   progressMessage.value = `Iniciando geração do relatório ${formato.toUpperCase()}...`
 
-  const baseStart    = formato === 'pdf' ? '/api/admin/export-pdf/start'    : '/api/admin/export-defaulters/start'
-  const baseStatus   = formato === 'pdf' ? '/api/admin/export-pdf/status'   : '/api/admin/export-defaulters/status'
-  const baseDownload = formato === 'pdf' ? '/api/admin/export-pdf/download'  : '/api/admin/export-defaulters/download'
-  const mimeType     = formato === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  const baseStart    = formato === 'pdf' ? '/api/admin/export-pdf/start'   : '/api/admin/export-defaulters/start'
+  const baseStatus   = formato === 'pdf' ? '/api/admin/export-pdf/status'  : '/api/admin/export-defaulters/status'
+  const baseDownload = formato === 'pdf' ? '/api/admin/export-pdf/download' : '/api/admin/export-defaulters/download'
 
   try {
     const params = new URLSearchParams()
@@ -346,10 +354,11 @@ const startExport = async (formato) => {
       const [ano, mes, dia] = dataPosicao.value.split('-')
       params.append('data_posicao', `${dia}/${mes}/${ano}`)
     }
-    const query = params.toString() ? `?${params.toString()}` : ''
+    if (ultimos5anos.value) params.append('ultimos_5_anos', 'true')
 
+    const query    = params.toString() ? `?${params.toString()}` : ''
     const startRes = await fetch(`${baseStart}${query}`, {
-      method: 'POST',
+      method:  'POST',
       headers: authHeader(),
     })
     if (!startRes.ok) {
@@ -362,8 +371,8 @@ const startExport = async (formato) => {
 
     pollingInterval = setInterval(async () => {
       pollingSeconds += 3
-      const mins = Math.floor(pollingSeconds / 60)
-      const secs = pollingSeconds % 60
+      const mins  = Math.floor(pollingSeconds / 60)
+      const secs  = pollingSeconds % 60
       const tempo = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
       progressMessage.value = `Processando ${formato.toUpperCase()}... (${tempo} aguardando)`
 
@@ -430,8 +439,8 @@ const downloadJob = async (jobId, filename, baseDownload) => {
 const dispatchMessages = async () => {
   if (!dispatchFile.value) return
 
-  isDispatching.value = true
-  dispatchError.value = ''
+  isDispatching.value  = true
+  dispatchError.value  = ''
   dispatchResult.value = null
 
   try {
@@ -442,9 +451,9 @@ const dispatchMessages = async () => {
     if (dispatchTemplateId.value) url += `?template_id=${dispatchTemplateId.value}`
 
     const response = await fetch(url, {
-      method: 'POST',
+      method:  'POST',
       headers: authHeader(),
-      body: formData,
+      body:    formData,
     })
 
     const text = await response.text()
@@ -454,7 +463,7 @@ const dispatchMessages = async () => {
     if (!response.ok) throw new Error(data.detail || 'Erro ao disparar mensagens')
 
     dispatchResult.value = data.details
-    dispatchFile.value = null
+    dispatchFile.value   = null
   } catch (error) {
     dispatchError.value = error.message
   } finally {

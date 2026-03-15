@@ -147,7 +147,7 @@ def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> 
     return unidades
 
 
-def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: dict):
+def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: dict, data_inicio: str = None):
     """
     Usa /avancada filtrando por unidade para obter valores exatos
     com índice de correção monetária atualizado.
@@ -209,6 +209,28 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
         if not isinstance(receb, dict):
             continue
 
+        if data_inicio:
+            _r = receb.get("dt_vencimento_recb", "")
+            try:
+                from datetime import datetime as _D
+                _s = str(_r).strip()[:10]
+                # API retorna MM/DD/YYYY (ex: 12/30/2019)
+                if "-" in _s:
+                    _d = _D.strptime(_s, "%Y-%m-%d")
+                elif len(_s.split("/")[0]) == 4:
+                    _d = _D.strptime(_s, "%Y/%m/%d")
+                else:
+                    # tenta MM/DD/YYYY primeiro (formato da API), depois DD/MM/YYYY
+                    try:
+                        _d = _D.strptime(_s, "%m/%d/%Y")
+                    except ValueError:
+                        _d = _D.strptime(_s, "%d/%m/%Y")
+                _i = _D.strptime(data_inicio, "%d/%m/%Y")
+                if _d < _i:
+                    continue
+            except Exception:
+                pass
+
         vencimento  = receb.get("dt_vencimento_recb", "")
         competencia = receb.get("dt_competencia_recb", "")
         id_receb    = receb.get("id_recebimento_recb")
@@ -261,7 +283,7 @@ _MAX_WORKERS_UNIDADES = 12
 _MAX_WORKERS_CONDOMINIOS = 6
 
 
-def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict):
+def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict, data_inicio: str = None):
     """
     Estratégia em 2 etapas com paralelismo:
     1. /index  → descobre quais unidades são inadimplentes (rápido)
@@ -277,7 +299,7 @@ def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_
     # Busca todos os valores em paralelo com pool de threads
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS_UNIDADES) as executor:
         futures = {
-            executor.submit(_buscar_valores_unidade, id_condominio, id_uni, mapa_unidades): id_uni
+            executor.submit(_buscar_valores_unidade, id_condominio, id_uni, mapa_unidades, data_inicio): id_uni
             for id_uni in unidades_ids
         }
         for future in as_completed(futures):
@@ -393,6 +415,7 @@ def _aplicar_formato_contabil(ws, headers):
 def gerar_relatorio_inadimplentes(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
+    data_inicio: Optional[str] = None,
 ) -> tuple:
     if not data_posicao:
         data_posicao = datetime.today().strftime("%m/%d/%Y")
@@ -414,7 +437,7 @@ def gerar_relatorio_inadimplentes(
         mapa_unidades = buscar_unidades(condo_id)
         if not mapa_unidades:
             return [], []
-        resumo, detalhado = buscar_inadimplentes_condominio(condo_id, data_posicao, mapa_unidades)
+        resumo, detalhado = buscar_inadimplentes_condominio(condo_id, data_posicao, mapa_unidades, data_inicio)
         if not resumo:
             return [], []
 
@@ -550,6 +573,7 @@ def gerar_relatorio_inadimplentes(
 def gerar_pdf_inadimplentes(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
+    data_inicio: Optional[str] = None,
 ) -> tuple:
     """
     Gera um relatório PDF de inadimplentes com tabela formatada.
@@ -594,7 +618,7 @@ def gerar_pdf_inadimplentes(
         mapa = buscar_unidades(condo_id)
         if not mapa:
             return []
-        resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
+        resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa, data_inicio)
         if not resumo:
             return []
         linhas = []

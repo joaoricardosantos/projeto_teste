@@ -11,57 +11,73 @@
       <v-window-item value="visao">
 
         <!-- Cabeçalho -->
-        <v-row class="mb-4" align="center">
-          <v-col cols="12" sm="7">
-            <h1 class="text-h5 font-weight-bold">Dashboard de Inadimplência</h1>
-            <p class="text-body-2 text-medium-emphasis mt-1">
-              Visão geral consolidada de todos os condomínios.
-              <span v-if="dados">
-                Gerado em {{ dados.gerado_em }}
-                <v-chip v-if="dados.cache" size="x-small" color="blue" variant="tonal" class="ml-1">
-                  <v-icon size="10" class="mr-1">mdi-lightning-bolt</v-icon>cache
-                </v-chip>
-              </span>
-            </p>
-          </v-col>
-          <v-col cols="12" sm="5" class="d-flex gap-2 justify-sm-end align-center flex-wrap">
-            <v-text-field
-              v-model="dataPosicao"
-              type="date"
-              label="Data de posição"
-              variant="outlined"
-              density="compact"
-              hide-details
-              clearable
-              style="max-width: 180px"
-            />
-            <v-btn
-              color="primary"
-              :loading="loading"
-              prepend-icon="mdi-refresh"
-              @click="carregar(false)"
-            >
-              Atualizar
-            </v-btn>
-            <v-btn
-              color="secondary"
-              variant="outlined"
-              :loading="loading"
-              prepend-icon="mdi-refresh-circle"
-              @click="carregar(true)"
-              title="Ignorar cache e buscar dados novos"
-            >
-              Forçar
-            </v-btn>
-          </v-col>
-        </v-row>
+        <div class="dash-header mb-4">
+          <!-- Linha 1: título + ações -->
+          <div class="d-flex align-center justify-space-between flex-wrap gap-3">
+            <div>
+              <h1 class="text-h5 font-weight-bold">Dashboard de Inadimplência</h1>
+              <p class="text-body-2 text-medium-emphasis mt-1">
+                Visão geral consolidada de todos os condomínios.
+                <span v-if="dados">
+                  Gerado em {{ dados.gerado_em }}
+                  <v-chip v-if="dados.cache" size="x-small" color="blue" variant="tonal" class="ml-1">
+                    <v-icon size="10" class="mr-1">mdi-lightning-bolt</v-icon>cache
+                  </v-chip>
+                </span>
+              </p>
+            </div>
+
+            <!-- Ações -->
+            <div class="d-flex align-center gap-2 flex-wrap">
+              <!-- Toggle 5 anos — mesmo tamanho dos botões ao lado -->
+              <v-btn
+                :color="ultimos5anos ? 'primary' : 'default'"
+                :variant="ultimos5anos ? 'flat' : 'outlined'"
+                prepend-icon="mdi-calendar-clock"
+                :style="!ultimos5anos ? 'border-color: rgba(0,104,55,0.4); color: #006837;' : ''"
+                @click="ultimos5anos = !ultimos5anos; carregar(true)"
+              >
+                Últimos 5 anos
+              </v-btn>
+
+              <v-text-field
+                v-model="dataPosicao"
+                type="date"
+                label="Data de posição"
+                variant="outlined"
+                density="compact"
+                hide-details
+                clearable
+                style="max-width: 170px"
+              />
+              <v-btn
+                color="primary"
+                :loading="loading"
+                prepend-icon="mdi-refresh"
+                @click="carregar(false)"
+              >
+                Atualizar
+              </v-btn>
+              <v-btn
+                color="secondary"
+                variant="outlined"
+                :loading="loading"
+                prepend-icon="mdi-refresh-circle"
+                @click="carregar(true)"
+                title="Ignorar cache e buscar dados novos"
+              >
+                Forçar
+              </v-btn>
+            </div>
+          </div>
+        </div>
 
         <!-- Erro -->
         <v-alert v-if="erro" type="error" class="mb-4" closable @click:close="erro = ''">
           {{ erro }}
         </v-alert>
 
-        <!-- Loading inicial -->
+        <!-- Loading inicial (só mostra spinner se ainda não há dados) -->
         <v-row v-if="loading && !dados" justify="center" class="my-16">
           <v-col cols="12" class="text-center">
             <v-progress-circular indeterminate color="primary" size="56" />
@@ -69,6 +85,17 @@
             <p class="text-caption text-medium-emphasis">Isso pode levar alguns minutos</p>
           </v-col>
         </v-row>
+
+        <!-- Barra de progresso sutil ao recarregar com dados existentes -->
+        <v-progress-linear
+          v-if="loading && dados"
+          indeterminate
+          color="primary"
+          height="3"
+          rounded
+          class="mb-4"
+          style="border-radius: 99px;"
+        />
 
         <template v-if="dados">
 
@@ -245,6 +272,7 @@ const loading         = ref(false)
 const erro            = ref('')
 const dados           = ref(null)
 const dataPosicao     = ref('')
+const ultimos5anos    = ref(false)
 const dialogSemNumero = ref(false)
 const buscaSemNumero  = ref('')
 
@@ -275,6 +303,7 @@ const carregar = async (forceRefresh = false) => {
       const [ano, mes, dia] = dataPosicao.value.split('-')
       params.append('data_posicao', `${dia}/${mes}/${ano}`)
     }
+    if (ultimos5anos.value) params.append('ultimos_5_anos', 'true')
     const query = params.toString() ? `?${params.toString()}` : ''
     const res = await fetch(`/api/admin/dashboard${query}`, { headers: authHeader() })
     if (!res.ok) {
@@ -368,4 +397,6 @@ onMounted(carregar)
   text-align: right;
   flex-shrink: 0;
 }
+
+
 </style>
