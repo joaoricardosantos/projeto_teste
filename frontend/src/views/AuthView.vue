@@ -93,6 +93,15 @@
             />
           </div>
 
+          <!-- Link esqueci senha -->
+          <div class="text-right mb-3" style="margin-top: -8px;">
+            <a
+              href="#"
+              class="forgot-link"
+              @click.prevent="dialogEsqueci = true"
+            >Esqueci minha senha</a>
+          </div>
+
           <v-alert
             v-if="errorMessage"
             type="error"
@@ -115,6 +124,68 @@
             Entrar no sistema
           </v-btn>
 
+          <!-- Dialog: Esqueci minha senha -->
+          <v-dialog v-model="dialogEsqueci" max-width="420" persistent>
+            <v-card rounded="xl" class="pa-2">
+              <v-card-title class="pa-4 pb-2 d-flex align-center">
+                <v-icon color="primary" class="mr-2">mdi-lock-reset</v-icon>
+                Recuperar senha
+              </v-card-title>
+              <v-card-text class="pa-4 pt-2">
+                <p class="text-body-2 text-medium-emphasis mb-4">
+                  Digite o e-mail da sua conta. Se ele estiver cadastrado, enviaremos um link para redefinir sua senha.
+                </p>
+
+                <v-alert
+                  v-if="esqueciSucesso"
+                  type="success"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-4"
+                >{{ esqueciSucesso }}</v-alert>
+
+                <v-alert
+                  v-if="esqueciErro"
+                  type="error"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-4"
+                  closable
+                  @click:close="esqueciErro = ''"
+                >{{ esqueciErro }}</v-alert>
+
+                <v-text-field
+                  v-if="!esqueciSucesso"
+                  v-model="esqueciEmail"
+                  label="E-mail"
+                  type="email"
+                  variant="outlined"
+                  density="comfortable"
+                  prepend-inner-icon="mdi-email-outline"
+                  hide-details="auto"
+                  class="auth-field"
+                  :disabled="esqueciLoading"
+                  @keyup.enter="enviarEsqueci"
+                />
+              </v-card-text>
+              <v-card-actions class="pa-4 pt-0">
+                <v-btn
+                  variant="text"
+                  @click="fecharEsqueci"
+                >Cancelar</v-btn>
+                <v-spacer />
+                <v-btn
+                  v-if="!esqueciSucesso"
+                  color="primary"
+                  variant="flat"
+                  :loading="esqueciLoading"
+                  :disabled="!esqueciEmail"
+                  @click="enviarEsqueci"
+                >Enviar link</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
+
         </div>
       </div>
     </div>
@@ -131,6 +202,39 @@ const password     = ref('')
 const showPassword = ref(false)
 const loading      = ref(false)
 const errorMessage = ref('')
+
+// ── Esqueci minha senha ───────────────────────────────────────────────────────
+const dialogEsqueci  = ref(false)
+const esqueciEmail   = ref('')
+const esqueciLoading = ref(false)
+const esqueciSucesso = ref('')
+const esqueciErro    = ref('')
+
+const fecharEsqueci = () => {
+  dialogEsqueci.value  = false
+  esqueciEmail.value   = ''
+  esqueciSucesso.value = ''
+  esqueciErro.value    = ''
+}
+
+const enviarEsqueci = async () => {
+  if (!esqueciEmail.value) return
+  esqueciLoading.value = true
+  esqueciErro.value    = ''
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email: esqueciEmail.value }),
+    })
+    if (!res.ok) throw new Error('Erro ao enviar. Tente novamente.')
+    esqueciSucesso.value = 'Se o e-mail estiver cadastrado, você receberá o link em breve. Verifique sua caixa de entrada.'
+  } catch (e) {
+    esqueciErro.value = e.message
+  } finally {
+    esqueciLoading.value = false
+  }
+}
 
 const features = [
   { text: 'Disparo automático via WhatsApp' },
@@ -394,4 +498,12 @@ const handleLogin = async () => {
   box-shadow: 0 6px 20px rgba(0,104,55,0.4) !important;
   transform: translateY(-1px);
 }
+.forgot-link {
+  font-size: 13px;
+  color: #006837;
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.forgot-link:hover { opacity: 1; text-decoration: underline; }
 </style>
