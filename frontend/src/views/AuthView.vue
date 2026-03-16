@@ -160,7 +160,19 @@ const handleLogin = async () => {
         Account_pending_approval: 'Sua conta ainda aguarda aprovação do administrador.',
         Account_disabled:         'Sua conta está desativada. Fale com o administrador.',
       }
-      throw new Error(msgs[data.detail] || data.detail || 'Erro ao fazer login.')
+      // data.detail pode ser string ou array de objetos (erros de validação Pydantic)
+      const errosPt = {
+        'value is not a valid email address: An email address must have an @-sign.': 'Digite um e-mail válido.',
+        'field required': 'Preencha todos os campos.',
+        'value is not a valid email': 'Digite um e-mail válido.',
+      }
+      const detail = Array.isArray(data.detail)
+        ? data.detail.map(e => {
+            const msg = e.msg || JSON.stringify(e)
+            return errosPt[msg] || msg
+          }).join(' ')
+        : (typeof data.detail === 'string' ? data.detail : null)
+      throw new Error(msgs[detail] || msgs[data.detail] || detail || 'Erro ao fazer login.')
     }
     localStorage.setItem('access_token', data.access_token)
     // Notifica o App.vue para mostrar a sidebar imediatamente (sem esperar reload)

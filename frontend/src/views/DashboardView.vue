@@ -470,6 +470,7 @@ onMounted(carregar)
 .kpi-value--truncate {
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-size: 1rem !important;
