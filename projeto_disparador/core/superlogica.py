@@ -420,6 +420,7 @@ def gerar_relatorio_inadimplentes(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
     data_inicio: Optional[str] = None,
+    ordenar_desc: bool = False,
 ) -> tuple:
     if not data_posicao:
         data_posicao = datetime.today().strftime("%m/%d/%Y")
@@ -497,8 +498,12 @@ def gerar_relatorio_inadimplentes(
     if not todas_resumo:
         return None, None
 
-    todas_resumo.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
-    todo_detalhado.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
+    if ordenar_desc:
+        todas_resumo.sort(key=lambda r: r["Total"], reverse=True)
+        todo_detalhado.sort(key=lambda r: r.get("Total", 0), reverse=True)
+    else:
+        todas_resumo.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
+        todo_detalhado.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
 
     wb = Workbook()
 
@@ -578,6 +583,7 @@ def gerar_pdf_inadimplentes(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
     data_inicio: Optional[str] = None,
+    ordenar_desc: bool = False,
 ) -> tuple:
     """
     Gera um relatório PDF de inadimplentes com tabela formatada.
@@ -656,7 +662,10 @@ def gerar_pdf_inadimplentes(
     if not todas_resumo:
         return None, None
 
-    todas_resumo.sort(key=lambda r: (r["Condomínio"], r["Unidade"]))
+    if ordenar_desc:
+        todas_resumo.sort(key=lambda r: r.get("Total", 0), reverse=True)
+    else:
+        todas_resumo.sort(key=lambda r: (r["Condomínio"], r["Unidade"]))
 
     # ── Monta o PDF ───────────────────────────────────────────────────────────
     buffer = BytesIO()
@@ -731,10 +740,15 @@ def gerar_pdf_inadimplentes(
     # Acumuladores do total geral
     grand_principal = grand_juros = grand_multa = grand_atualiz = grand_honor = grand_total = Decimal("0")
 
-    # Agrupa por condomínio para uma tabela por condomínio
-    from itertools import groupby
-    for (nome_condo, cid), grupo in groupby(todas_resumo, key=lambda r: (r["Condomínio"], r["condo_id"])):
-        rows = list(grupo)
+    # Agrupa por condomínio — usa dict para garantir que todas as linhas do mesmo
+    # condomínio fiquem juntas, independente da ordem de chegada dos threads
+    from collections import defaultdict
+    grupos_condo = defaultdict(list)
+    for row in todas_resumo:
+        chave = (row["Condomínio"], row["condo_id"])
+        grupos_condo[chave].append(row)
+
+    for (nome_condo, cid), rows in grupos_condo.items():
 
         story.append(Paragraph(
             f"[ID {cid}] {nome_condo or 'Sem nome'}",
@@ -806,6 +820,12 @@ def gerar_pdf_inadimplentes(
         # Larguras das colunas (total ~26cm em landscape A4)
         col_widths = [2.5*cm, 5*cm, 3*cm, 3*cm, 2.5*cm, 2*cm, 2*cm, 2.5*cm, 2.5*cm, 3*cm]
 
+        # Zebra: aplica linha a linha para garantir funcionamento no ReportLab
+        zebra_styles = []
+        for idx in range(len(rows)):
+            cor = COR_BRANCO if idx % 2 == 0 else COR_ZEBRA
+            zebra_styles.append(("BACKGROUND", (0, idx + 1), (-1, idx + 1), cor))
+
         table_style = [
             # Cabeçalho
             ("BACKGROUND",  (0, 0), (-1, 0),  COR_VERDE),
@@ -814,18 +834,17 @@ def gerar_pdf_inadimplentes(
             ("FONTSIZE",    (0, 0), (-1, 0),  7),
             ("ALIGN",       (0, 0), (-1, 0),  "CENTER"),
             ("VALIGN",      (0, 0), (-1, -1), "MIDDLE"),
-            ("ROWBACKGROUND", (0, 1), (-1, -2),
-             [COR_BRANCO if i % 2 == 0 else COR_ZEBRA for i in range(len(rows))]),
             # Totais
             ("BACKGROUND",  (0, -1), (-1, -1), COR_VERDE_ESC),
             ("TEXTCOLOR",   (0, -1), (-1, -1), COR_BRANCO),
+            ("FONTNAME",    (0, -1), (-1, -1), "Helvetica-Bold"),
             # Grade
             ("GRID",        (0, 0), (-1, -1),  0.4, colors.HexColor("#CCCCCC")),
             ("TOPPADDING",  (0, 0), (-1, -1),  4),
             ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
             ("LEFTPADDING", (0, 0), (-1, -1),  4),
             ("RIGHTPADDING",(0, 0), (-1, -1),  4),
-        ]
+        ] + zebra_styles
 
         tabela = Table(dados_tabela, colWidths=col_widths, repeatRows=1)
         tabela.setStyle(TableStyle(table_style))

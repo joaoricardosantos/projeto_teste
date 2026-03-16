@@ -27,7 +27,7 @@ _CACHE_LOCK = threading.Lock()
 _CACHE_TTL_MINUTES = 30
 
 
-def _run_job(job_id: str, id_condominio, data_posicao, data_inicio=None):
+def _run_job(job_id: str, id_condominio, data_posicao, data_inicio=None, ordenar_desc=False):
     with _JOBS_LOCK:
         _JOBS[job_id]["status"] = "running"
     try:
@@ -36,9 +36,9 @@ def _run_job(job_id: str, id_condominio, data_posicao, data_inicio=None):
                 id_condominio=id_condominio,
                 data_posicao=data_posicao,
                 data_inicio=data_inicio,
+                ordenar_desc=ordenar_desc,
             )
         except TypeError:
-            # Retrocompatibilidade: superlogica.py ainda sem patch data_inicio
             content, filename = gerar_relatorio_inadimplentes(
                 id_condominio=id_condominio,
                 data_posicao=data_posicao,
@@ -160,15 +160,16 @@ def start_export(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
     ultimos_5_anos: bool = False,
+    ordenar_desc: bool = False,
 ):
     """
     Inicia a geração do relatório em background.
     ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
+    ordenar_desc=true ordena por Total decrescente.
     """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
-    # Calcula data_inicio se o filtro de 5 anos estiver ativo
     data_inicio = None
     if ultimos_5_anos:
         data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
@@ -179,7 +180,7 @@ def start_export(
 
     t = threading.Thread(
         target=_run_job,
-        args=(job_id, id_condominio, data_posicao, data_inicio),
+        args=(job_id, id_condominio, data_posicao, data_inicio, ordenar_desc),
         daemon=True,
     )
     t.start()
@@ -277,6 +278,7 @@ def start_export_pdf(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
     ultimos_5_anos: bool = False,
+    ordenar_desc: bool = False,
 ):
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
@@ -300,6 +302,7 @@ def start_export_pdf(
                     id_condominio=id_condominio,
                     data_posicao=data_posicao,
                     data_inicio=data_inicio,
+                    ordenar_desc=ordenar_desc,
                 )
             except TypeError:
                 content, filename = gerar_pdf_inadimplentes(

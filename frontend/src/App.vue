@@ -1,8 +1,9 @@
 <template>
   <v-app :theme="theme">
 
-    <!-- ── Sidebar desktop (permanent, sempre montada) ── -->
+    <!-- ── Sidebar desktop (só renderiza quando autenticado) ── -->
     <v-navigation-drawer
+      v-if="isAuthenticated"
       v-model="sidebarOpen"
       :rail="rail"
       permanent
@@ -103,7 +104,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
@@ -111,37 +112,17 @@ const route  = useRoute()
 
 const rail         = ref(false)
 const theme        = ref(localStorage.getItem('theme') || 'pratikaLight')
-const isAuthenticated = ref(!!localStorage.getItem('access_token'))
+const sidebarOpen  = ref(true)
 
-// Sidebar aberta apenas quando autenticado
-const sidebarOpen = ref(!!localStorage.getItem('access_token'))
+// Usa a rota como fonte de verdade — sidebar só aparece em rotas autenticadas
+const isAuthenticated = computed(() => !!route.meta.requiresAuth)
 
-// Sincroniza sidebarOpen com isAuthenticated
-watch(isAuthenticated, (val) => {
-  sidebarOpen.value = val
-  // Esconde a sidebar na página de login
-  if (!val) rail.value = false
-})
+// Mantida por compatibilidade com AuthView
+window.__setAuth = (_val) => {}
 
-// Fecha a sidebar visualmente na rota de login
-watch(() => route.path, (path) => {
-  if (path === '/') sidebarOpen.value = false
-  else if (isAuthenticated.value) sidebarOpen.value = true
-})
-
-// Função global chamada pelo AuthView após login bem-sucedido
-window.__setAuth = (val) => {
-  isAuthenticated.value = val
-  sidebarOpen.value = val
-}
-
-// Escuta mudanças em outras abas
+// Logout em outra aba redireciona para login
 window.addEventListener('storage', (e) => {
-  if (e.key === 'access_token') {
-    const authed = !!e.newValue
-    isAuthenticated.value = authed
-    sidebarOpen.value = authed
-  }
+  if (e.key === 'access_token' && !e.newValue) router.push('/')
 })
 
 const navItems = [

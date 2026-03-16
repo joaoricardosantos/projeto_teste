@@ -16,8 +16,8 @@
         1. Gerar planilha Excel
       </p>
 
-      <!-- Toggle últimos 5 anos -->
-      <div class="d-flex align-center gap-3 mb-5">
+      <!-- Filtros de exportação -->
+      <div class="d-flex align-center mb-5 flex-wrap" style="gap: 10px;">
         <v-btn
           :color="ultimos5anos ? 'primary' : 'default'"
           :variant="ultimos5anos ? 'flat' : 'outlined'"
@@ -27,6 +27,16 @@
           @click="ultimos5anos = !ultimos5anos"
         >
           Últimos 5 anos
+        </v-btn>
+        <v-btn
+          :color="ordenarDesc ? 'primary' : 'default'"
+          :variant="ordenarDesc ? 'flat' : 'outlined'"
+          size="small"
+          prepend-icon="mdi-sort-descending"
+          :disabled="isExporting"
+          @click="ordenarDesc = !ordenarDesc"
+        >
+          Maior valor primeiro
         </v-btn>
         <v-expand-transition>
           <span v-if="ultimos5anos" class="text-caption text-medium-emphasis">
@@ -265,6 +275,7 @@ const exportSuccess      = ref('')
 const idCondominio       = ref(null)
 const dataPosicao        = ref('')
 const ultimos5anos       = ref(false)
+const ordenarDesc        = ref(false)
 const progressMessage    = ref('Iniciando geração do relatório...')
 const condominios        = ref([])
 const loadingCondominios = ref(false)
@@ -355,6 +366,7 @@ const startExport = async (formato) => {
       params.append('data_posicao', `${dia}/${mes}/${ano}`)
     }
     if (ultimos5anos.value) params.append('ultimos_5_anos', 'true')
+    if (ordenarDesc.value) params.append('ordenar_desc', 'true')
 
     const query    = params.toString() ? `?${params.toString()}` : ''
     const startRes = await fetch(`${baseStart}${query}`, {
