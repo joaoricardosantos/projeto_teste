@@ -28,7 +28,7 @@
             </div>
 
             <!-- Ações -->
-            <div class="d-flex align-center gap-2 flex-wrap">
+            <div class="d-flex align-center flex-wrap" style="gap: 10px;">
               <!-- Toggle 5 anos — mesmo tamanho dos botões ao lado -->
               <v-btn
                 :color="ultimos5anos ? 'primary' : 'default'"
@@ -91,39 +91,39 @@
 
             <!-- Total inadimplência -->
             <v-col cols="12" sm="6" md="3">
-              <v-card elevation="4" class="pa-5" style="border-left: 4px solid #006837;">
+              <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #006837;">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Inadimplência</span>
                   <v-icon color="primary" size="28">mdi-currency-brl</v-icon>
                 </div>
-                <div class="text-h5 font-weight-bold text-primary">{{ brl(dados.total_inadimplencia) }}</div>
-                <div class="text-caption text-medium-emphasis mt-1">{{ dados.total_unidades }} unidades inadimplentes</div>
+                <div class="text-h5 font-weight-bold text-primary kpi-value">{{ brl(dados.total_inadimplencia) }}</div>
+                <div class="text-caption text-medium-emphasis kpi-sub">{{ dados.total_unidades }} unidades inadimplentes</div>
               </v-card>
             </v-col>
 
             <!-- Condomínios -->
             <v-col cols="12" sm="6" md="3">
-              <v-card elevation="4" class="pa-5" style="border-left: 4px solid #1976D2;">
+              <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #1976D2;">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Condomínios</span>
                   <v-icon color="blue" size="28">mdi-office-building</v-icon>
                 </div>
-                <div class="text-h5 font-weight-bold" style="color: #1976D2;">{{ dados.total_condominios }}</div>
-                <div class="text-caption text-medium-emphasis mt-1">com inadimplência ativa</div>
+                <div class="text-h5 font-weight-bold kpi-value" style="color: #1976D2;">{{ dados.total_condominios }}</div>
+                <div class="text-caption text-medium-emphasis kpi-sub">com inadimplência ativa</div>
               </v-card>
             </v-col>
 
             <!-- Maior inadimplente -->
             <v-col cols="12" sm="6" md="3">
-              <v-card elevation="4" class="pa-5" style="border-left: 4px solid #F57C00;">
+              <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F57C00;">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Maior Devedor</span>
                   <v-icon color="orange-darken-2" size="28">mdi-podium-gold</v-icon>
                 </div>
-                <div class="text-body-2 font-weight-bold" style="color: #F57C00; line-height: 1.3;">
+                <div class="text-body-2 font-weight-bold kpi-value kpi-value--truncate" style="color: #F57C00;">
                   {{ dados.maior_condo_nome || '—' }}
                 </div>
-                <div class="text-caption text-medium-emphasis mt-1">{{ brl(dados.maior_condo_valor) }}</div>
+                <div class="text-caption text-medium-emphasis kpi-sub">{{ brl(dados.maior_condo_valor) }}</div>
               </v-card>
             </v-col>
 
@@ -131,7 +131,7 @@
             <v-col cols="12" sm="6" md="3">
               <v-card
                 elevation="4"
-                class="pa-5"
+                class="kpi-card"
                 style="border-left: 4px solid #D32F2F; cursor: pointer;"
                 @click="dialogSemNumero = true"
               >
@@ -139,8 +139,8 @@
                   <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Sem Número</span>
                   <v-icon color="red-darken-2" size="28">mdi-phone-off</v-icon>
                 </div>
-                <div class="text-h5 font-weight-bold" style="color: #D32F2F;">{{ dados.sem_numero_count }}</div>
-                <div class="text-caption mt-1" style="color: #D32F2F;">
+                <div class="text-h5 font-weight-bold kpi-value" style="color: #D32F2F;">{{ dados.sem_numero_count }}</div>
+                <div class="text-caption kpi-sub" style="color: #D32F2F;">
                   <v-icon size="12">mdi-eye</v-icon> clique para ver detalhes
                 </div>
               </v-card>
@@ -452,6 +452,33 @@ onMounted(carregar)
 }
 
 
+
+/* ── KPI Cards padronizados ── */
+.kpi-card {
+  padding: 20px !important;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+}
+.kpi-value {
+  line-height: 1.25;
+  margin-top: 4px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.kpi-value--truncate {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 1rem !important;
+  line-height: 1.45 !important;
+}
+.kpi-sub {
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
 
 /* ── Transição suave ao trocar filtro ── */
 .dados-fade-enter-active { transition: opacity 0.2s ease, transform 0.2s ease; }
