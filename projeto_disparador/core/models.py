@@ -120,3 +120,17 @@ class MensagemEnviada(models.Model):
 
     def __str__(self):
         return f"{self.telefone} — {self.status}"
+
+class PasswordResetToken(models.Model):
+    """Token de redefinição de senha com expiração de 1 hora."""
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reset_tokens")
+    token      = models.CharField(max_length=128, unique=True, db_index=True)
+    used       = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Token de reset de senha"
+
+    def __str__(self):
+        return f"Reset token para {self.user.email}"
