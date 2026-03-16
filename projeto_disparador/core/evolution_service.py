@@ -41,8 +41,11 @@ def send_whatsapp_message(phone: str, message: str, sleep_seconds: float = 5.0) 
     }
 
     response = requests.post(url, json=payload, headers=headers, timeout=15)
+
+    if not response.ok:
+        print(f"[EVOLUTION ERROR] status={response.status_code} body={response.text}")
+
     response.raise_for_status()
-    return response.json()
 
 
 def send_whatsapp_bulk(contacts: list, delay_between: float = 5.0) -> list:
