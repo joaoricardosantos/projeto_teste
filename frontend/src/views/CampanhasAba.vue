@@ -21,6 +21,45 @@
           class="elevation-0"
           no-data-text="Nenhuma campanha encontrada. Faça um disparo pela aba Relatórios."
         >
+          <!-- Coluna nome: exibe o nome + botão de editar inline -->
+          <template #item.nome="{ item }">
+            <div class="d-flex align-center gap-2">
+              <template v-if="editando.id === item.id">
+                <v-text-field
+                  v-model="editando.nome"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  autofocus
+                  style="min-width: 220px; max-width: 340px;"
+                  @keyup.enter="salvarNome(item)"
+                  @keyup.esc="cancelarEdicao"
+                />
+                <v-btn
+                  icon size="small" color="primary" variant="tonal"
+                  :loading="editando.loading"
+                  @click="salvarNome(item)"
+                >
+                  <v-icon size="16">mdi-check</v-icon>
+                </v-btn>
+                <v-btn icon size="small" variant="text" @click="cancelarEdicao">
+                  <v-icon size="16">mdi-close</v-icon>
+                </v-btn>
+              </template>
+              <template v-else>
+                <span>{{ item.nome }}</span>
+                <v-btn
+                  icon size="x-small" variant="text"
+                  class="ml-1 edit-nome-btn"
+                  title="Renomear campanha"
+                  @click="iniciarEdicao(item)"
+                >
+                  <v-icon size="14" color="grey">mdi-pencil-outline</v-icon>
+                </v-btn>
+              </template>
+            </div>
+          </template>
+
           <template #item.respondidos="{ item }">
             <v-chip size="x-small" color="success" variant="tonal">{{ item.respondidos }}</v-chip>
           </template>
@@ -54,8 +93,6 @@
         <v-divider />
 
         <v-card-text class="pa-0">
-
-          <!-- Filtros e seleção -->
           <div class="pa-4 d-flex align-center gap-3 flex-wrap">
             <v-btn-toggle v-model="filtroStatus" mandatory density="compact" color="primary">
               <v-btn value="">Todos</v-btn>
@@ -76,7 +113,6 @@
 
             <v-spacer />
 
-            <!-- Reenviar selecionados -->
             <v-btn
               v-if="selecionados.length > 0"
               color="success"
@@ -88,7 +124,6 @@
             </v-btn>
           </div>
 
-          <!-- Tabela de mensagens -->
           <v-data-table
             v-model="selecionados"
             :headers="headersMensagens"
@@ -115,7 +150,6 @@
             </template>
           </v-data-table>
 
-          <!-- Selecionar todos aguardando -->
           <div class="pa-4 pt-2 d-flex gap-2">
             <v-btn size="small" color="success" variant="tonal" prepend-icon="mdi-check-all" @click="selecionarTodosAguardando">
               Selecionar todos aguardando ({{ mensagensAguardando.length }})
@@ -124,7 +158,6 @@
               Limpar seleção
             </v-btn>
           </div>
-
         </v-card-text>
 
         <v-divider />
@@ -144,7 +177,6 @@
         </v-card-title>
         <v-card-text class="pa-4 pt-0">
           Deseja reenviar a mensagem para <strong>{{ selecionados.length }}</strong> contato(s)?
-
           <v-select
             v-model="templateReenvio"
             :items="templates"
@@ -190,7 +222,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- Resultado do reenvio -->
+    <!-- Snackbar -->
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="4000">
       {{ snackbar.text }}
     </v-snackbar>
@@ -217,18 +249,55 @@ const dialogReenviar   = ref(false)
 const snackbar         = ref({ show: false, text: '', color: 'success' })
 const dialogDeletar    = ref({ open: false, campanha: null, loading: false })
 
+// ── Edição de nome inline ─────────────────────────────────────────────────────
+const editando = ref({ id: null, nome: '', loading: false })
+
+const iniciarEdicao = (campanha) => {
+  editando.value = { id: campanha.id, nome: campanha.nome, loading: false }
+}
+
+const cancelarEdicao = () => {
+  editando.value = { id: null, nome: '', loading: false }
+}
+
+const salvarNome = async (campanha) => {
+  const nome = editando.value.nome.trim()
+  if (!nome || nome === campanha.nome) { cancelarEdicao(); return }
+  editando.value.loading = true
+  try {
+    const res = await fetch(`/api/campanhas/${campanha.id}/renomear`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body:    JSON.stringify({ nome }),
+    })
+    const text = await res.text()
+    let data = {}
+    try { data = JSON.parse(text) } catch (_) {}
+    if (!res.ok) throw new Error(data.detail || 'Erro ao renomear')
+    // Atualiza localmente sem recarregar tudo
+    const idx = campanhas.value.findIndex(c => c.id === campanha.id)
+    if (idx !== -1) campanhas.value[idx] = { ...campanhas.value[idx], nome: data.nome }
+    snackbar.value = { show: true, text: 'Nome atualizado!', color: 'success' }
+    cancelarEdicao()
+  } catch (e) {
+    snackbar.value = { show: true, text: e.message, color: 'error' }
+    editando.value.loading = false
+  }
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
 const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
 
-// ── Headers ──────────────────────────────────────────────────────────────────
+// ── Headers ───────────────────────────────────────────────────────────────────
 const headersCampanhas = [
-  { title: 'Campanha',      key: 'nome',            sortable: true  },
-  { title: 'Data',          key: 'criada_em',        width: 150      },
-  { title: 'Enviados',      key: 'total_enviados',   width: 110      },
-  { title: '✅ Responderam', key: 'respondidos',      width: 130      },
-  { title: '⏳ Aguardando',  key: 'aguardando',       width: 130      },
-  { title: '',              key: 'acoes',            width: 160, sortable: false },
+  { title: 'Campanha',      key: 'nome',           sortable: true             },
+  { title: 'Data',          key: 'criada_em',       width: 120                 },
+  { title: 'Enviados',      key: 'total_enviados',  width: 100                 },
+  { title: '✅ Responderam', key: 'respondidos',     width: 130                 },
+  { title: '⏳ Aguardando',  key: 'aguardando',      width: 130                 },
+  { title: '',              key: 'acoes',           width: 170, sortable: false },
 ]
 
 const headersMensagens = [
@@ -240,7 +309,7 @@ const headersMensagens = [
   { title: 'Resposta',   key: 'resposta',   sortable: false },
 ]
 
-// ── Dados computados ──────────────────────────────────────────────────────────
+// ── Computed ──────────────────────────────────────────────────────────────────
 const mensagensFiltradas = computed(() => {
   let lista = mensagens.value
   if (filtroStatus.value) lista = lista.filter(m => m.status === filtroStatus.value)
@@ -277,8 +346,8 @@ const carregarTemplates = async () => {
 
 const abrirCampanha = async (campanha) => {
   campanhaAtiva.value = campanha
-  selecionados.value = []
-  filtroStatus.value = ''
+  selecionados.value  = []
+  filtroStatus.value  = ''
   buscaMensagem.value = ''
   dialogCampanha.value = true
   await carregarMensagens(campanha.id)
@@ -301,23 +370,28 @@ const reenviar = async () => {
   reenviando.value = true
   try {
     const res = await fetch(`/api/campanhas/${campanhaAtiva.value.id}/reenviar`, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({
-        ids: selecionados.value,
+      body:    JSON.stringify({
+        ids:         selecionados.value,
         template_id: templateReenvio.value || null,
       }),
     })
-    const data = await res.json()
+    const text = await res.text()
+    let data = {}
+    try { data = JSON.parse(text) } catch (_) {
+      data = { detail: `Resposta inválida do servidor (HTTP ${res.status})` }
+    }
     if (!res.ok) throw new Error(data.detail || 'Erro ao reenviar')
 
     snackbar.value = {
-      show: true,
-      text: `Reenvio concluído! ✅ ${data.success} enviados, ❌ ${data.errors} erros`,
+      show:  true,
+      text:  `Reenvio concluído! ✅ ${data.success} enviados, ❌ ${data.errors} erros`,
       color: data.errors > 0 ? 'warning' : 'success',
     }
-    dialogReenviar.value = false
-    selecionados.value = []
+    dialogReenviar.value  = false
+    selecionados.value    = []
+    templateReenvio.value = null
     await carregarMensagens(campanhaAtiva.value.id)
     await carregarCampanhas()
   } catch (e) {
@@ -327,7 +401,6 @@ const reenviar = async () => {
   }
 }
 
-// Atualiza chip da campanha ativa quando mensagens recarregam
 watch(mensagens, (novas) => {
   if (campanhaAtiva.value) {
     campanhaAtiva.value = {
@@ -346,7 +419,7 @@ const deletarCampanha = async () => {
   dialogDeletar.value.loading = true
   try {
     const res = await fetch(`/api/campanhas/${dialogDeletar.value.campanha.id}`, {
-      method: 'DELETE',
+      method:  'DELETE',
       headers: authHeader(),
     })
     if (!res.ok) throw new Error('Erro ao remover campanha')
@@ -365,3 +438,14 @@ onMounted(() => {
   carregarTemplates()
 })
 </script>
+
+<style scoped>
+/* Botão de editar fica visível só no hover da linha */
+.edit-nome-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+tr:hover .edit-nome-btn {
+  opacity: 1;
+}
+</style>

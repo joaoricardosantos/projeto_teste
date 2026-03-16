@@ -26,24 +26,23 @@ _DASHBOARD_CACHE: dict = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_TTL_MINUTES = 30
 
-# ── Cache de condomínios ──────────────────────────────────────────────────────
-# Condomínios mudam raramente — TTL de 24h evita re-busca a cada acesso à página
-_CONDOMINIOS_CACHE: dict = {
-    "data":       None,       # list[{"id": int, "nome": str}]
-    "expires_at": datetime.min,
-}
-_CONDOMINIOS_LOCK = threading.Lock()
-_CONDOMINIOS_TTL_HOURS = 24
 
-
-def _run_job(job_id: str, id_condominio, data_posicao):
+def _run_job(job_id: str, id_condominio, data_posicao, data_inicio=None, ordenar_desc=False):
     with _JOBS_LOCK:
         _JOBS[job_id]["status"] = "running"
     try:
-        content, filename = gerar_relatorio_inadimplentes(
-            id_condominio=id_condominio,
-            data_posicao=data_posicao,
-        )
+        try:
+            content, filename = gerar_relatorio_inadimplentes(
+                id_condominio=id_condominio,
+                data_posicao=data_posicao,
+                data_inicio=data_inicio,
+                ordenar_desc=ordenar_desc,
+            )
+        except TypeError:
+            content, filename = gerar_relatorio_inadimplentes(
+                id_condominio=id_condominio,
+                data_posicao=data_posicao,
+            )
         if not content:
             with _JOBS_LOCK:
                 _JOBS[job_id]["status"] = "empty"
@@ -54,14 +53,14 @@ def _run_job(job_id: str, id_condominio, data_posicao):
         tmp.close()
 
         with _JOBS_LOCK:
-            _JOBS[job_id]["status"] = "done"
-            _JOBS[job_id]["file"] = tmp.name
+            _JOBS[job_id]["status"]   = "done"
+            _JOBS[job_id]["file"]     = tmp.name
             _JOBS[job_id]["filename"] = filename
 
     except Exception as e:
         with _JOBS_LOCK:
             _JOBS[job_id]["status"] = "error"
-            _JOBS[job_id]["error"] = str(e)
+            _JOBS[job_id]["error"]  = str(e)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -160,16 +159,30 @@ def start_export(
     request,
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
+    ultimos_5_anos: bool = False,
+    ordenar_desc: bool = False,
 ):
-    """Inicia a geração do relatório em background. Retorna um job_id."""
+    """
+    Inicia a geração do relatório em background.
+    ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
+    ordenar_desc=true ordena por Total decrescente.
+    """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
+
+    data_inicio = None
+    if ultimos_5_anos:
+        data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
 
     job_id = str(uuid.uuid4())
     with _JOBS_LOCK:
         _JOBS[job_id] = {"status": "pending", "file": None, "filename": None, "error": None}
 
-    t = threading.Thread(target=_run_job, args=(job_id, id_condominio, data_posicao), daemon=True)
+    t = threading.Thread(
+        target=_run_job,
+        args=(job_id, id_condominio, data_posicao, data_inicio, ordenar_desc),
+        daemon=True,
+    )
     t.start()
 
     return 202, {"job_id": job_id}
@@ -177,46 +190,41 @@ def start_export(
 
 @admin_router.get("/export-defaulters/status/{job_id}", response={200: dict})
 def job_status(request, job_id: str):
-    """Consulta o status de um job de exportação."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
-
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if not job:
         raise HttpError(404, "Job_not_found")
-
-    return 200, {"status": job["status"], "filename": job.get("filename"), "error": job.get("error")}
+    return 200, {
+        "status":   job["status"],
+        "filename": job.get("filename"),
+        "error":    job.get("error"),
+    }
 
 
 @admin_router.get("/export-defaulters/download/{job_id}")
 def download_export(request, job_id: str):
-    """Faz o download do arquivo gerado pelo job. Só disponível quando status == done."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
-
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if not job:
         raise HttpError(404, "Job_not_found")
     if job["status"] != "done":
         raise HttpError(400, "Job_not_ready")
-
     filepath = job["file"]
     filename = job["filename"]
     if not filepath or not os.path.exists(filepath):
         raise HttpError(404, "File_not_found")
-
     with open(filepath, "rb") as f:
         content = f.read()
-
     try:
         os.unlink(filepath)
     except Exception:
         pass
     with _JOBS_LOCK:
         _JOBS.pop(job_id, None)
-
     response = HttpResponse(
         content,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -225,20 +233,17 @@ def download_export(request, job_id: str):
     return response
 
 
-# ── Endpoint legado (só para condomínio específico) ───────────────────────────
+# ── Endpoint legado (compatibilidade) ─────────────────────────────────────────
 @admin_router.get("/export-defaulters")
 def export_defaulters(
     request,
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
 ):
-    """Exportação síncrona — use apenas para um condomínio específico."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
-
     if not id_condominio:
         raise HttpError(400, "Use_async_endpoint_for_all_condominios")
-
     try:
         content, filename = gerar_relatorio_inadimplentes(
             id_condominio=id_condominio,
@@ -246,10 +251,8 @@ def export_defaulters(
         )
     except requests.RequestException:
         raise HttpError(502, "External_service_unavailable")
-
     if not content:
         raise HttpError(204, "No_defaulters_found")
-
     response = HttpResponse(
         content,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -261,7 +264,6 @@ def export_defaulters(
 # ── Limpar cache do dashboard ─────────────────────────────────────────────────
 @admin_router.post("/dashboard/clear-cache", response={200: dict})
 def clear_dashboard_cache(request):
-    """Limpa o cache do dashboard forçando recarregamento."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
     with _CACHE_LOCK:
@@ -275,12 +277,17 @@ def start_export_pdf(
     request,
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
+    ultimos_5_anos: bool = False,
+    ordenar_desc: bool = False,
 ):
-    """Inicia a geração do PDF em background. Retorna job_id."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
     from core.superlogica import gerar_pdf_inadimplentes
+
+    data_inicio = None
+    if ultimos_5_anos:
+        data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
 
     job_id = str(uuid.uuid4())
     with _JOBS_LOCK:
@@ -290,10 +297,18 @@ def start_export_pdf(
         with _JOBS_LOCK:
             _JOBS[job_id]["status"] = "running"
         try:
-            content, filename = gerar_pdf_inadimplentes(
-                id_condominio=id_condominio,
-                data_posicao=data_posicao,
-            )
+            try:
+                content, filename = gerar_pdf_inadimplentes(
+                    id_condominio=id_condominio,
+                    data_posicao=data_posicao,
+                    data_inicio=data_inicio,
+                    ordenar_desc=ordenar_desc,
+                )
+            except TypeError:
+                content, filename = gerar_pdf_inadimplentes(
+                    id_condominio=id_condominio,
+                    data_posicao=data_posicao,
+                )
             if not content:
                 with _JOBS_LOCK:
                     _JOBS[job_id]["status"] = "empty"
@@ -302,13 +317,13 @@ def start_export_pdf(
             tmp.write(content)
             tmp.close()
             with _JOBS_LOCK:
-                _JOBS[job_id]["status"] = "done"
-                _JOBS[job_id]["file"] = tmp.name
+                _JOBS[job_id]["status"]   = "done"
+                _JOBS[job_id]["file"]     = tmp.name
                 _JOBS[job_id]["filename"] = filename
         except Exception as e:
             with _JOBS_LOCK:
                 _JOBS[job_id]["status"] = "error"
-                _JOBS[job_id]["error"] = str(e)
+                _JOBS[job_id]["error"]  = str(e)
 
     threading.Thread(target=_run, daemon=True).start()
     return 202, {"job_id": job_id}
@@ -316,7 +331,6 @@ def start_export_pdf(
 
 @admin_router.get("/export-pdf/status/{job_id}", response={200: dict})
 def pdf_job_status(request, job_id: str):
-    """Consulta o status do job de exportação PDF."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
     with _JOBS_LOCK:
@@ -328,7 +342,6 @@ def pdf_job_status(request, job_id: str):
 
 @admin_router.get("/export-pdf/download/{job_id}")
 def download_pdf(request, job_id: str):
-    """Faz o download do PDF gerado."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
     with _JOBS_LOCK:
@@ -360,13 +373,11 @@ def get_dashboard(
     request,
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
+    ultimos_5_anos: bool = False,
 ):
     """
-    Retorna dados resumidos para o dashboard:
-    - Valor total de inadimplência
-    - Condomínio com maior valor
-    - Quantidade de unidades sem número
-    - Lista detalhada de unidades sem número
+    Retorna dados resumidos para o dashboard.
+    ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
     """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
@@ -382,7 +393,7 @@ def get_dashboard(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     if not data_posicao:
-        data_posicao_fmt = datetime.today().strftime("%m/%d/%Y")
+        data_posicao_fmt   = datetime.today().strftime("%m/%d/%Y")
         data_posicao_label = datetime.today().strftime("%d/%m/%Y")
     else:
         partes = data_posicao.split("/")
@@ -392,18 +403,23 @@ def get_dashboard(
             data_posicao_fmt = data_posicao
         data_posicao_label = data_posicao
 
-    cache_key = f"{id_condominio or 'todos'}_{data_posicao_label}"
+    # Calcula data_inicio se filtro de 5 anos estiver ativo
+    data_inicio = None
+    if ultimos_5_anos:
+        data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
+
+    # Cache key inclui o flag de 5 anos
+    cache_key = f"{id_condominio or 'todos'}_{data_posicao_label}_{'5a' if ultimos_5_anos else 'all'}"
 
     with _CACHE_LOCK:
         cached = _DASHBOARD_CACHE.get(cache_key)
         if cached and cached["expires_at"] > datetime.now():
             return 200, cached["data"]
 
-    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
-
-    total_geral    = Decimal("0")
-    condo_valores  = {}
-    sem_numero     = []
+    ids_range    = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
+    total_geral  = Decimal("0")
+    condo_valores = {}
+    sem_numero   = []
     total_unidades = 0
 
     def _processar(condo_id):
@@ -413,7 +429,11 @@ def get_dashboard(
         mapa = buscar_unidades(condo_id)
         if not mapa:
             return None
-        resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
+        try:
+            resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa, data_inicio)
+        except TypeError:
+            # Retrocompatibilidade: superlogica.py ainda sem patch data_inicio
+            resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
         if not resumo:
             return None
 
@@ -424,9 +444,9 @@ def get_dashboard(
                 condo_total += Decimal(str(vals["total"]))
             except Exception:
                 pass
-            tels = vals.get("telefones", [])
-            t1 = tels[0] if len(tels) > 0 else "s/n"
-            t2 = tels[1] if len(tels) > 1 else "s/n"
+            tels     = vals.get("telefones", [])
+            t1       = tels[0] if len(tels) > 0 else "s/n"
+            t2       = tels[1] if len(tels) > 1 else "s/n"
             dados_uni = mapa.get(uid, {})
             if t1.lower() == "s/n" and t2.lower() == "s/n":
                 sem_num_local.append({
@@ -464,16 +484,16 @@ def get_dashboard(
     )
 
     resultado = {
-        "total_inadimplencia":   float(total_geral.quantize(Decimal("0.01"))),
-        "total_condominios":     len(condo_valores),
-        "total_unidades":        total_unidades,
-        "maior_condo_nome":      maior_condo,
-        "maior_condo_valor":     round(maior_valor, 2),
-        "sem_numero_count":      len(sem_numero),
-        "sem_numero":            sem_numero,
-        "condo_ranking":         condo_ranking,
-        "gerado_em":             datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "cache":                 False,
+        "total_inadimplencia": float(total_geral.quantize(Decimal("0.01"))),
+        "total_condominios":   len(condo_valores),
+        "total_unidades":      total_unidades,
+        "maior_condo_nome":    maior_condo,
+        "maior_condo_valor":   round(maior_valor, 2),
+        "sem_numero_count":    len(sem_numero),
+        "sem_numero":          sem_numero,
+        "condo_ranking":       condo_ranking,
+        "gerado_em":           datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "cache":               False,
     }
 
     with _CACHE_LOCK:
@@ -485,32 +505,24 @@ def get_dashboard(
     return 200, resultado
 
 
-# ── Endpoint: listar condomínios (com cache de 24h) ───────────────────────────
+# ── Endpoint: listar condomínios ──────────────────────────────────────────────
 @admin_router.get("/condominios", response={200: list})
 def listar_condominios(request):
-    """
-    Retorna lista de condomínios com id e nome, ordenada pelo menor id.
-    O resultado é cacheado por 24h para evitar re-busca a cada acesso à página.
-    """
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
-    # ── Verifica cache ────────────────────────────────────────────────────────
-    with _CONDOMINIOS_LOCK:
-        if _CONDOMINIOS_CACHE["data"] is not None and _CONDOMINIOS_CACHE["expires_at"] > datetime.now():
-            return 200, _CONDOMINIOS_CACHE["data"]
-
-    # ── Busca na API ──────────────────────────────────────────────────────────
     from django.conf import settings
     import requests as req
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     headers = {
         "app_token":    settings.SUPERLOGICA_APP_TOKEN,
         "access_token": settings.SUPERLOGICA_ACCESS_TOKEN,
     }
-    max_id = getattr(settings, "SUPERLOGICA_MAX_ID", 100)
+
+    max_id     = getattr(settings, "SUPERLOGICA_MAX_ID", 100)
     condominios = []
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def _checar(cid):
         try:
@@ -539,24 +551,5 @@ def listar_condominios(request):
             if result:
                 condominios.append(result)
 
-    # Ordena pelo id numérico (menor → maior)
-    condominios.sort(key=lambda x: x["id"])
-
-    # ── Salva no cache por 24h ────────────────────────────────────────────────
-    with _CONDOMINIOS_LOCK:
-        _CONDOMINIOS_CACHE["data"] = condominios
-        _CONDOMINIOS_CACHE["expires_at"] = datetime.now() + timedelta(hours=_CONDOMINIOS_TTL_HOURS)
-
+    condominios.sort(key=lambda x: x["nome"])
     return 200, condominios
-
-
-# ── Endpoint: limpar cache de condomínios manualmente ────────────────────────
-@admin_router.post("/condominios/clear-cache", response={200: dict})
-def clear_condominios_cache(request):
-    """Invalida o cache de condomínios forçando nova busca na próxima requisição."""
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
-    with _CONDOMINIOS_LOCK:
-        _CONDOMINIOS_CACHE["data"] = None
-        _CONDOMINIOS_CACHE["expires_at"] = datetime.min
-    return 200, {"message": "Cache de condomínios limpo com sucesso"}
