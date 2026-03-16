@@ -104,25 +104,36 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route  = useRoute()
 
 const rail         = ref(false)
-const theme        = ref(localStorage.getItem('theme') || 'pratikaLight')
+const theme        = ref(
+  // Tela de login sempre usa tema claro
+  route.meta.requiresAuth ? (localStorage.getItem('theme') || 'pratikaLight') : 'pratikaLight'
+)
 const sidebarOpen  = ref(true)
 
 // Usa a rota como fonte de verdade — sidebar só aparece em rotas autenticadas
 const isAuthenticated = computed(() => !!route.meta.requiresAuth)
 
-// Mantida por compatibilidade com AuthView
-window.__setAuth = (_val) => {}
+// sidebar atualiza via isAuthenticated (rota) e isAdminUser (localStorage)
 
 // Logout em outra aba redireciona para login
 window.addEventListener('storage', (e) => {
   if (e.key === 'access_token' && !e.newValue) router.push('/')
+})
+
+// Atualiza tema ao mudar de rota (login sempre claro, resto salvo)
+watch(() => route.meta.requiresAuth, (authed) => {
+  if (!authed) {
+    theme.value = 'pratikaLight'
+  } else {
+    theme.value = localStorage.getItem('theme') || 'pratikaLight'
+  }
 })
 
 const navItems = [

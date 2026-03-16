@@ -280,8 +280,7 @@ const handleLogin = async () => {
     }
     localStorage.setItem('access_token', data.access_token)
     // Notifica o App.vue para mostrar a sidebar imediatamente (sem esperar reload)
-    if (window.__setAuth) window.__setAuth(true)
-    router.push('/dashboard')
+    window.location.href = '/dashboard'
   } catch (e) {
     errorMessage.value = e.message
   } finally {

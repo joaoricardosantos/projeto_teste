@@ -17,6 +17,17 @@ from core.superlogica import gerar_relatorio_inadimplentes
 
 admin_router = Router(auth=JWTAuth())
 
+def _is_admin(user):
+    return user.is_staff or user.is_superuser
+
+def _require_admin(user):
+    if not _is_admin(user):
+        raise HttpError(403, "Admin_privileges_required")
+
+def _require_approved(user):
+    if not user.is_approved:
+        raise HttpError(403, "Account_not_approved")
+
 # ── Job store em memória ──────────────────────────────────────────────────────
 _JOBS: dict = {}
 _JOBS_LOCK = threading.Lock()
@@ -93,15 +104,13 @@ class UserDeleteIn(Schema):
 # ── Endpoints de usuários ─────────────────────────────────────────────────────
 @admin_router.get("/users", response=List[UserOut])
 def list_users(request):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_admin(request.auth)
     return User.objects.all().order_by("-created_at")
 
 
 @admin_router.post("/approve-user", response={200: dict})
 def approve_user(request, payload: UserApprovalIn):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_admin(request.auth)
     try:
         user = User.objects.get(id=payload.user_id)
         user.is_approved = payload.is_approved
@@ -113,8 +122,7 @@ def approve_user(request, payload: UserApprovalIn):
 
 @admin_router.post("/create-user", response={201: dict})
 def create_user(request, payload: UserCreateIn):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_admin(request.auth)
     if User.objects.filter(email=payload.email).exists():
         raise HttpError(400, "Email_already_registered")
     User.objects.create_user(
@@ -127,8 +135,7 @@ def create_user(request, payload: UserCreateIn):
 
 @admin_router.post("/set-admin", response={200: dict})
 def set_admin_role(request, payload: AdminRoleIn):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_admin(request.auth)
     try:
         user = User.objects.get(id=payload.user_id)
     except User.DoesNotExist:
@@ -141,8 +148,7 @@ def set_admin_role(request, payload: AdminRoleIn):
 
 @admin_router.delete("/delete-user", response={200: dict})
 def delete_user(request, payload: UserDeleteIn):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_admin(request.auth)
     if str(request.auth.id) == str(payload.user_id):
         raise HttpError(400, "Cannot_delete_own_account")
     try:
@@ -167,8 +173,7 @@ def start_export(
     ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
     ordenar_desc=true ordena por Total decrescente.
     """
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
 
     data_inicio = None
     if ultimos_5_anos:
@@ -190,8 +195,7 @@ def start_export(
 
 @admin_router.get("/export-defaulters/status/{job_id}", response={200: dict})
 def job_status(request, job_id: str):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if not job:
@@ -205,8 +209,7 @@ def job_status(request, job_id: str):
 
 @admin_router.get("/export-defaulters/download/{job_id}")
 def download_export(request, job_id: str):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if not job:
@@ -240,8 +243,7 @@ def export_defaulters(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
 ):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
     if not id_condominio:
         raise HttpError(400, "Use_async_endpoint_for_all_condominios")
     try:
@@ -264,8 +266,7 @@ def export_defaulters(
 # ── Limpar cache do dashboard ─────────────────────────────────────────────────
 @admin_router.post("/dashboard/clear-cache", response={200: dict})
 def clear_dashboard_cache(request):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
     with _CACHE_LOCK:
         _DASHBOARD_CACHE.clear()
     return 200, {"message": "Cache limpo com sucesso"}
@@ -280,8 +281,7 @@ def start_export_pdf(
     ultimos_5_anos: bool = False,
     ordenar_desc: bool = False,
 ):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
 
     from core.superlogica import gerar_pdf_inadimplentes
 
@@ -331,8 +331,7 @@ def start_export_pdf(
 
 @admin_router.get("/export-pdf/status/{job_id}", response={200: dict})
 def pdf_job_status(request, job_id: str):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if not job:
@@ -342,8 +341,7 @@ def pdf_job_status(request, job_id: str):
 
 @admin_router.get("/export-pdf/download/{job_id}")
 def download_pdf(request, job_id: str):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if not job:
@@ -379,8 +377,7 @@ def get_dashboard(
     Retorna dados resumidos para o dashboard.
     ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
     """
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
 
     from core.superlogica import (
         verificar_condominio,
@@ -508,8 +505,7 @@ def get_dashboard(
 # ── Endpoint: listar condomínios ──────────────────────────────────────────────
 @admin_router.get("/condominios", response={200: list})
 def listar_condominios(request):
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        raise HttpError(403, "Admin_privileges_required")
+    _require_approved(request.auth)
 
     from django.conf import settings
     import requests as req

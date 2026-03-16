@@ -71,7 +71,7 @@
               <v-btn size="small" color="primary" variant="tonal" @click="abrirCampanha(item)">
                 <v-icon size="16" class="mr-1">mdi-eye</v-icon>Detalhes
               </v-btn>
-              <v-btn size="small" color="error" variant="tonal" @click="confirmarDeletar(item)">
+              <v-btn v-if="isAdmin" size="small" color="error" variant="tonal" @click="confirmarDeletar(item)">
                 <v-icon size="16" class="mr-1">mdi-delete</v-icon>Apagar
               </v-btn>
             </div>
@@ -248,6 +248,7 @@ const dialogCampanha   = ref(false)
 const dialogReenviar   = ref(false)
 const snackbar         = ref({ show: false, text: '', color: 'success' })
 const dialogDeletar    = ref({ open: false, campanha: null, loading: false })
+const isAdmin          = localStorage.getItem('is_admin') === '1'
 
 // ── Edição de nome inline ─────────────────────────────────────────────────────
 const editando = ref({ id: null, nome: '', loading: false })
