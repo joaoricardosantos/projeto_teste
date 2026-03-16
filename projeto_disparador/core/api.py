@@ -16,18 +16,26 @@ def register(request, payload: RegisterIn):
     raise HttpError(403, "Registration_disabled_use_admin_panel")
 
 
-@auth_router.post("/login", response=TokenOut)
+@auth_router.post("/login", response={200: TokenOut, 401: dict, 403: dict})
 def login(request, payload: LoginIn):
-    user = authenticate(request, email=payload.email, password=payload.password)
+    try:
+        user = authenticate(request, email=payload.email, password=payload.password)
 
-    if not user:
-        raise HttpError(401, "Invalid_credentials")
+        if not user:
+            raise HttpError(401, "Invalid_credentials")
 
-    if not user.is_approved:
-        raise HttpError(403, "Account_pending_approval")
+        if not user.is_approved:
+            raise HttpError(403, "Account_pending_approval")
 
-    if not user.is_active:
-        raise HttpError(403, "Account_disabled")
+        if not user.is_active:
+            raise HttpError(403, "Account_disabled")
 
-    token = create_access_token(user.id)
-    return {"access_token": token, "token_type": "bearer"}
+        token = create_access_token(user.id)
+        return 200, {"access_token": token, "token_type": "bearer"}
+
+    except HttpError:
+        raise
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Login erro inesperado: {e}", exc_info=True)
+        raise HttpError(500, "Internal_server_error")

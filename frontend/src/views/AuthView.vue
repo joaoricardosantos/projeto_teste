@@ -1,107 +1,385 @@
 <template>
-  <v-container class="fill-height" fluid>
-    <v-row align="center" justify="center">
-      <v-col cols="12" sm="8" md="5" lg="4">
-        <v-card elevation="8" class="pa-4">
+  <div class="auth-page">
 
-          <v-card-title class="text-h5 font-weight-bold text-center pa-4 pb-2">
-            Entrar no Sistema
-          </v-card-title>
-          <v-card-subtitle class="text-center pb-4">
-            Sistema de Inadimplentes
-          </v-card-subtitle>
+    <div class="auth-bg">
+      <div class="bg-orb bg-orb--1" />
+      <div class="bg-orb bg-orb--2" />
+      <div class="bg-grid" />
+    </div>
 
-          <v-card-text>
-            <v-form @submit.prevent="handleLogin">
+    <div class="auth-layout">
 
-              <v-text-field
-                v-model="email"
-                label="E-mail"
-                type="email"
-                variant="outlined"
-                prepend-inner-icon="mdi-email-outline"
-                class="mb-3"
-                required
-                :disabled="loading"
-              />
+      <!-- Painel esquerdo (visual) -->
+      <div class="auth-left">
+        <div class="auth-left-content">
+          <div class="brand-badge">
+            <div class="brand-icon">
+              <v-icon size="28" color="white">mdi-home-city</v-icon>
+            </div>
+            <div>
+              <div class="brand-title">Pratika</div>
+              <div class="brand-tagline">Sistema de Cobranças</div>
+            </div>
+          </div>
 
-              <v-text-field
-                v-model="password"
-                label="Senha"
-                :type="showPassword ? 'text' : 'password'"
-                variant="outlined"
-                prepend-inner-icon="mdi-lock-outline"
-                :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
-                @click:append-inner="showPassword = !showPassword"
-                class="mb-4"
-                required
-                :disabled="loading"
-              />
+          <h1 class="auth-headline">
+            Automatize suas<br>
+            <span class="headline-accent">cobranças</span><br>
+            com inteligência.
+          </h1>
 
-              <v-alert v-if="errorMessage" type="error" class="mb-4" dense closable @click:close="errorMessage = ''">
-                {{ errorMessage }}
-              </v-alert>
+          <p class="auth-desc">
+            Disparo em massa via WhatsApp, relatórios em tempo real e
+            gestão completa da inadimplência do seu condomínio.
+          </p>
 
-              <v-btn
-                type="submit"
-                color="primary"
-                block
-                size="large"
-                :loading="loading"
-              >
-                Entrar
-              </v-btn>
+          <div class="feature-list">
+            <div v-for="f in features" :key="f.text" class="feature-item">
+              <div class="feature-dot" />
+              <span>{{ f.text }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
-            </v-form>
-          </v-card-text>
+      <!-- Painel direito (form) -->
+      <div class="auth-right">
+        <div class="auth-card">
 
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+          <!-- Logo mobile -->
+          <div class="mobile-brand">
+            <div class="brand-icon">
+              <v-icon size="24" color="white">mdi-home-city</v-icon>
+            </div>
+            <div class="brand-title" style="color: #006837;">Pratika</div>
+          </div>
+
+          <div class="form-header">
+            <h2 class="form-title">Bem-vindo de volta</h2>
+            <p class="form-subtitle">Entre com suas credenciais para continuar</p>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">E-mail</label>
+            <v-text-field
+              v-model="email"
+              type="email"
+              placeholder="seu@email.com"
+              variant="outlined"
+              density="comfortable"
+              prepend-inner-icon="mdi-email-outline"
+              hide-details="auto"
+              class="auth-field"
+              :disabled="loading"
+              @keyup.enter="handleLogin"
+            />
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Senha</label>
+            <v-text-field
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="••••••••"
+              variant="outlined"
+              density="comfortable"
+              prepend-inner-icon="mdi-lock-outline"
+              :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+              hide-details="auto"
+              class="auth-field"
+              :disabled="loading"
+              @click:append-inner="showPassword = !showPassword"
+              @keyup.enter="handleLogin"
+            />
+          </div>
+
+          <v-alert
+            v-if="errorMessage"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            closable
+            @click:close="errorMessage = ''"
+          >{{ errorMessage }}</v-alert>
+
+          <v-btn
+            block
+            size="large"
+            color="primary"
+            class="submit-btn mt-2"
+            :loading="loading"
+            @click="handleLogin"
+          >
+            <v-icon start>mdi-login</v-icon>
+            Entrar no sistema
+          </v-btn>
+
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-const router = useRouter()
-
-const email = ref('')
-const password = ref('')
+const router       = useRouter()
+const email        = ref('')
+const password     = ref('')
 const showPassword = ref(false)
-const loading = ref(false)
+const loading      = ref(false)
 const errorMessage = ref('')
 
+const features = [
+  { text: 'Disparo automático via WhatsApp' },
+  { text: 'Relatórios detalhados da Superlógica' },
+  { text: 'Templates personalizados com variáveis' },
+  { text: 'Controle de campanhas e histórico' },
+]
+
 const handleLogin = async () => {
-  loading.value = true
+  loading.value      = true
   errorMessage.value = ''
-
   try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
+    const res  = await fetch('/api/auth/login', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value, password: password.value }),
+      body:    JSON.stringify({ email: email.value, password: password.value }),
     })
-
-    const data = await response.json()
-
-    if (!response.ok) {
+    // Parse seguro: evita crash se o backend retornar resposta vazia ou HTML de erro
+    const text = await res.text()
+    let data = {}
+    try { data = JSON.parse(text) } catch (_) {
+      throw new Error('Erro de comunicação com o servidor. Tente novamente.')
+    }
+    if (!res.ok) {
       const msgs = {
-        Invalid_credentials: 'E-mail ou senha inválidos.',
+        Invalid_credentials:      'E-mail ou senha inválidos.',
         Account_pending_approval: 'Sua conta ainda aguarda aprovação do administrador.',
-        Account_disabled: 'Sua conta está desativada. Entre em contato com o administrador.',
+        Account_disabled:         'Sua conta está desativada. Fale com o administrador.',
       }
       throw new Error(msgs[data.detail] || data.detail || 'Erro ao fazer login.')
     }
-
     localStorage.setItem('access_token', data.access_token)
+    // Notifica o App.vue para mostrar a sidebar imediatamente (sem esperar reload)
+    if (window.__setAuth) window.__setAuth(true)
     router.push('/dashboard')
-
-  } catch (error) {
-    errorMessage.value = error.message
+  } catch (e) {
+    errorMessage.value = e.message
   } finally {
     loading.value = false
   }
 }
 </script>
+
+<style scoped>
+/* Cobre 100% da viewport sem espaços */
+.auth-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.auth-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.35;
+}
+.bg-orb--1 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, #00a651 0%, transparent 70%);
+  top: -100px; left: -100px;
+}
+.bg-orb--2 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, #006837 0%, transparent 70%);
+  bottom: -80px; right: 35%;
+  opacity: 0.2;
+}
+.bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,104,55,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,104,55,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Layout dois painéis, altura total */
+.auth-layout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+/* Painel esquerdo: oculto em mobile, visível em ≥960px */
+.auth-left {
+  display: none;
+  flex: 1;
+  background: linear-gradient(150deg, #0f1d14 0%, #1a3a23 60%, #0a2e12 100%);
+  align-items: center;
+  justify-content: center;
+  padding: 60px 56px;
+  position: relative;
+  overflow: hidden;
+}
+@media (min-width: 960px) {
+  .auth-left { display: flex; }
+}
+.auth-left::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('/fundosistema.png');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.06;
+}
+.auth-left-content {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+}
+
+.brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 52px;
+}
+.brand-icon {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 6px 20px rgba(0,168,81,0.4);
+}
+.brand-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.02em;
+}
+.brand-tagline {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.auth-headline {
+  font-size: 40px;
+  font-weight: 800;
+  color: white;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+}
+.headline-accent { color: #4ade80; }
+.auth-desc {
+  font-size: 15px;
+  color: rgba(255,255,255,0.55);
+  line-height: 1.65;
+  margin-bottom: 36px;
+}
+.feature-list { display: flex; flex-direction: column; gap: 12px; }
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255,255,255,0.7);
+  font-size: 14px;
+}
+.feature-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(74,222,128,0.6);
+}
+
+/* Painel direito: largura fixa, altura 100% */
+.auth-right {
+  width: 460px;
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  background: white;
+  overflow-y: auto;
+}
+/* Mobile: ocupa tela inteira */
+@media (max-width: 959px) {
+  .auth-right { width: 100%; }
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+/* Logo mobile */
+.mobile-brand {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+@media (max-width: 959px) {
+  .mobile-brand { display: flex; }
+}
+
+.form-header { margin-bottom: 28px; }
+.form-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f1d14;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+.form-subtitle {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.field-group { margin-bottom: 16px; }
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+.auth-field :deep(.v-field) { border-radius: 10px !important; }
+.auth-field :deep(.v-field__outline__start) { border-radius: 10px 0 0 10px !important; }
+.auth-field :deep(.v-field__outline__end) { border-radius: 0 10px 10px 0 !important; }
+
+.submit-btn {
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  letter-spacing: 0.01em !important;
+  box-shadow: 0 4px 16px rgba(0,104,55,0.3) !important;
+  transition: box-shadow 0.2s, transform 0.15s !important;
+}
+.submit-btn:hover {
+  box-shadow: 0 6px 20px rgba(0,104,55,0.4) !important;
+  transform: translateY(-1px);
+}
+</style>
