@@ -30,14 +30,17 @@ services:
       - db
 
   frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - web
+  build: ./frontend
+  ports:
+    - "3000:3000"
+  volumes:
+    - ./frontend:/app
+    - /app/node_modules
+  environment:
+    - CHOKIDAR_USEPOLLING=true    # ← adicione esta linha
+    - WATCHPACK_POLLING=true      # ← e esta
+  depends_on:
+    - web 
 
 volumes:
   postgres_data:

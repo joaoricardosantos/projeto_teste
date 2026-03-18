@@ -136,13 +136,19 @@ watch(() => route.meta.requiresAuth, (authed) => {
   }
 })
 
-const navItems = [
-  { to: '/dashboard',  icon: 'mdi-view-dashboard-outline', label: 'Dashboard'        },
-  { to: '/painel',     icon: 'mdi-send-outline',           label: 'Enviar Mensagens' },
-  { to: '/templates',  icon: 'mdi-message-text-outline',   label: 'Templates'        },
-  { to: '/relatorios', icon: 'mdi-file-chart-outline',     label: 'Relatórios'       },
-  { to: '/admin',      icon: 'mdi-shield-account-outline', label: 'Administração'    },
+const isAdmin = computed(() => localStorage.getItem('is_admin') === 'true')
+
+const allNavItems = [
+  { to: '/dashboard',  icon: 'mdi-view-dashboard-outline', label: 'Dashboard',      adminOnly: false },
+  { to: '/painel',     icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false },
+  { to: '/templates',  icon: 'mdi-message-text-outline',   label: 'Templates',      adminOnly: false },
+  { to: '/relatorios', icon: 'mdi-file-chart-outline',     label: 'Relatórios',     adminOnly: true  },
+  { to: '/admin',      icon: 'mdi-shield-account-outline', label: 'Administração',  adminOnly: true  },
 ]
+
+const navItems = computed(() =>
+  allNavItems.filter(item => !item.adminOnly || isAdmin.value)
+)
 
 const toggleTheme = () => {
   theme.value = theme.value === 'pratikaLight' ? 'pratikaDark' : 'pratikaLight'
@@ -151,7 +157,8 @@ const toggleTheme = () => {
 
 const logout = () => {
   localStorage.removeItem('access_token')
-  isAuthenticated.value = false
+  localStorage.removeItem('is_admin')
+  localStorage.removeItem('user_name')
   sidebarOpen.value = false
   router.push('/')
 }

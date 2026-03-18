@@ -335,11 +335,9 @@ const carregarCondominios = async () => {
     const res = await fetch('/api/admin/condominios', { headers: authHeader() })
     if (res.ok) {
       const lista = await res.json()
-      condominios.value = lista.map(c => ({
-        id:    c.id,
-        nome:  c.nome,
-        label: `[${c.id}] ${c.nome}`,
-      }))
+      condominios.value = lista
+        .map(c => ({ id: c.id, nome: c.nome, label: `[${c.id}] ${c.nome}` }))
+        .sort((a, b) => a.id - b.id)
     }
   } catch (_) {}
   finally { loadingCondominios.value = false }

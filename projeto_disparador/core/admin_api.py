@@ -37,6 +37,13 @@ _DASHBOARD_CACHE: dict = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_TTL_MINUTES = 30
 
+def _proximas_8h():
+    agora = datetime.now()
+    proximas = agora.replace(hour=8, minute=0, second=0, microsecond=0)
+    if agora >= proximas:
+        proximas += timedelta(days=1)
+    return proximas
+
 
 def _run_job(job_id: str, id_condominio, data_posicao, data_inicio=None, ordenar_desc=False):
     with _JOBS_LOCK:
@@ -496,7 +503,7 @@ def get_dashboard(
     with _CACHE_LOCK:
         _DASHBOARD_CACHE[cache_key] = {
             "data":       {**resultado, "cache": True},
-            "expires_at": datetime.now() + timedelta(minutes=_CACHE_TTL_MINUTES),
+            "expires_at": _proximas_8h(),
         }
 
     return 200, resultado
