@@ -62,10 +62,8 @@ def buscar_unidades(id_condominio: int):
                 numero = unidade.get(campo)
                 if numero and str(numero).strip():
                     telefones.append(str(numero).strip())
-            bloco = (unidade.get("st_bloco_uni") or "").strip()
             mapa[unidade_id] = {
                 "unidade": codigo_unidade,
-                "bloco": bloco,
                 "sacado": sacado,
                 "nome_pdf": nome_pdf,
                 "telefones": list(dict.fromkeys(telefones)),
@@ -78,8 +76,11 @@ def _formatar_data(valor) -> str:
     if not valor:
         return ""
     texto = str(valor).strip()
+    # Formato MM/DD/YYYY (retornado pela API Superlógica) → converte para DD/MM/YYYY
     if len(texto) >= 10 and texto[2] == "/" and texto[5] == "/":
-        return texto[:10]
+        partes = texto[:10].split("/")
+        return f"{partes[1]}/{partes[0]}/{partes[2]}"
+    # Formato YYYY-MM-DD → converte para DD/MM/YYYY
     if len(texto) >= 10 and texto[4] == "-" and texto[7] == "-":
         partes = texto[:10].split("-")
         return f"{partes[2]}/{partes[1]}/{partes[0]}"
@@ -204,7 +205,6 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
         "atualizacao": Decimal("0"),
         "honorarios":  Decimal("0"),
         "total":       Decimal("0"),
-        "acordo":      False,
     }
     detalhado = []
 
@@ -237,8 +237,6 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
         vencimento  = receb.get("dt_vencimento_recb", "")
         competencia = receb.get("dt_competencia_recb", "")
         id_receb    = receb.get("id_recebimento_recb")
-        if receb.get("st_label_recb", "").upper() == "ACORDO":
-            resumo["acordo"] = True
 
         if not resumo["vencimento"]:
             resumo["vencimento"]  = _formatar_data(vencimento)
@@ -339,8 +337,6 @@ _FILL_IMPAR = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="s
 # Larguras fixas por nome de coluna (caracteres)
 _LARGURAS_FIXAS = {
     "Condomínio":  55,
-    "Bloco":       15,
-    "Juizado":      10,
     "Unidade":     18,
     "Nome":        45,
     "Telefone 1":  22,
@@ -471,12 +467,10 @@ def gerar_relatorio_inadimplentes(
             qtd = contagem_por_unidade.get(unidade_id) or contagem_por_unidade.get(nome_uni, 0)
             linhas_resumo.append({
                 "Condomínio":       nome_condominio,
-                "Bloco":            dados_uni.get("bloco", ""),
                 "Unidade":          nome_uni,
                 "Nome":             dados_uni.get("sacado", ""),
                 "Telefone 1":       tel1,
                 "Telefone 2":       tel2,
-                "Juizado":           "Sim" if valores.get("acordo") else "Não",
                 "Qtd Inadimpl.":    qtd,
                 "Vencimento":       valores.get("vencimento", ""),
                 "Competência":      valores.get("competencia", ""),
@@ -519,7 +513,7 @@ def gerar_relatorio_inadimplentes(
     # ── Aba Resumo ──────────────────────────────────────────────────────────
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = ["Condomínio", "Bloco", "Unidade", "Nome", "Telefone 1", "Telefone 2", "Juizado", "Qtd Inadimpl.",
+    headers_resumo = ["Condomínio", "Unidade", "Nome", "Telefone 1", "Telefone 2", "Qtd Inadimpl.",
                       "Vencimento", "Competência",
                       "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     ws_resumo.append(headers_resumo)
@@ -528,7 +522,7 @@ def gerar_relatorio_inadimplentes(
 
     # Linha de totais
     num_rows = len(todas_resumo)
-    totais_resumo = ["TOTAL GERAL", "", "", "", "", "", "", "", "", ""]
+    totais_resumo = ["TOTAL GERAL", "", "", "", "", "", "", ""]
     cols_num = ["Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
     for col in cols_num:
         totais_resumo.append(round(sum(r[col] for r in todas_resumo), 2))
@@ -647,12 +641,10 @@ def gerar_pdf_inadimplentes(
             linhas.append({
                 "Condomínio":   nome_condo or "",
                 "condo_id":     condo_id,
-                "Bloco":        dados_uni.get("bloco", ""),
                 "Unidade":      dados_uni.get("unidade") or vals["nome_pdf"],
                 "Nome":         dados_uni.get("sacado", ""),
                 "Telefone 1":   tels[0] if len(tels) > 0 else "s/n",
                 "Telefone 2":   tels[1] if len(tels) > 1 else "s/n",
-                "Juizado":       "Sim" if vals.get("acordo") else "Não",
                 "Principal":    vals["principal"],
                 "Juros":        vals["juros"],
                 "Multa":        vals["multa"],
@@ -771,12 +763,10 @@ def gerar_pdf_inadimplentes(
 
         # Cabeçalho da tabela
         cabecalho = [
-            p("Bloco", style_cell_bold),
             p("Unidade", style_cell_bold),
             p("Nome", style_cell_bold),
             p("Telefone 1", style_cell_bold),
             p("Telefone 2", style_cell_bold),
-            p("Juizado", style_cell_bold),
             p("Principal", style_cell_bold),
             p("Juros", style_cell_bold),
             p("Multa", style_cell_bold),
@@ -790,12 +780,10 @@ def gerar_pdf_inadimplentes(
 
         for i, row in enumerate(rows):
             dados_tabela.append([
-                p(row.get("Bloco", "")),
                 p(row["Unidade"]),
                 p(row["Nome"]),
                 p(row["Telefone 1"]),
                 p(row["Telefone 2"]),
-                p(row.get("Juizado", "Não")),
                 p(brl(row["Principal"])),
                 p(brl(row["Juros"])),
                 p(brl(row["Multa"])),
@@ -824,8 +812,6 @@ def gerar_pdf_inadimplentes(
             p("", style_tot),
             p("", style_tot),
             p("", style_tot),
-            p("", style_tot),
-            p("", style_tot),
             p(brl(tot_principal), style_tot),
             p(brl(tot_juros), style_tot),
             p(brl(tot_multa), style_tot),
@@ -835,7 +821,7 @@ def gerar_pdf_inadimplentes(
         ])
 
         # Larguras das colunas (total ~26cm em landscape A4)
-        col_widths = [1.5*cm, 2.2*cm, 4*cm, 2.5*cm, 2.5*cm, 1.5*cm, 2.3*cm, 1.8*cm, 1.8*cm, 2*cm, 2*cm, 2.6*cm]
+        col_widths = [2.5*cm, 5*cm, 3*cm, 3*cm, 2.5*cm, 2*cm, 2*cm, 2.5*cm, 2.5*cm, 3*cm]
 
         # Zebra: aplica linha a linha para garantir funcionamento no ReportLab
         zebra_styles = []
