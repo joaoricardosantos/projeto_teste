@@ -920,3 +920,4 @@ def gerar_pdf_inadimplentes(
     filename = f"inadimplentes{suffix}_{timestamp}.pdf"
 
     return buffer.getvalue(), filename
+    
