@@ -1,4 +1,4 @@
-import time
+﻿import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
@@ -62,10 +62,12 @@ def buscar_unidades(id_condominio: int):
                 numero = unidade.get(campo)
                 if numero and str(numero).strip():
                     telefones.append(str(numero).strip())
+            bloco = (unidade.get("st_bloco_uni") or "").strip()
             mapa[unidade_id] = {
                 "unidade": codigo_unidade,
                 "sacado": sacado,
                 "nome_pdf": nome_pdf,
+                "bloco": bloco,
                 "telefones": list(dict.fromkeys(telefones)),
             }
         pagina += 1
@@ -76,11 +78,11 @@ def _formatar_data(valor) -> str:
     if not valor:
         return ""
     texto = str(valor).strip()
-    # Formato MM/DD/YYYY (retornado pela API Superlógica) → converte para DD/MM/YYYY
+    # Formato MM/DD/YYYY (retornado pela API SuperlÃ³gica) â†’ converte para DD/MM/YYYY
     if len(texto) >= 10 and texto[2] == "/" and texto[5] == "/":
         partes = texto[:10].split("/")
         return f"{partes[1]}/{partes[0]}/{partes[2]}"
-    # Formato YYYY-MM-DD → converte para DD/MM/YYYY
+    # Formato YYYY-MM-DD â†’ converte para DD/MM/YYYY
     if len(texto) >= 10 and texto[4] == "-" and texto[7] == "-":
         partes = texto[:10].split("-")
         return f"{partes[2]}/{partes[1]}/{partes[0]}"
@@ -105,12 +107,13 @@ def _d2f(valor: Decimal) -> float:
     return float(valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> set:
+def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str):
     """
-    Usa /index (rápido) para descobrir quais unidades têm inadimplência.
-    Retorna um set de id_unidade_uni.
+    Usa /index (rÃ¡pido) para descobrir quais unidades tÃªm inadimplÃªncia.
+    Retorna (set de id_unidade_uni, dict de id_unidade_uni -> bool juizado).
     """
     unidades = set()
+    juizados = {}
     pagina = 1
     processados = set()
 
@@ -144,18 +147,22 @@ def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> 
                 if id_r in processados:
                     continue
                 processados.add(id_r)
-                unidades.add(receb.get("id_unidade_uni"))
+                id_uni = receb.get("id_unidade_uni")
+                unidades.add(id_uni)
+                # Marca como juizado se tiver processo
+                if receb.get("id_processo_proc", ""):
+                    juizados[id_uni] = True
         pagina += 1
 
-    return unidades
+    return unidades, juizados
 
 
 def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: dict, data_inicio: str = None):
     """
     Usa /avancada filtrando por unidade para obter valores exatos
-    com índice de correção monetária atualizado.
+    com Ã­ndice de correÃ§Ã£o monetÃ¡ria atualizado.
     """
-    # Retry até 3 vezes em caso de erro temporário
+    # Retry atÃ© 3 vezes em caso de erro temporÃ¡rio
     for tentativa in range(3):
         try:
             response = requests.get(
@@ -258,17 +265,17 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
         resumo["total"]       += total_receb
 
         detalhado.append({
-            "Condomínio":  None,
+            "CondomÃ­nio":  None,
             "id_unidade":  id_unidade,
             "Unidade":     nome_pdf,
-            "Código":      id_receb,
+            "CÃ³digo":      id_receb,
             "Vencimento":  _formatar_data(vencimento),
-            "Competência": _formatar_data(competencia),
+            "CompetÃªncia": _formatar_data(competencia),
             "Principal":   _d2f(p),
             "Juros":       _d2f(j),
             "Multa":       _d2f(m),
-            "Atualização": _d2f(a),
-            "Honorários":  _d2f(h),
+            "AtualizaÃ§Ã£o": _d2f(a),
+            "HonorÃ¡rios":  _d2f(h),
             "Total":       _d2f(total_receb),
         })
 
@@ -276,27 +283,27 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
     for campo in ("principal", "juros", "multa", "atualizacao", "honorarios", "total"):
         resumo[campo] = _d2f(resumo[campo])
 
-    # Se todos os valores são zero (filtro removeu tudo), exclui a unidade
+    # Se todos os valores sÃ£o zero (filtro removeu tudo), exclui a unidade
     if resumo["total"] == 0.0 and not detalhado:
         return None, None
 
     return resumo, detalhado
 
 
-# Número de threads paralelas por condomínio.
-# 8 é um bom equilíbrio: rápido sem sobrecarregar a API Superlógica.
+# NÃºmero de threads paralelas por condomÃ­nio.
+# 8 Ã© um bom equilÃ­brio: rÃ¡pido sem sobrecarregar a API SuperlÃ³gica.
 _MAX_WORKERS_UNIDADES = 12
-# Número de condomínios processados em paralelo.
+# NÃºmero de condomÃ­nios processados em paralelo.
 _MAX_WORKERS_CONDOMINIOS = 6
 
 
 def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict, data_inicio: str = None):
     """
-    Estratégia em 2 etapas com paralelismo:
-    1. /index  → descobre quais unidades são inadimplentes (rápido)
-    2. /avancada por unidade → busca valores exatos em paralelo (rápido + preciso)
+    EstratÃ©gia em 2 etapas com paralelismo:
+    1. /index  â†’ descobre quais unidades sÃ£o inadimplentes (rÃ¡pido)
+    2. /avancada por unidade â†’ busca valores exatos em paralelo (rÃ¡pido + preciso)
     """
-    unidades_ids = _descobrir_unidades_inadimplentes(id_condominio, data_posicao)
+    unidades_ids, juizados_map = _descobrir_unidades_inadimplentes(id_condominio, data_posicao)
     if not unidades_ids:
         return {}, []
 
@@ -314,11 +321,14 @@ def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_
             try:
                 resumo_uni, det_uni = future.result()
                 if resumo_uni:
+                    # Aplica flag de juizado do /index
+                    if juizados_map.get(id_uni):
+                        resumo_uni["juizado"] = True
                     resumo_total[id_uni] = resumo_uni
                 if det_uni:
                     detalhado_total.extend(det_uni)
             except Exception:
-                pass  # unidade com erro é ignorada silenciosamente
+                pass  # unidade com erro Ã© ignorada silenciosamente
 
     return resumo_total, detalhado_total
 
@@ -336,27 +346,27 @@ _FILL_IMPAR = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="s
 
 # Larguras fixas por nome de coluna (caracteres)
 _LARGURAS_FIXAS = {
-    "Condomínio":  55,
+    "CondomÃ­nio":  55,
     "Unidade":     18,
     "Nome":        45,
     "Telefone 1":  22,
     "Telefone 2":  22,
     "Qtd Inadimpl.": 14,
     "Vencimento":  16,
-    "Competência": 16,
+    "CompetÃªncia": 16,
     "Principal":   16,
     "Juros":       16,
     "Multa":       12,
-    "Atualização": 16,
-    "Honorários":  16,
+    "AtualizaÃ§Ã£o": 16,
+    "HonorÃ¡rios":  16,
     "Total":       16,
-    "Código":      14,
+    "CÃ³digo":      14,
 }
 
 
 def _ajustar_larguras(ws):
-    """Aplica larguras fixas por coluna e altura padrão nas linhas."""
-    # Lê cabeçalhos da linha 1
+    """Aplica larguras fixas por coluna e altura padrÃ£o nas linhas."""
+    # LÃª cabeÃ§alhos da linha 1
     headers = [ws.cell(row=1, column=col_idx).value for col_idx in range(1, ws.max_column + 1)]
     for idx, header in enumerate(headers, start=1):
         col_letter = ws.cell(row=1, column=idx).column_letter
@@ -367,13 +377,13 @@ def _ajustar_larguras(ws):
 
 
 def _aplicar_grade_e_zebra(ws, skip_rows=0):
-    """Aplica borda em todas as células e alterna cores por linha (zebra)."""
+    """Aplica borda em todas as cÃ©lulas e alterna cores por linha (zebra)."""
     max_row = ws.max_row
     max_col = ws.max_column
-    data_start = skip_rows + 2  # linha após o cabeçalho
+    data_start = skip_rows + 2  # linha apÃ³s o cabeÃ§alho
     header_row = skip_rows + 1
 
-    # Descobre índice da coluna "Qtd Inadimpl." para forçar alinhamento à esquerda
+    # Descobre Ã­ndice da coluna "Qtd Inadimpl." para forÃ§ar alinhamento Ã  esquerda
     qtd_col_idx = None
     for col_idx in range(1, max_col + 1):
         if ws.cell(row=header_row, column=col_idx).value == "Qtd Inadimpl.":
@@ -393,7 +403,7 @@ def _aplicar_grade_e_zebra(ws, skip_rows=0):
                 cell.alignment = Alignment(vertical="center", wrap_text=False)
             if row_idx < max_row:
                 cell.fill = fill
-    # Borda também no cabeçalho
+    # Borda tambÃ©m no cabeÃ§alho
     for cell in ws[header_row]:
         cell.border = _BORDA
 
@@ -408,8 +418,8 @@ def _estilizar_cabecalho(ws, header_row=1):
 
 
 def _aplicar_formato_contabil(ws, headers):
-    """Aplica formato contábil R$ nas colunas numéricas."""
-    cols_numericas = {"Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"}
+    """Aplica formato contÃ¡bil R$ nas colunas numÃ©ricas."""
+    cols_numericas = {"Principal", "Juros", "Multa", "AtualizaÃ§Ã£o", "HonorÃ¡rios", "Total"}
     fmt = r'R$ #,##0.00'
     for col_idx, header in enumerate(headers, start=1):
         if header in cols_numericas:
@@ -438,7 +448,7 @@ def gerar_relatorio_inadimplentes(
     todo_detalhado = []
 
     def _processar_condominio(condo_id):
-        """Processa um condomínio completo e retorna (linhas_resumo, linhas_detalhado)."""
+        """Processa um condomÃ­nio completo e retorna (linhas_resumo, linhas_detalhado)."""
         acesso, nome_condominio = verificar_condominio(condo_id)
         if not acesso:
             return [], []
@@ -449,7 +459,7 @@ def gerar_relatorio_inadimplentes(
         if not resumo:
             return [], []
 
-        # Conta inadimplências por unidade a partir do detalhado
+        # Conta inadimplÃªncias por unidade a partir do detalhado
         contagem_por_unidade = {}
         for row_det in detalhado:
             uid = row_det.get("id_unidade")
@@ -466,28 +476,28 @@ def gerar_relatorio_inadimplentes(
             nome_uni = dados_uni.get("unidade") or valores["nome_pdf"]
             qtd = contagem_por_unidade.get(unidade_id) or contagem_por_unidade.get(nome_uni, 0)
             linhas_resumo.append({
-                "Condomínio":       nome_condominio,
+                "CondomÃ­nio":       nome_condominio,
                 "Unidade":          nome_uni,
                 "Nome":             dados_uni.get("sacado", ""),
                 "Telefone 1":       tel1,
                 "Telefone 2":       tel2,
                 "Qtd Inadimpl.":    qtd,
                 "Vencimento":       valores.get("vencimento", ""),
-                "Competência":      valores.get("competencia", ""),
+                "CompetÃªncia":      valores.get("competencia", ""),
                 "Principal":        valores["principal"],
                 "Juros":            valores["juros"],
                 "Multa":            valores["multa"],
-                "Atualização":      valores["atualizacao"],
-                "Honorários":       valores["honorarios"],
+                "AtualizaÃ§Ã£o":      valores["atualizacao"],
+                "HonorÃ¡rios":       valores["honorarios"],
                 "Total":            valores["total"],
             })
 
         for row in detalhado:
-            row["Condomínio"] = nome_condominio
+            row["CondomÃ­nio"] = nome_condominio
 
         return linhas_resumo, detalhado
 
-    # Processa condomínios em paralelo
+    # Processa condomÃ­nios em paralelo
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS_CONDOMINIOS) as executor:
         futures = {executor.submit(_processar_condominio, cid): cid for cid in ids_range}
         for future in as_completed(futures):
@@ -505,17 +515,17 @@ def gerar_relatorio_inadimplentes(
         todas_resumo.sort(key=lambda r: r["Total"], reverse=True)
         todo_detalhado.sort(key=lambda r: r.get("Total", 0), reverse=True)
     else:
-        todas_resumo.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
-        todo_detalhado.sort(key=lambda r: (r["Condomínio"] or "", r["Unidade"] or ""))
+        todas_resumo.sort(key=lambda r: (r["CondomÃ­nio"] or "", r["Unidade"] or ""))
+        todo_detalhado.sort(key=lambda r: (r["CondomÃ­nio"] or "", r["Unidade"] or ""))
 
     wb = Workbook()
 
-    # ── Aba Resumo ──────────────────────────────────────────────────────────
+    # â”€â”€ Aba Resumo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ws_resumo = wb.active
     ws_resumo.title = "Resumo"
-    headers_resumo = ["Condomínio", "Unidade", "Nome", "Telefone 1", "Telefone 2", "Qtd Inadimpl.",
-                      "Vencimento", "Competência",
-                      "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    headers_resumo = ["CondomÃ­nio", "Unidade", "Nome", "Telefone 1", "Telefone 2", "Qtd Inadimpl.",
+                      "Vencimento", "CompetÃªncia",
+                      "Principal", "Juros", "Multa", "AtualizaÃ§Ã£o", "HonorÃ¡rios", "Total"]
     ws_resumo.append(headers_resumo)
     for row in todas_resumo:
         ws_resumo.append([row[h] for h in headers_resumo])
@@ -523,7 +533,7 @@ def gerar_relatorio_inadimplentes(
     # Linha de totais
     num_rows = len(todas_resumo)
     totais_resumo = ["TOTAL GERAL", "", "", "", "", "", "", ""]
-    cols_num = ["Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    cols_num = ["Principal", "Juros", "Multa", "AtualizaÃ§Ã£o", "HonorÃ¡rios", "Total"]
     for col in cols_num:
         totais_resumo.append(round(sum(r[col] for r in todas_resumo), 2))
     ws_resumo.append(totais_resumo)
@@ -542,10 +552,10 @@ def gerar_relatorio_inadimplentes(
     _aplicar_grade_e_zebra(ws_resumo)
     _aplicar_formato_contabil(ws_resumo, headers_resumo)
 
-    # ── Aba Detalhado ────────────────────────────────────────────────────────
+    # â”€â”€ Aba Detalhado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ws_det = wb.create_sheet("Detalhado")
-    headers_det = ["Condomínio", "Unidade", "Código", "Vencimento", "Competência",
-                   "Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    headers_det = ["CondomÃ­nio", "Unidade", "CÃ³digo", "Vencimento", "CompetÃªncia",
+                   "Principal", "Juros", "Multa", "AtualizaÃ§Ã£o", "HonorÃ¡rios", "Total"]
     ws_det.append(headers_det)
     for row in todo_detalhado:
         ws_det.append([row.get(h, "") for h in headers_det])
@@ -553,7 +563,7 @@ def gerar_relatorio_inadimplentes(
     # Linha de totais detalhado
     num_rows_det = len(todo_detalhado)
     totais_det = ["TOTAL GERAL", "", "", "", ""]
-    cols_num_det = ["Principal", "Juros", "Multa", "Atualização", "Honorários", "Total"]
+    cols_num_det = ["Principal", "Juros", "Multa", "AtualizaÃ§Ã£o", "HonorÃ¡rios", "Total"]
     for col in cols_num_det:
         totais_det.append(round(sum(r.get(col, 0) for r in todo_detalhado), 2))
     ws_det.append(totais_det)
@@ -580,7 +590,7 @@ def gerar_relatorio_inadimplentes(
     return buffer.getvalue(), filename
 
 
-# ── Geração de PDF ────────────────────────────────────────────────────────────
+# â”€â”€ GeraÃ§Ã£o de PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def gerar_pdf_inadimplentes(
     id_condominio: Optional[int] = None,
@@ -589,7 +599,7 @@ def gerar_pdf_inadimplentes(
     ordenar_desc: bool = False,
 ) -> tuple:
     """
-    Gera um relatório PDF de inadimplentes com tabela formatada.
+    Gera um relatÃ³rio PDF de inadimplentes com tabela formatada.
     Reutiliza o mesmo pipeline de dados do Excel.
     """
     from reportlab.lib import colors
@@ -602,7 +612,7 @@ def gerar_pdf_inadimplentes(
     )
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
-    # Cores padrão do sistema
+    # Cores padrÃ£o do sistema
     COR_VERDE       = colors.HexColor("#006837")
     COR_VERDE_ESC   = colors.HexColor("#004225")
     COR_ZEBRA       = colors.HexColor("#F2F2F2")
@@ -610,7 +620,7 @@ def gerar_pdf_inadimplentes(
     COR_TEXTO       = colors.HexColor("#1A1A1A")
     COR_TEXTO_CLARO = colors.HexColor("#666666")
 
-    # ── Busca os dados ────────────────────────────────────────────────────────
+    # â”€â”€ Busca os dados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if not data_posicao:
         data_posicao_fmt = datetime.today().strftime("%m/%d/%Y")
     else:
@@ -639,7 +649,7 @@ def gerar_pdf_inadimplentes(
             tels = vals.get("telefones", [])
             dados_uni = mapa.get(uid, {})
             linhas.append({
-                "Condomínio":   nome_condo or "",
+                "CondomÃ­nio":   nome_condo or "",
                 "condo_id":     condo_id,
                 "Unidade":      dados_uni.get("unidade") or vals["nome_pdf"],
                 "Nome":         dados_uni.get("sacado", ""),
@@ -648,8 +658,8 @@ def gerar_pdf_inadimplentes(
                 "Principal":    vals["principal"],
                 "Juros":        vals["juros"],
                 "Multa":        vals["multa"],
-                "Atualização":  vals["atualizacao"],
-                "Honorários":   vals["honorarios"],
+                "AtualizaÃ§Ã£o":  vals["atualizacao"],
+                "HonorÃ¡rios":   vals["honorarios"],
                 "Total":        vals["total"],
             })
         return linhas
@@ -668,9 +678,9 @@ def gerar_pdf_inadimplentes(
     if ordenar_desc:
         todas_resumo.sort(key=lambda r: r.get("Total", 0), reverse=True)
     else:
-        todas_resumo.sort(key=lambda r: (r["Condomínio"], r["Unidade"]))
+        todas_resumo.sort(key=lambda r: (r["CondomÃ­nio"], r["Unidade"]))
 
-    # ── Monta o PDF ───────────────────────────────────────────────────────────
+    # â”€â”€ Monta o PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -710,12 +720,12 @@ def gerar_pdf_inadimplentes(
 
     story = []
 
-    # Título
+    # TÃ­tulo
     data_label = data_posicao or datetime.today().strftime("%d/%m/%Y")
-    titulo_txt = "Relatório de Inadimplentes"
+    titulo_txt = "RelatÃ³rio de Inadimplentes"
     if id_condominio:
-        titulo_txt += f" — Condomínio {id_condominio}"
-    # Logo + Título lado a lado
+        titulo_txt += f" â€” CondomÃ­nio {id_condominio}"
+    # Logo + TÃ­tulo lado a lado
     import os as _os
     from reportlab.platypus import Image as RLImage
     _logo_path = _os.path.join(_os.path.dirname(__file__), "logo_pratika.png")
@@ -737,18 +747,18 @@ def gerar_pdf_inadimplentes(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(header_table)
-    story.append(Paragraph(f"Data de posição: {data_label}  |  Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  Total de unidades: {len(todas_resumo)}", style_sub))
+    story.append(Paragraph(f"Data de posiÃ§Ã£o: {data_label}  |  Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  Total de unidades: {len(todas_resumo)}", style_sub))
     story.append(HRFlowable(width="100%", thickness=2, color=COR_VERDE, spaceAfter=10))
 
     # Acumuladores do total geral
     grand_principal = grand_juros = grand_multa = grand_atualiz = grand_honor = grand_total = Decimal("0")
 
-    # Agrupa por condomínio — usa dict para garantir que todas as linhas do mesmo
-    # condomínio fiquem juntas, independente da ordem de chegada dos threads
+    # Agrupa por condomÃ­nio â€” usa dict para garantir que todas as linhas do mesmo
+    # condomÃ­nio fiquem juntas, independente da ordem de chegada dos threads
     from collections import defaultdict
     grupos_condo = defaultdict(list)
     for row in todas_resumo:
-        chave = (row["Condomínio"], row["condo_id"])
+        chave = (row["CondomÃ­nio"], row["condo_id"])
         grupos_condo[chave].append(row)
 
     for (nome_condo, cid), rows in grupos_condo.items():
@@ -761,7 +771,7 @@ def gerar_pdf_inadimplentes(
             )
         ))
 
-        # Cabeçalho da tabela
+        # CabeÃ§alho da tabela
         cabecalho = [
             p("Unidade", style_cell_bold),
             p("Nome", style_cell_bold),
@@ -770,8 +780,8 @@ def gerar_pdf_inadimplentes(
             p("Principal", style_cell_bold),
             p("Juros", style_cell_bold),
             p("Multa", style_cell_bold),
-            p("Atualização", style_cell_bold),
-            p("Honorários", style_cell_bold),
+            p("AtualizaÃ§Ã£o", style_cell_bold),
+            p("HonorÃ¡rios", style_cell_bold),
             p("Total", style_cell_bold),
         ]
 
@@ -787,21 +797,21 @@ def gerar_pdf_inadimplentes(
                 p(brl(row["Principal"])),
                 p(brl(row["Juros"])),
                 p(brl(row["Multa"])),
-                p(brl(row["Atualização"])),
-                p(brl(row["Honorários"])),
+                p(brl(row["AtualizaÃ§Ã£o"])),
+                p(brl(row["HonorÃ¡rios"])),
                 p(brl(row["Total"])),
             ])
             tot_principal += Decimal(str(row["Principal"]))
             tot_juros     += Decimal(str(row["Juros"]))
             tot_multa     += Decimal(str(row["Multa"]))
-            tot_atualiz   += Decimal(str(row["Atualização"]))
-            tot_honor     += Decimal(str(row["Honorários"]))
+            tot_atualiz   += Decimal(str(row["AtualizaÃ§Ã£o"]))
+            tot_honor     += Decimal(str(row["HonorÃ¡rios"]))
             tot_total     += Decimal(str(row["Total"]))
             grand_principal += Decimal(str(row["Principal"]))
             grand_juros     += Decimal(str(row["Juros"]))
             grand_multa     += Decimal(str(row["Multa"]))
-            grand_atualiz   += Decimal(str(row["Atualização"]))
-            grand_honor     += Decimal(str(row["Honorários"]))
+            grand_atualiz   += Decimal(str(row["AtualizaÃ§Ã£o"]))
+            grand_honor     += Decimal(str(row["HonorÃ¡rios"]))
             grand_total     += Decimal(str(row["Total"]))
 
         # Linha de totais
@@ -830,7 +840,7 @@ def gerar_pdf_inadimplentes(
             zebra_styles.append(("BACKGROUND", (0, idx + 1), (-1, idx + 1), cor))
 
         table_style = [
-            # Cabeçalho
+            # CabeÃ§alho
             ("BACKGROUND",  (0, 0), (-1, 0),  COR_VERDE),
             ("TEXTCOLOR",   (0, 0), (-1, 0),  COR_BRANCO),
             ("FONTNAME",    (0, 0), (-1, 0),  "Helvetica-Bold"),
@@ -854,10 +864,10 @@ def gerar_pdf_inadimplentes(
         story.append(tabela)
         story.append(Spacer(1, 0.3*cm))
 
-    # ── Tabela de TOTAL GERAL (todos os condomínios) ─────────────────────────
+    # â”€â”€ Tabela de TOTAL GERAL (todos os condomÃ­nios) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     story.append(Spacer(1, 0.5*cm))
     story.append(HRFlowable(width="100%", thickness=2, color=COR_VERDE_ESC, spaceAfter=6))
-    story.append(Paragraph("TOTAL GERAL — Todos os Condomínios", ParagraphStyle(
+    story.append(Paragraph("TOTAL GERAL â€” Todos os CondomÃ­nios", ParagraphStyle(
         "grand_title", fontSize=11, textColor=COR_VERDE_ESC,
         fontName="Helvetica-Bold", spaceAfter=6,
     )))
@@ -872,8 +882,8 @@ def gerar_pdf_inadimplentes(
             Paragraph("Principal", style_grand),
             Paragraph("Juros", style_grand),
             Paragraph("Multa", style_grand),
-            Paragraph("Atualização", style_grand),
-            Paragraph("Honorários", style_grand),
+            Paragraph("AtualizaÃ§Ã£o", style_grand),
+            Paragraph("HonorÃ¡rios", style_grand),
             Paragraph("TOTAL GERAL", style_grand),
         ],
         [
