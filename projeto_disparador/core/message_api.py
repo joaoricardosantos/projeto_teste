@@ -79,15 +79,22 @@ def dispatch_excel(
         raise HttpError(500, str(e))
 
 @message_router.get("/unidades-inadimplentes", response={200: list})
-def get_unidades_inadimplentes(request, id_condominio: int):
+def get_unidades_inadimplentes(request, id_condominio: str):
     """
-    Retorna lista de unidades inadimplentes de um condomínio
-    sem enviar mensagens — usado para seleção na UI.
+    Retorna lista de unidades inadimplentes.
+    id_condominio pode ser um único ID ou vários separados por vírgula.
+    Cada unidade retornada inclui condominio_id e condominio_nome.
     """
     try:
         from core.condominio_service import get_unidades_inadimplentes
-        unidades = get_unidades_inadimplentes(id_condominio)
-        return 200, unidades
+        ids = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+        todas = []
+        for cid in ids:
+            unidades = get_unidades_inadimplentes(cid)
+            for u in unidades:
+                u["condominio_id"] = cid
+            todas.extend(unidades)
+        return 200, todas
     except ValueError as e:
         raise HttpError(400, str(e))
     except Exception as e:

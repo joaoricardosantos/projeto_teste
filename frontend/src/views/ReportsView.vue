@@ -58,6 +58,9 @@
             variant="outlined"
             density="comfortable"
             clearable
+            multiple
+            chips
+            closable-chips
             hide-details
             :disabled="isExporting || loadingCondominios"
             no-data-text="Nenhum condomínio encontrado"
@@ -176,6 +179,9 @@
         variant="outlined"
         density="comfortable"
         clearable
+        multiple
+        chips
+        closable-chips
         hide-details
         class="mb-4"
         :disabled="isSemNumeroLoading || loadingCondominios"
@@ -354,7 +360,7 @@ const isExporting        = ref(false)
 const exportFormat       = ref('xlsx')
 const exportError        = ref('')
 const exportSuccess      = ref('')
-const idCondominio       = ref(null)
+const idCondominio       = ref([])
 const dataPosicao        = ref('')
 const ultimos5anos       = ref(false)
 const ordenarDesc        = ref(false)
@@ -372,7 +378,7 @@ const dataInicio5anos = computed(() => {
 })
 
 // ── Estado sem número ────────────────────────────────────────────────────────
-const semNumeroCondominio     = ref(null)
+const semNumeroCondominio     = ref([])
 const isSemNumeroLoading      = ref(false)
 const semNumeroError          = ref('')
 const semNumeroFormat         = ref('')
@@ -386,7 +392,7 @@ const exportarSemNumero = async (format) => {
   semNumeroError.value     = ''
   try {
     const params = new URLSearchParams()
-    if (semNumeroCondominio.value) params.append('id_condominio', semNumeroCondominio.value)
+    if (semNumeroCondominio.value?.length) params.append('id_condominio', semNumeroCondominio.value.join(','))
     if (semNumeroUltimos5anos.value) params.append('ultimos_5_anos', 'true')
     if (semNumeroMin3.value) params.append('min_inadimplencias', '3')
     if (semNumeroExcluirExterno.value) params.append('excluir_juridico_externo', 'true')
@@ -479,7 +485,7 @@ const startExport = async (formato) => {
 
   try {
     const params = new URLSearchParams()
-    if (idCondominio.value) params.append('id_condominio', idCondominio.value)
+    if (idCondominio.value?.length) params.append('id_condominio', idCondominio.value.join(','))
     if (dataPosicao.value) {
       const [ano, mes, dia] = dataPosicao.value.split('-')
       params.append('data_posicao', `${dia}/${mes}/${ano}`)
