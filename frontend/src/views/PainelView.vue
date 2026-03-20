@@ -1,14 +1,33 @@
 <template>
-  <v-container fluid>
-    <v-row justify="center">
-      <v-col cols="12" sm="11" md="9" lg="7">
-        <v-card elevation="8">
-          <v-card-title class="text-h5 font-weight-bold pa-4">
-            Enviar Mensagens
-          </v-card-title>
-          <v-card-text class="pa-4">
+  <div>
 
-            <!-- Seleção de Condomínio -->
+    <!-- ── Cabeçalho ── -->
+    <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-6">
+      <div class="d-flex align-center gap-4">
+        <div class="page-icon">
+          <v-icon size="20" color="white">mdi-send-outline</v-icon>
+        </div>
+        <div>
+          <h1 class="page-title">Enviar Mensagens</h1>
+          <p class="page-subtitle">Selecione os condomínios, unidades e dispare cobranças via WhatsApp</p>
+        </div>
+      </div>
+    </div>
+
+    <v-row justify="center">
+      <v-col cols="12" lg="8" xl="7">
+
+        <!-- ── Seção 1: Condomínio e Template ── -->
+        <v-card class="section-card mb-4" elevation="3">
+          <div class="section-header">
+            <div class="section-badge">1</div>
+            <div>
+              <p class="section-title">Condomínio e Mensagem</p>
+              <p class="section-subtitle">Selecione o(s) condomínio(s) e o template de cobrança</p>
+            </div>
+          </div>
+
+          <div class="pa-5">
             <v-autocomplete
               v-model="selectedCondominioIds"
               :items="condominios"
@@ -21,8 +40,8 @@
               multiple
               chips
               closable-chips
-              prepend-icon="mdi-office-building"
-              class="mb-2"
+              prepend-inner-icon="mdi-office-building"
+              class="mb-4"
               :loading="loadingCondominios"
               :disabled="loadingCondominios || loading"
               no-data-text="Nenhum condomínio encontrado"
@@ -32,7 +51,6 @@
               @update:model-value="onCondominioChange"
             />
 
-            <!-- Seleção de Template -->
             <v-select
               v-model="selectedTemplateId"
               :items="templates"
@@ -42,8 +60,7 @@
               variant="outlined"
               density="comfortable"
               clearable
-              prepend-icon="mdi-message-text"
-              class="mb-2 mt-2"
+              prepend-inner-icon="mdi-message-text"
               :loading="loadingTemplates"
               :disabled="loading"
               no-data-text="Nenhum template cadastrado"
@@ -56,184 +73,185 @@
               <v-sheet
                 v-if="selectedTemplate"
                 color="grey-lighten-4"
-                rounded
-                class="pa-3 mb-4 mt-2"
-                style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word;"
+                rounded="lg"
+                class="pa-4 mt-4"
+                style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; border-left: 3px solid #006837;"
               >
-                <p class="text-caption text-medium-emphasis mb-1">Pré-visualização:</p>
+                <p class="text-caption text-medium-emphasis mb-2 font-weight-bold text-uppercase" style="letter-spacing:.05em;">
+                  <v-icon size="13" class="mr-1" color="primary">mdi-eye-outline</v-icon>
+                  Pré-visualização
+                </p>
                 {{ renderPreview(selectedTemplate.body) }}
               </v-sheet>
             </v-expand-transition>
-
-            <!-- Lista de unidades inadimplentes -->
-            <v-expand-transition>
-              <div v-if="unidades.length > 0 || loadingUnidades" class="mb-4 mt-2">
-                <div class="d-flex align-center justify-space-between mb-2">
-                  <span class="text-subtitle-2 font-weight-bold">
-                    Unidades inadimplentes
-                    <v-chip v-if="unidades.length" size="x-small" color="primary" class="ml-1">
-                      {{ unidades.length }}
-                    </v-chip>
-                  </span>
-                  <div class="d-flex" style="gap:8px;">
-                    <v-btn
-                      v-if="unidades.length"
-                      size="small"
-                      variant="tonal"
-                      color="warning"
-                      @click="selecionarTresMais"
-                    >
-                      3+ cobranças
-                    </v-btn>
-                    <v-btn
-                      v-if="unidades.length"
-                      size="small"
-                      variant="tonal"
-                      color="primary"
-                      @click="toggleSelecionarTodas"
-                    >
-                      {{ todasSelecionadas ? 'Desmarcar todas' : 'Marcar todas' }}
-                    </v-btn>
-                  </div>
-                </div>
-
-                <!-- Loading unidades -->
-                <div v-if="loadingUnidades" class="d-flex align-center justify-center pa-6">
-                  <v-progress-circular indeterminate color="primary" size="32" class="mr-3" />
-                  <span class="text-body-2 text-medium-emphasis">Buscando inadimplentes...</span>
-                </div>
-
-                <!-- Tabela de unidades -->
-                <v-sheet v-else border rounded>
-                  <v-list density="compact" class="pa-0">
-                    <v-list-item
-                      v-for="(u, i) in unidades"
-                      :key="u.id_unidade"
-                      :class="i % 2 === 0 ? 'bg-grey-lighten-5' : ''"
-                      style="min-height: 48px;"
-                    >
-                      <template #prepend>
-                        <v-checkbox
-                          v-model="selectedUnidades"
-                          :value="u.id_unidade"
-                          hide-details
-                          density="compact"
-                          :disabled="!u.tem_numero"
-                        />
-                      </template>
-
-                      <v-list-item-title class="text-body-2">
-                        <strong>{{ u.unidade }}</strong>
-                        <span class="text-medium-emphasis ml-1">— {{ u.nome }}</span>
-                        <v-chip
-                          v-if="u.qtd_inadimplencias > 1"
-                          size="x-small"
-                          color="warning"
-                          variant="tonal"
-                          class="ml-1"
-                        >{{ u.qtd_inadimplencias }} cobranças</v-chip>
-                      </v-list-item-title>
-
-                      <template #append>
-                        <div class="d-flex align-center" style="gap:8px;">
-                          <span class="text-caption font-weight-bold text-primary">{{ u.valor }}</span>
-                          <v-chip
-                            v-if="!u.tem_numero"
-                            size="x-small"
-                            color="error"
-                            variant="tonal"
-                          >
-                            Sem número
-                          </v-chip>
-                        </div>
-                      </template>
-                    </v-list-item>
-                  </v-list>
-                </v-sheet>
-
-                <p v-if="!loadingUnidades && unidades.length" class="text-caption text-medium-emphasis mt-1">
-                  {{ selectedUnidades.length }} de {{ unidadesComNumero.length }} selecionadas
-                  <span v-if="unidadesSemNumero.length" class="ml-2 text-error">
-                    · {{ unidadesSemNumero.length }} sem número
-                  </span>
-                </p>
-              </div>
-            </v-expand-transition>
-
-            <!-- Erros -->
-            <v-alert v-if="errorMessage" type="error" class="mt-4" closable @click:close="errorMessage = ''">
-              {{ errorMessage }}
-            </v-alert>
-
-            <!-- Resultado -->
-            <v-alert
-              v-if="resultDetails"
-              type="success"
-              class="mt-4"
-              closable
-              @click:close="resultDetails = null; successMessage = ''"
-            >
-              <div class="font-weight-bold mb-2">{{ successMessage }}</div>
-              <div>✅ Enviados com sucesso: <strong>{{ resultDetails.success }}</strong></div>
-              <div>❌ Falhas no envio: <strong>{{ envioFailures.length }}</strong></div>
-              <div>📵 Sem número cadastrado: <strong>{{ resultDetails.sem_numero?.length || 0 }}</strong></div>
-
-              <div v-if="resultDetails.sem_numero?.length" class="mt-3">
-                <div class="text-caption font-weight-bold text-medium-emphasis mb-1">📵 Unidades sem número:</div>
-                <v-sheet color="orange-lighten-5" rounded class="pa-2">
-                  <div
-                    v-for="(f, i) in resultDetails.sem_numero"
-                    :key="i"
-                    class="text-caption py-1"
-                    :style="i < resultDetails.sem_numero.length - 1 ? 'border-bottom: 1px solid rgba(0,0,0,0.08)' : ''"
-                  >
-                    <strong>{{ f.unidade }}</strong>
-                    <span v-if="f.nome"> — {{ f.nome }}</span>
-                  </div>
-                </v-sheet>
-              </div>
-
-              <div v-if="envioFailures.length" class="mt-3">
-                <div class="text-caption font-weight-bold text-medium-emphasis mb-1">❌ Falhas no envio:</div>
-                <div v-for="f in envioFailures" :key="f.phone" class="text-caption">
-                  <strong>{{ f.unidade || f.phone }}</strong>
-                  <span v-if="f.nome"> — {{ f.nome }}</span>
-                  : {{ friendlyError(f.error) }}
-                </div>
-              </div>
-            </v-alert>
-
-            <v-btn
-              v-if="resultDetails"
-              color="grey-darken-1"
-              block
-              size="large"
-              class="mt-3"
-              variant="outlined"
-              @click="baixarRelatorio"
-            >
-              <v-icon start>mdi-file-pdf-box</v-icon>
-              Baixar relatório de envio (PDF)
-            </v-btn>
-
-            <v-btn
-              color="primary"
-              block
-              size="large"
-              class="mt-3"
-              :loading="loading"
-              :disabled="!selectedCondominioIds.length || loadingCondominios || loadingUnidades || selectedUnidades.length === 0"
-              @click="handleEnvio"
-            >
-              <v-icon start>mdi-whatsapp</v-icon>
-              Enviar para {{ selectedUnidades.length }} unidade{{ selectedUnidades.length !== 1 ? 's' : '' }}
-            </v-btn>
-
-          </v-card-text>
+          </div>
         </v-card>
+
+        <!-- ── Seção 2: Unidades ── -->
+        <v-expand-transition>
+          <v-card v-if="unidades.length > 0 || loadingUnidades" class="section-card mb-4" elevation="3">
+            <div class="section-header">
+              <div class="section-badge">2</div>
+              <div class="flex-grow-1">
+                <p class="section-title">
+                  Unidades Inadimplentes
+                  <v-chip v-if="unidades.length" size="x-small" color="white" variant="tonal" class="ml-2" style="color:white;">
+                    {{ unidades.length }}
+                  </v-chip>
+                </p>
+                <p class="section-subtitle">Selecione quais unidades receberão a mensagem</p>
+              </div>
+              <div v-if="unidades.length" class="d-flex gap-2">
+                <v-btn
+                  size="small" variant="tonal" color="white"
+                  style="color:white;"
+                  @click="selecionarTresMais"
+                >3+ cobranças</v-btn>
+                <v-btn
+                  size="small" variant="tonal" color="white"
+                  style="color:white;"
+                  @click="toggleSelecionarTodas"
+                >{{ todasSelecionadas ? 'Desmarcar todas' : 'Marcar todas' }}</v-btn>
+              </div>
+            </div>
+
+            <div class="pa-5">
+              <!-- Loading -->
+              <div v-if="loadingUnidades" class="d-flex align-center justify-center pa-8">
+                <v-progress-circular indeterminate color="primary" size="32" class="mr-3" />
+                <span class="text-body-2 text-medium-emphasis">Buscando inadimplentes...</span>
+              </div>
+
+              <!-- Lista -->
+              <v-sheet v-else border rounded="lg" class="overflow-hidden">
+                <div
+                  v-for="(u, i) in unidades"
+                  :key="u.id_unidade"
+                  class="unit-row"
+                  :class="{ 'unit-row--even': i % 2 === 0 }"
+                >
+                  <v-checkbox
+                    v-model="selectedUnidades"
+                    :value="u.id_unidade"
+                    hide-details
+                    density="compact"
+                    :disabled="!u.tem_numero"
+                    class="flex-shrink-0"
+                  />
+
+                  <div class="unit-info">
+                    <span class="unit-name">
+                      <strong>{{ u.unidade }}</strong>
+                      <span class="text-medium-emphasis ml-1">— {{ u.nome }}</span>
+                    </span>
+                    <v-chip
+                      v-if="u.qtd_inadimplencias > 1"
+                      size="x-small" color="warning" variant="tonal" class="ml-2"
+                    >{{ u.qtd_inadimplencias }} cobranças</v-chip>
+                  </div>
+
+                  <div class="unit-right">
+                    <span class="unit-valor">{{ u.valor }}</span>
+                    <v-chip v-if="!u.tem_numero" size="x-small" color="error" variant="tonal">Sem número</v-chip>
+                  </div>
+                </div>
+              </v-sheet>
+
+              <p v-if="!loadingUnidades && unidades.length" class="text-caption text-medium-emphasis mt-3">
+                <v-icon size="13" class="mr-1">mdi-check-circle-outline</v-icon>
+                {{ selectedUnidades.length }} de {{ unidadesComNumero.length }} selecionadas
+                <span v-if="unidadesSemNumero.length" class="ml-3 text-error">
+                  <v-icon size="13" class="mr-1">mdi-phone-off</v-icon>
+                  {{ unidadesSemNumero.length }} sem número
+                </span>
+              </p>
+            </div>
+          </v-card>
+        </v-expand-transition>
+
+        <!-- ── Erros / Resultado ── -->
+        <v-alert v-if="errorMessage" type="error" class="mb-4" closable @click:close="errorMessage = ''">
+          {{ errorMessage }}
+        </v-alert>
+
+        <v-card v-if="resultDetails" class="result-card mb-4" elevation="3">
+          <div class="result-header">
+            <v-icon color="white" size="20" class="mr-2">mdi-check-circle-outline</v-icon>
+            <span>{{ successMessage }}</span>
+          </div>
+          <div class="pa-5">
+            <v-row>
+              <v-col cols="4">
+                <div class="stat-box stat-box--success">
+                  <p class="stat-num">{{ resultDetails.success }}</p>
+                  <p class="stat-label">Enviados</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--error">
+                  <p class="stat-num">{{ envioFailures.length }}</p>
+                  <p class="stat-label">Falhas</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--warn">
+                  <p class="stat-num">{{ resultDetails.sem_numero?.length || 0 }}</p>
+                  <p class="stat-label">Sem número</p>
+                </div>
+              </v-col>
+            </v-row>
+
+            <div v-if="resultDetails.sem_numero?.length" class="mt-4">
+              <p class="text-caption font-weight-bold text-medium-emphasis mb-2">
+                <v-icon size="13" class="mr-1">mdi-phone-off</v-icon>Unidades sem número:
+              </p>
+              <v-sheet color="orange-lighten-5" rounded="lg" class="pa-3">
+                <div v-for="(f, i) in resultDetails.sem_numero" :key="i" class="text-caption py-1"
+                  :style="i < resultDetails.sem_numero.length - 1 ? 'border-bottom: 1px solid rgba(0,0,0,0.07)' : ''">
+                  <strong>{{ f.unidade }}</strong><span v-if="f.nome"> — {{ f.nome }}</span>
+                </div>
+              </v-sheet>
+            </div>
+
+            <div v-if="envioFailures.length" class="mt-3">
+              <p class="text-caption font-weight-bold text-medium-emphasis mb-2">
+                <v-icon size="13" class="mr-1">mdi-alert-circle-outline</v-icon>Falhas no envio:
+              </p>
+              <div v-for="f in envioFailures" :key="f.phone" class="text-caption py-1">
+                <strong>{{ f.unidade || f.phone }}</strong>
+                <span v-if="f.nome"> — {{ f.nome }}</span>: {{ friendlyError(f.error) }}
+              </div>
+            </div>
+          </div>
+        </v-card>
+
+        <!-- ── Ações ── -->
+        <div class="d-flex gap-3 flex-column">
+          <v-btn
+            v-if="resultDetails"
+            variant="outlined"
+            color="grey-darken-1"
+            size="large"
+            prepend-icon="mdi-file-pdf-box"
+            @click="baixarRelatorio"
+          >Baixar relatório de envio (PDF)</v-btn>
+
+          <v-btn
+            color="primary"
+            size="large"
+            :loading="loading"
+            :disabled="!selectedCondominioIds.length || loadingCondominios || loadingUnidades || selectedUnidades.length === 0"
+            @click="handleEnvio"
+          >
+            <v-icon start>mdi-whatsapp</v-icon>
+            Enviar para {{ selectedUnidades.length }} unidade{{ selectedUnidades.length !== 1 ? 's' : '' }}
+          </v-btn>
+        </div>
+
       </v-col>
     </v-row>
-  </v-container>
+
+  </div>
 </template>
 
 <script setup>
@@ -365,12 +383,7 @@ const baixarRelatorio = async () => {
 
   const falhas = (details.failures || [])
     .filter(f => f.phone && f.phone !== '-' && f.phone !== '—')
-    .map(f => ({
-      phone:   f.phone   || '',
-      error:   f.error   || '',
-      unidade: f.unidade || '',
-      nome:    f.nome    || '',
-    }))
+    .map(f => ({ phone: f.phone || '', error: f.error || '', unidade: f.unidade || '', nome: f.nome || '' }))
 
   const semNumeroResult = details.sem_numero || []
   const semNumeroKeys   = new Set(semNumeroResult.map(s => s.unidade))
@@ -388,13 +401,7 @@ const baixarRelatorio = async () => {
     const res = await fetch('/api/messages/relatorio-envio-pdf', {
       method: 'POST',
       headers: { ...authHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        condominio_nome: condominioNome,
-        template_nome:   templateNome || '',
-        enviados,
-        falhas,
-        sem_numero: semNumero,
-      }),
+      body: JSON.stringify({ condominio_nome: condominioNome, template_nome: templateNome || '', enviados, falhas, sem_numero: semNumero }),
     })
     if (!res.ok) throw new Error('Erro ao gerar PDF')
     const blob = await res.blob()
@@ -419,7 +426,6 @@ const handleEnvio = async () => {
   resultDetails.value = null
 
   try {
-    // Agrupar unidades selecionadas por condomínio
     const selectedSet = new Set(selectedUnidades.value)
     const porCondo = {}
     for (const u of unidades.value) {
@@ -430,7 +436,6 @@ const handleEnvio = async () => {
       }
     }
 
-    // Enviar uma chamada por condomínio e acumular resultados
     const resultadoAgregado = { success: 0, failures: [], sem_numero: [] }
     const todoContatos = []
 
@@ -479,3 +484,66 @@ onMounted(() => {
   fetchCondominios()
 })
 </script>
+
+<style scoped>
+/* ── Page header ── */
+.page-icon {
+  width: 42px; height: 42px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,168,81,0.3);
+  flex-shrink: 0; margin-right: 8px;
+}
+.page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
+.page-subtitle { font-size: 0.82rem; opacity: .55; margin: 2px 0 0; }
+
+/* ── Section card ── */
+.section-card { border-radius: 14px !important; overflow: hidden; }
+
+.section-header {
+  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  padding: 14px 20px;
+  display: flex; align-items: center; gap: 14px;
+}
+.section-badge {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.section-title    { color: white; font-weight: 600; font-size: 0.92rem; margin: 0; }
+.section-subtitle { color: rgba(255,255,255,0.7); font-size: 0.78rem; margin: 2px 0 0; }
+
+/* ── Unit row ── */
+.unit-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  transition: background 0.1s;
+}
+.unit-row--even { background: rgba(0,0,0,0.025); }
+.unit-row:hover { background: rgba(0,104,55,0.05); }
+.unit-info { flex: 1; min-width: 0; }
+.unit-name { font-size: 0.875rem; }
+.unit-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.unit-valor { font-size: 0.85rem; font-weight: 700; color: rgb(var(--v-theme-primary)); }
+
+/* ── Result card ── */
+.result-card { border-radius: 14px !important; overflow: hidden; }
+.result-header {
+  background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+  padding: 14px 20px;
+  display: flex; align-items: center;
+  color: white; font-weight: 600; font-size: 0.92rem;
+}
+.stat-box { text-align: center; padding: 12px; border-radius: 10px; }
+.stat-box--success { background: rgba(46,125,50,0.08); }
+.stat-box--error   { background: rgba(198,40,40,0.08); }
+.stat-box--warn    { background: rgba(245,127,23,0.08); }
+.stat-num   { font-size: 1.6rem; font-weight: 800; margin: 0; line-height: 1; }
+.stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; opacity: .6; margin: 4px 0 0; }
+.stat-box--success .stat-num { color: #2e7d32; }
+.stat-box--error   .stat-num { color: #c62828; }
+.stat-box--warn    .stat-num { color: #e65100; }
+</style>
