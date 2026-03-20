@@ -158,10 +158,92 @@
       </v-alert>
     </v-card>
 
-    <!-- ── Seção 2: Disparar mensagens pelo Excel ── -->
+    <!-- ── Seção 2: Unidades sem número ── -->
+    <v-card elevation="4" class="pa-6 mb-6">
+      <p class="text-subtitle-2 font-weight-bold text-uppercase text-medium-emphasis mb-4">
+        2. Unidades sem número cadastrado
+      </p>
+      <p class="text-body-2 text-medium-emphasis mb-4">
+        Gere um relatório com todas as unidades que não possuem número de telefone cadastrado.
+      </p>
+
+      <v-autocomplete
+        v-model="semNumeroCondominio"
+        :items="condominios"
+        item-title="label"
+        item-value="id"
+        label="Condomínio (opcional)"
+        variant="outlined"
+        density="comfortable"
+        clearable
+        hide-details
+        class="mb-4"
+        :disabled="isSemNumeroLoading || loadingCondominios"
+        no-data-text="Nenhum condomínio encontrado"
+        placeholder="Deixe vazio para todos os condomínios"
+      />
+
+      <!-- Filtros sem número -->
+      <div class="d-flex flex-wrap mb-4" style="gap:10px;">
+        <v-btn
+          size="small"
+          rounded="pill"
+          :color="semNumeroUltimos5anos ? 'primary' : 'grey-lighten-1'"
+          :variant="semNumeroUltimos5anos ? 'flat' : 'tonal'"
+          :prepend-icon="semNumeroUltimos5anos ? 'mdi-check-circle' : 'mdi-calendar-clock'"
+          :disabled="isSemNumeroLoading"
+          @click.stop="semNumeroUltimos5anos = !semNumeroUltimos5anos"
+        >Últimos 5 anos</v-btn>
+        <v-btn
+          size="small"
+          rounded="pill"
+          :color="semNumeroMin3 ? 'warning' : 'grey-lighten-1'"
+          :variant="semNumeroMin3 ? 'flat' : 'tonal'"
+          :prepend-icon="semNumeroMin3 ? 'mdi-check-circle' : 'mdi-alert-circle-outline'"
+          :disabled="isSemNumeroLoading"
+          @click.stop="semNumeroMin3 = !semNumeroMin3"
+        >3+ inadimplências</v-btn>
+        <v-btn
+          size="small"
+          rounded="pill"
+          :color="semNumeroExcluirExterno ? 'error' : 'grey-lighten-1'"
+          :variant="semNumeroExcluirExterno ? 'flat' : 'tonal'"
+          :prepend-icon="semNumeroExcluirExterno ? 'mdi-check-circle' : 'mdi-gavel'"
+          :disabled="isSemNumeroLoading"
+          @click.stop="semNumeroExcluirExterno = !semNumeroExcluirExterno"
+        >Excluir jurídico externo</v-btn>
+      </div>
+
+      <div class="d-flex" style="gap:12px;">
+        <v-btn
+          color="success"
+          prepend-icon="mdi-file-excel"
+          :loading="isSemNumeroLoading && semNumeroFormat === 'xlsx'"
+          :disabled="isSemNumeroLoading"
+          @click="exportarSemNumero('xlsx')"
+        >
+          Baixar Excel
+        </v-btn>
+        <v-btn
+          color="red-darken-2"
+          prepend-icon="mdi-file-pdf-box"
+          :loading="isSemNumeroLoading && semNumeroFormat === 'pdf'"
+          :disabled="isSemNumeroLoading"
+          @click="exportarSemNumero('pdf')"
+        >
+          Baixar PDF
+        </v-btn>
+      </div>
+
+      <v-alert v-if="semNumeroError" type="error" class="mt-4" closable @click:close="semNumeroError = ''">
+        {{ semNumeroError }}
+      </v-alert>
+    </v-card>
+
+    <!-- ── Seção 3: Disparar mensagens pelo Excel ── -->
     <v-card elevation="4" class="pa-6">
       <p class="text-subtitle-2 font-weight-bold text-uppercase text-medium-emphasis mb-4">
-        2. Disparar WhatsApp pelo Excel
+        3. Disparar WhatsApp pelo Excel
       </p>
       <p class="text-body-2 text-medium-emphasis mb-4">
         Faça upload do Excel gerado acima (aba <strong>Resumo</strong>) para enviar mensagens
@@ -288,6 +370,45 @@ const dataInicio5anos = computed(() => {
   d.setFullYear(d.getFullYear() - 5)
   return d.toLocaleDateString('pt-BR')
 })
+
+// ── Estado sem número ────────────────────────────────────────────────────────
+const semNumeroCondominio     = ref(null)
+const isSemNumeroLoading      = ref(false)
+const semNumeroError          = ref('')
+const semNumeroFormat         = ref('')
+const semNumeroUltimos5anos   = ref(false)
+const semNumeroMin3           = ref(false)
+const semNumeroExcluirExterno = ref(false)
+
+const exportarSemNumero = async (format) => {
+  isSemNumeroLoading.value = true
+  semNumeroFormat.value    = format
+  semNumeroError.value     = ''
+  try {
+    const params = new URLSearchParams()
+    if (semNumeroCondominio.value) params.append('id_condominio', semNumeroCondominio.value)
+    if (semNumeroUltimos5anos.value) params.append('ultimos_5_anos', 'true')
+    if (semNumeroMin3.value) params.append('min_inadimplencias', '3')
+    if (semNumeroExcluirExterno.value) params.append('excluir_juridico_externo', 'true')
+    let url = `/api/admin/sem-numero/${format}`
+    const qs = params.toString()
+    if (qs) url += `?${qs}`
+    const res = await fetch(url, { headers: authHeader() })
+    if (!res.ok) throw new Error('Erro ao gerar relatório')
+    const blob = await res.blob()
+    const a    = document.createElement('a')
+    a.href     = URL.createObjectURL(blob)
+    a.download = `sem_numero.${format}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } catch (e) {
+    semNumeroError.value = e.message
+  } finally {
+    isSemNumeroLoading.value = false
+    semNumeroFormat.value    = ''
+  }
+}
 
 // ── Estado disparo ────────────────────────────────────────────────────────────
 const isDispatching      = ref(false)
