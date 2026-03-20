@@ -780,11 +780,6 @@ def gerar_pdf_inadimplentes(
             p("Telefone 1", style_cell_bold),
             p("Telefone 2", style_cell_bold),
             p("Juizado", style_cell_bold),
-            p("Principal", style_cell_bold),
-            p("Juros", style_cell_bold),
-            p("Multa", style_cell_bold),
-            p("Atualização", style_cell_bold),
-            p("Honorários", style_cell_bold),
             p("Total", style_cell_bold),
         ]
 
@@ -798,11 +793,6 @@ def gerar_pdf_inadimplentes(
                 p(row["Telefone 1"]),
                 p(row["Telefone 2"]),
                 p(row.get("Juizado", "Não")),
-                p(brl(row["Principal"])),
-                p(brl(row["Juros"])),
-                p(brl(row["Multa"])),
-                p(brl(row["Atualização"])),
-                p(brl(row["Honorários"])),
                 p(brl(row["Total"])),
             ])
             tot_principal += Decimal(str(row["Principal"]))
@@ -826,16 +816,12 @@ def gerar_pdf_inadimplentes(
             p("", style_tot),
             p("", style_tot),
             p("", style_tot),
-            p(brl(tot_principal), style_tot),
-            p(brl(tot_juros), style_tot),
-            p(brl(tot_multa), style_tot),
-            p(brl(tot_atualiz), style_tot),
-            p(brl(tot_honor), style_tot),
+            p("", style_tot),
             p(brl(tot_total), style_tot),
         ])
 
         # Larguras das colunas (total ~26cm em landscape A4)
-        col_widths = [2.5*cm, 5*cm, 3*cm, 3*cm, 2.5*cm, 2*cm, 2*cm, 2.5*cm, 2.5*cm, 3*cm]
+        col_widths = [3*cm, 7*cm, 4*cm, 4*cm, 3*cm, 4*cm]
 
         # Zebra: aplica linha a linha para garantir funcionamento no ReportLab
         zebra_styles = []
