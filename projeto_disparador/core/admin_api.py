@@ -170,13 +170,14 @@ def delete_user(request, payload: UserDeleteIn):
 @admin_router.post("/export-defaulters/start", response={202: dict})
 def start_export(
     request,
-    id_condominio: Optional[int] = None,
+    id_condominio: Optional[str] = None,
     data_posicao: Optional[str] = None,
     ultimos_5_anos: bool = False,
     ordenar_desc: bool = False,
 ):
     """
     Inicia a geração do relatório em background.
+    id_condominio pode ser um único ID ou vários separados por vírgula.
     ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
     ordenar_desc=true ordena por Total decrescente.
     """
@@ -186,13 +187,21 @@ def start_export(
     if ultimos_5_anos:
         data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
 
+    ids = None
+    if id_condominio:
+        partes = [p.strip() for p in id_condominio.split(",") if p.strip()]
+        if len(partes) == 1:
+            ids = int(partes[0])
+        else:
+            ids = [int(p) for p in partes]
+
     job_id = str(uuid.uuid4())
     with _JOBS_LOCK:
         _JOBS[job_id] = {"status": "pending", "file": None, "filename": None, "error": None}
 
     t = threading.Thread(
         target=_run_job,
-        args=(job_id, id_condominio, data_posicao, data_inicio, ordenar_desc),
+        args=(job_id, ids, data_posicao, data_inicio, ordenar_desc),
         daemon=True,
     )
     t.start()
@@ -283,7 +292,7 @@ def clear_dashboard_cache(request):
 @admin_router.post("/export-pdf/start", response={202: dict})
 def start_export_pdf(
     request,
-    id_condominio: Optional[int] = None,
+    id_condominio: Optional[str] = None,
     data_posicao: Optional[str] = None,
     ultimos_5_anos: bool = False,
     ordenar_desc: bool = False,
@@ -296,6 +305,14 @@ def start_export_pdf(
     if ultimos_5_anos:
         data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
 
+    ids = None
+    if id_condominio:
+        partes = [p.strip() for p in id_condominio.split(",") if p.strip()]
+        if len(partes) == 1:
+            ids = int(partes[0])
+        else:
+            ids = [int(p) for p in partes]
+
     job_id = str(uuid.uuid4())
     with _JOBS_LOCK:
         _JOBS[job_id] = {"status": "pending", "file": None, "filename": None, "error": None}
@@ -306,14 +323,14 @@ def start_export_pdf(
         try:
             try:
                 content, filename = gerar_pdf_inadimplentes(
-                    id_condominio=id_condominio,
+                    id_condominio=ids,
                     data_posicao=data_posicao,
                     data_inicio=data_inicio,
                     ordenar_desc=ordenar_desc,
                 )
             except TypeError:
                 content, filename = gerar_pdf_inadimplentes(
-                    id_condominio=id_condominio,
+                    id_condominio=ids,
                     data_posicao=data_posicao,
                 )
             if not content:
@@ -564,7 +581,7 @@ JURIDICO_EXTERNO = {18, 7, 19, 9, 25, 16, 20, 65, 27, 32, 22, 45, 46, 47, 3, 48}
 @admin_router.get("/sem-numero/xlsx")
 def relatorio_sem_numero_xlsx(
     request,
-    id_condominio: int = None,
+    id_condominio: str = None,
     ultimos_5_anos: bool = False,
     min_inadimplencias: int = 0,
     excluir_juridico_externo: bool = False,
@@ -595,8 +612,12 @@ def relatorio_sem_numero_xlsx(
 
         max_id = getattr(_settings, "SUPERLOGICA_MAX_ID", 100)
         if id_condominio:
-            acesso, nome = verificar_condominio(id_condominio)
-            condominios = [{"id": id_condominio, "nome": nome}] if acesso else []
+            ids_lista = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+            condominios = []
+            for cid in ids_lista:
+                acesso, nome = verificar_condominio(cid)
+                if acesso:
+                    condominios.append({"id": cid, "nome": nome})
         else:
             condominios = []
             with ThreadPoolExecutor(max_workers=10) as ex:
@@ -673,7 +694,7 @@ def relatorio_sem_numero_xlsx(
 @admin_router.get("/sem-numero/pdf")
 def relatorio_sem_numero_pdf(
     request,
-    id_condominio: int = None,
+    id_condominio: str = None,
     ultimos_5_anos: bool = False,
     min_inadimplencias: int = 0,
     excluir_juridico_externo: bool = False,
@@ -724,8 +745,12 @@ def relatorio_sem_numero_pdf(
 
         max_id = getattr(_settings, "SUPERLOGICA_MAX_ID", 100)
         if id_condominio:
-            acesso, nome = verificar_condominio(id_condominio)
-            condominios = [{"id": id_condominio, "nome": nome}] if acesso else []
+            ids_lista = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+            condominios = []
+            for cid in ids_lista:
+                acesso, nome = verificar_condominio(cid)
+                if acesso:
+                    condominios.append({"id": cid, "nome": nome})
         else:
             condominios = []
             with ThreadPoolExecutor(max_workers=10) as ex:

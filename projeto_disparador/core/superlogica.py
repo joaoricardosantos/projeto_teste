@@ -442,7 +442,12 @@ def gerar_relatorio_inadimplentes(
         if len(partes) == 3:
             data_posicao = f"{partes[1]}/{partes[0]}/{partes[2]}"
 
-    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
+    if isinstance(id_condominio, (list, tuple)):
+        ids_range = id_condominio
+    elif id_condominio:
+        ids_range = [id_condominio]
+    else:
+        ids_range = range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
 
     todas_resumo = []
     todo_detalhado = []
@@ -630,7 +635,12 @@ def gerar_pdf_inadimplentes(
         else:
             data_posicao_fmt = data_posicao
 
-    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
+    if isinstance(id_condominio, (list, tuple)):
+        ids_range = id_condominio
+    elif id_condominio:
+        ids_range = [id_condominio]
+    else:
+        ids_range = range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
 
     todas_resumo = []
 

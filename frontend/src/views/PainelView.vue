@@ -10,7 +10,7 @@
 
             <!-- Seleção de Condomínio -->
             <v-autocomplete
-              v-model="selectedCondominioId"
+              v-model="selectedCondominioIds"
               :items="condominios"
               item-title="label"
               item-value="id"
@@ -18,6 +18,9 @@
               variant="outlined"
               density="comfortable"
               clearable
+              multiple
+              chips
+              closable-chips
               prepend-icon="mdi-office-building"
               class="mb-2"
               :loading="loadingCondominios"
@@ -219,7 +222,7 @@
               size="large"
               class="mt-3"
               :loading="loading"
-              :disabled="!selectedCondominioId || loadingCondominios || loadingUnidades || selectedUnidades.length === 0"
+              :disabled="!selectedCondominioIds.length || loadingCondominios || loadingUnidades || selectedUnidades.length === 0"
               @click="handleEnvio"
             >
               <v-icon start>mdi-whatsapp</v-icon>
@@ -242,9 +245,9 @@ const successMessage       = ref('')
 const resultDetails        = ref(null)
 const lastEnvioData        = ref(null)
 
-const condominios          = ref([])
-const loadingCondominios   = ref(false)
-const selectedCondominioId = ref(null)
+const condominios           = ref([])
+const loadingCondominios    = ref(false)
+const selectedCondominioIds = ref([])
 
 const templates            = ref([])
 const loadingTemplates     = ref(false)
@@ -330,14 +333,14 @@ const fetchCondominios = async () => {
   finally { loadingCondominios.value = false }
 }
 
-const fetchUnidades = async (condominioId) => {
-  if (!condominioId) { unidades.value = []; selectedUnidades.value = []; return }
+const fetchUnidades = async (ids) => {
+  if (!ids || !ids.length) { unidades.value = []; selectedUnidades.value = []; return }
   loadingUnidades.value = true
   unidades.value = []
   selectedUnidades.value = []
   try {
     const res = await fetch(
-      `/api/messages/unidades-inadimplentes?id_condominio=${condominioId}`,
+      `/api/messages/unidades-inadimplentes?id_condominio=${ids.join(',')}`,
       { headers: authHeader() }
     )
     if (res.ok) {
@@ -409,33 +412,60 @@ const baixarRelatorio = async () => {
 }
 
 const handleEnvio = async () => {
-  if (!selectedCondominioId.value || selectedUnidades.value.length === 0) return
+  if (!selectedCondominioIds.value.length || selectedUnidades.value.length === 0) return
   loading.value = true
   errorMessage.value = ''
   successMessage.value = ''
   resultDetails.value = null
 
   try {
-    let url = `/api/messages/send-selected?id_condominio=${selectedCondominioId.value}`
-    if (selectedTemplateId.value) url += `&template_id=${selectedTemplateId.value}`
-    url += `&unidades_ids=${selectedUnidades.value.join(',')}`
+    // Agrupar unidades selecionadas por condomínio
+    const selectedSet = new Set(selectedUnidades.value)
+    const porCondo = {}
+    for (const u of unidades.value) {
+      if (selectedSet.has(u.id_unidade)) {
+        const cid = u.condominio_id
+        if (!porCondo[cid]) porCondo[cid] = []
+        porCondo[cid].push(u.id_unidade)
+      }
+    }
 
-    const res  = await fetch(url, { method: 'POST', headers: authHeader() })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.detail || 'Erro ao enviar mensagens')
+    // Enviar uma chamada por condomínio e acumular resultados
+    const resultadoAgregado = { success: 0, failures: [], sem_numero: [] }
+    const todoContatos = []
+
+    for (const [cidStr, ids] of Object.entries(porCondo)) {
+      let url = `/api/messages/send-selected?id_condominio=${cidStr}`
+      if (selectedTemplateId.value) url += `&template_id=${selectedTemplateId.value}`
+      url += `&unidades_ids=${ids.join(',')}`
+
+      const res  = await fetch(url, { method: 'POST', headers: authHeader() })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Erro ao enviar mensagens')
+
+      const d = data.details
+      resultadoAgregado.success += d.success || 0
+      resultadoAgregado.failures.push(...(d.failures || []))
+      resultadoAgregado.sem_numero.push(...(d.sem_numero || []))
+
+      const condoUnidades = unidades.value.filter(
+        u => u.condominio_id === Number(cidStr) && ids.includes(u.id_unidade) && u.tem_numero
+      )
+      todoContatos.push(...condoUnidades.map(u => ({ ...u, telefone: u.telefone || '' })))
+    }
 
     successMessage.value = 'Envio concluído!'
-    resultDetails.value  = data.details
+    resultDetails.value  = resultadoAgregado
 
-    const condominioSelecionado = condominios.value.find(c => c.id === selectedCondominioId.value)
-    const templateSelecionado   = templates.value.find(t => t.id === selectedTemplateId.value)
+    const nomesCondos = selectedCondominioIds.value
+      .map(id => condominios.value.find(c => c.id === id)?.label || String(id))
+      .join(', ')
+    const templateSelecionado = templates.value.find(t => t.id === selectedTemplateId.value)
     lastEnvioData.value = {
-      condominioNome: condominioSelecionado?.label || String(selectedCondominioId.value),
+      condominioNome: nomesCondos,
       templateNome:   templateSelecionado?.name || null,
-      details:        data.details,
-      contatos:       unidades.value
-        .filter(u => selectedUnidades.value.includes(u.id_unidade) && u.tem_numero)
-        .map(u => ({ ...u, telefone: u.telefone || '' })),
+      details:        resultadoAgregado,
+      contatos:       todoContatos,
     }
   } catch (e) {
     errorMessage.value = e.message
