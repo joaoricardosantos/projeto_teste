@@ -193,7 +193,9 @@
               <div v-if="envioFailures.length" class="mt-3">
                 <div class="text-caption font-weight-bold text-medium-emphasis mb-1">❌ Falhas no envio:</div>
                 <div v-for="f in envioFailures" :key="f.phone" class="text-caption">
-                  {{ f.phone }} — {{ f.error }}
+                  <strong>{{ f.unidade || f.phone }}</strong>
+                  <span v-if="f.nome"> — {{ f.nome }}</span>
+                  : {{ friendlyError(f.error) }}
                 </div>
               </div>
             </v-alert>
@@ -232,12 +234,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const loading              = ref(false)
 const errorMessage         = ref('')
 const successMessage       = ref('')
 const resultDetails        = ref(null)
+const lastEnvioData        = ref(null)
 
 const condominios          = ref([])
 const loadingCondominios   = ref(false)
@@ -265,79 +268,19 @@ const todasSelecionadas = computed(() =>
 
 const envioFailures = computed(() => {
   if (!resultDetails.value?.failures) return []
-  return resultDetails.value.failures.filter(f => f.phone !== '—')
+  return resultDetails.value.failures.filter(f => f.phone && f.phone !== '-' && f.phone !== '—')
 })
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` })
 
-const lastEnvioData = ref(null)
-
-const baixarRelatorio = async () => {
-  if (!lastEnvioData.value) return
-  const { condominioNome, templateNome, details, contatos } = lastEnvioData.value
-
-  const _friendlyError = (error) => {
-    if (!error) return 'Não foi possível enviar'
-    if (error.toLowerCase().includes('instance does not exist') || error.toLowerCase().includes('instance')) return 'WhatsApp não conectado'
-    if (error.includes('400') || error.includes('404')) return 'Número sem WhatsApp'
-    if (error.includes('500')) return 'Erro interno — verificar número'
-    if (error.toLowerCase().includes('timeout') || error.toLowerCase().includes('timed out')) return 'Tempo de conexão esgotado'
-    if (error.includes(';')) return 'Múltiplos números no cadastro'
-    return 'Não foi possível enviar'
-  }
-  const falhas = (details.failures || [])
-    .filter(f => f.phone !== '—')
-    .map(f => ({
-      phone:   f.phone,
-      error:   _friendlyError(f.error),
-      unidade: f.unidade || '',
-      nome:    f.nome || '',
-    }))
-  // Combina sem_numero do resultado com unidades sem número da lista
-  const semNumeroResult = details.sem_numero || []
-  const semNumeroLista = unidadesSemNumero.value.map(u => ({
-    unidade: u.unidade,
-    nome:    u.nome,
-    motivo:  'Sem número cadastrado',
-  }))
-  // Junta os dois, evitando duplicatas
-  const semNumeroKeys = new Set(semNumeroResult.map(s => s.unidade))
-  const semNumeroExtra = semNumeroLista.filter(s => !semNumeroKeys.has(s.unidade))
-  const semNumero = [...semNumeroResult, ...semNumeroExtra]
-  const phonesFalharam = new Set(falhas.map(f => f.phone))
-  const enviados = (contatos || [])
-    .filter(c => !phonesFalharam.has(c.telefone || ''))
-    .map(c => ({
-      unidade:  c.unidade,
-      nome:     c.nome,
-      telefone: c.telefone || '',
-    }))
-
-  try {
-    const res = await fetch('/api/messages/relatorio-envio-pdf', {
-      method: 'POST',
-      headers: { ...authHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        condominio_nome: condominioNome,
-        template_nome:   templateNome || '',
-        enviados,
-        falhas,
-        sem_numero:      semNumero,
-      }),
-    })
-    if (!res.ok) throw new Error('Erro ao gerar PDF')
-    const blob = await res.blob()
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `relatorio_envio_${new Date().toISOString().slice(0,10)}.pdf`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-  } catch (e) {
-    errorMessage.value = 'Erro ao gerar relatório PDF: ' + e.message
-  }
+const friendlyError = (error) => {
+  if (!error) return 'Não foi possível enviar'
+  const e = error.toLowerCase()
+  if (e.includes('instance does not exist') || e.includes('instance')) return 'WhatsApp não conectado'
+  if (error.includes('400') || error.includes('404')) return 'Número sem WhatsApp'
+  if (error.includes('500')) return 'Erro interno'
+  if (e.includes('timeout') || e.includes('timed out')) return 'Tempo de conexão esgotado'
+  return 'Não foi possível enviar'
 }
 
 const renderPreview = (body) =>
@@ -359,10 +302,9 @@ const toggleSelecionarTodas = () => {
 }
 
 const selecionarTresMais = () => {
-  const ids = unidadesComNumero.value
+  selectedUnidades.value = unidadesComNumero.value
     .filter(u => (u.qtd_inadimplencias || 1) >= 3)
     .map(u => u.id_unidade)
-  selectedUnidades.value = ids
 }
 
 const fetchTemplates = async () => {
@@ -400,7 +342,6 @@ const fetchUnidades = async (condominioId) => {
     )
     if (res.ok) {
       unidades.value = await res.json()
-      // Seleciona automaticamente todas com número
       selectedUnidades.value = unidades.value
         .filter(u => u.tem_numero)
         .map(u => u.id_unidade)
@@ -415,6 +356,58 @@ const onCondominioChange = (val) => {
   fetchUnidades(val)
 }
 
+const baixarRelatorio = async () => {
+  if (!lastEnvioData.value) return
+  const { condominioNome, templateNome, details, contatos } = lastEnvioData.value
+
+  const falhas = (details.failures || [])
+    .filter(f => f.phone && f.phone !== '-' && f.phone !== '—')
+    .map(f => ({
+      phone:   f.phone   || '',
+      error:   f.error   || '',
+      unidade: f.unidade || '',
+      nome:    f.nome    || '',
+    }))
+
+  const semNumeroResult = details.sem_numero || []
+  const semNumeroKeys   = new Set(semNumeroResult.map(s => s.unidade))
+  const semNumeroExtra  = unidadesSemNumero.value
+    .filter(u => !semNumeroKeys.has(u.unidade))
+    .map(u => ({ unidade: u.unidade, nome: u.nome, motivo: 'Sem número cadastrado' }))
+  const semNumero = [...semNumeroResult, ...semNumeroExtra]
+
+  const phonesFalharam = new Set(falhas.map(f => f.phone))
+  const enviados = (contatos || [])
+    .filter(c => !phonesFalharam.has(c.telefone || ''))
+    .map(c => ({ unidade: c.unidade, nome: c.nome, telefone: c.telefone || '' }))
+
+  try {
+    const res = await fetch('/api/messages/relatorio-envio-pdf', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        condominio_nome: condominioNome,
+        template_nome:   templateNome || '',
+        enviados,
+        falhas,
+        sem_numero: semNumero,
+      }),
+    })
+    if (!res.ok) throw new Error('Erro ao gerar PDF')
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `relatorio_envio_${new Date().toISOString().slice(0,10)}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    errorMessage.value = 'Erro ao gerar relatório PDF: ' + e.message
+  }
+}
+
 const handleEnvio = async () => {
   if (!selectedCondominioId.value || selectedUnidades.value.length === 0) return
   loading.value = true
@@ -427,21 +420,22 @@ const handleEnvio = async () => {
     if (selectedTemplateId.value) url += `&template_id=${selectedTemplateId.value}`
     url += `&unidades_ids=${selectedUnidades.value.join(',')}`
 
-    const res = await fetch(url, { method: 'POST', headers: authHeader() })
+    const res  = await fetch(url, { method: 'POST', headers: authHeader() })
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || 'Erro ao enviar mensagens')
 
     successMessage.value = 'Envio concluído!'
-    resultDetails.value = data.details
+    resultDetails.value  = data.details
+
     const condominioSelecionado = condominios.value.find(c => c.id === selectedCondominioId.value)
-    const templateSelecionado = templates.value.find(t => t.id === selectedTemplateId.value)
+    const templateSelecionado   = templates.value.find(t => t.id === selectedTemplateId.value)
     lastEnvioData.value = {
       condominioNome: condominioSelecionado?.label || String(selectedCondominioId.value),
-      templateNome: templateSelecionado?.name || null,
-      details: data.details,
-      contatos: unidades.value
-      .filter(u => selectedUnidades.value.includes(u.id_unidade) && u.tem_numero)
-      .map(u => ({ ...u, telefone: u.telefone || '' })),
+      templateNome:   templateSelecionado?.name || null,
+      details:        data.details,
+      contatos:       unidades.value
+        .filter(u => selectedUnidades.value.includes(u.id_unidade) && u.tem_numero)
+        .map(u => ({ ...u, telefone: u.telefone || '' })),
     }
   } catch (e) {
     errorMessage.value = e.message

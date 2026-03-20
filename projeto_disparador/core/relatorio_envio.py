@@ -226,6 +226,8 @@ def gerar_pdf_relatorio_envio(
     if falhas:
         story.append(Paragraph("❌ Falhas no envio", style_section))
         cab_f = [
+            p("Unidade", style_cell_bold),
+            p("Nome", style_cell_bold),
             p("Telefone", style_cell_bold),
             p("Motivo", style_cell_bold),
         ]
