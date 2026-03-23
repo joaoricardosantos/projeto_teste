@@ -1,86 +1,181 @@
 <template>
-  <v-container>
-    <v-row class="mb-4" align="center" justify="space-between">
-      <v-col cols="12" sm="6">
-        <h1 class="text-h5 font-weight-bold">Administração de Usuários</h1>
-      </v-col>
-      <v-col cols="12" sm="6" class="text-sm-right text-left">
-        <v-btn variant="text" class="mr-2" @click="goToDashboard">Dashboard</v-btn>
-        <v-btn icon @click="logout"><v-icon>mdi-logout</v-icon></v-btn>
-      </v-col>
-    </v-row>
+  <div>
 
-    <!-- Criar usuário -->
-    <v-row class="mb-6">
-      <v-col cols="12" md="6">
-        <v-card elevation="4" class="pa-4">
-          <h2 class="text-subtitle-1 font-weight-bold mb-4">Novo usuário</h2>
-          <v-form @submit.prevent="handleCreateUser">
-            <v-text-field v-model="newUser.name" label="Nome completo" required variant="outlined" class="mb-3" />
-            <v-text-field v-model="newUser.email" label="E-mail" type="email" required variant="outlined" class="mb-3" />
-            <v-text-field v-model="newUser.password" label="Senha" type="password" required variant="outlined" class="mb-3" />
-            <v-alert v-if="createUserSuccess" type="success" class="mb-3" dense>{{ createUserSuccess }}</v-alert>
-            <v-alert v-if="createUserError" type="error" class="mb-3" dense>{{ createUserError }}</v-alert>
-            <v-btn type="submit" color="primary" :loading="isCreatingUser">Criar usuário</v-btn>
-          </v-form>
+    <!-- ── Cabeçalho ── -->
+    <div class="d-flex align-center gap-4 mb-6">
+      <div class="page-icon">
+        <v-icon size="20" color="white">mdi-shield-account-outline</v-icon>
+      </div>
+      <div>
+        <h1 class="page-title">Administração de Usuários</h1>
+        <p class="page-subtitle">Gerencie acessos, aprovações e permissões da plataforma</p>
+      </div>
+    </div>
+
+    <v-alert v-if="errorMessage" type="error" class="mb-5" closable @click:close="errorMessage = ''">
+      {{ errorMessage }}
+    </v-alert>
+
+    <v-row>
+
+      <!-- ── Formulário novo usuário ── -->
+      <v-col cols="12" md="4">
+        <v-card class="section-card" elevation="3">
+          <div class="section-header">
+            <div class="section-icon">
+              <v-icon size="16" color="white">mdi-account-plus-outline</v-icon>
+            </div>
+            <div>
+              <p class="section-title">Novo Usuário</p>
+              <p class="section-subtitle">Criar acesso à plataforma</p>
+            </div>
+          </div>
+
+          <div class="pa-5">
+            <v-form @submit.prevent="handleCreateUser">
+              <v-text-field
+                v-model="newUser.name"
+                label="Nome completo"
+                required
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-account-outline"
+                class="mb-3"
+              />
+              <v-text-field
+                v-model="newUser.email"
+                label="E-mail"
+                type="email"
+                required
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-email-outline"
+                class="mb-3"
+              />
+              <v-text-field
+                v-model="newUser.password"
+                label="Senha"
+                type="password"
+                required
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-lock-outline"
+                class="mb-4"
+              />
+
+              <v-alert v-if="createUserSuccess" type="success" class="mb-3" density="compact">{{ createUserSuccess }}</v-alert>
+              <v-alert v-if="createUserError"   type="error"   class="mb-3" density="compact">{{ createUserError }}</v-alert>
+
+              <v-btn type="submit" color="primary" block size="large" :loading="isCreatingUser" prepend-icon="mdi-account-plus">
+                Criar usuário
+              </v-btn>
+            </v-form>
+          </div>
         </v-card>
       </v-col>
+
+      <!-- ── Tabela de usuários ── -->
+      <v-col cols="12" md="8">
+        <v-card class="section-card" elevation="3">
+          <div class="section-header">
+            <div class="section-icon">
+              <v-icon size="16" color="white">mdi-account-group-outline</v-icon>
+            </div>
+            <div>
+              <p class="section-title">Usuários cadastrados</p>
+              <p class="section-subtitle">Gerencie aprovações e permissões</p>
+            </div>
+            <v-chip size="small" variant="tonal" color="white" style="color:white; margin-left:auto;">
+              {{ users.length }}
+            </v-chip>
+          </div>
+
+          <v-card-text class="pa-0">
+            <v-data-table
+              :headers="userHeaders"
+              :items="users"
+              density="comfortable"
+              class="elevation-0"
+              no-data-text="Nenhum usuário encontrado"
+            >
+              <template #item.name="{ item }">
+                <div class="d-flex align-center py-1" style="gap: 15px;">
+                  <v-avatar size="32" :color="item.is_staff || item.is_superuser ? 'primary' : 'grey-lighten-2'">
+                    <v-icon size="16" :color="item.is_staff || item.is_superuser ? 'white' : 'grey-darken-1'">
+                      mdi-account
+                    </v-icon>
+                  </v-avatar>
+                  <div>
+                    <p class="font-weight-medium text-body-2 ma-0">{{ item.name }}</p>
+                    <p class="text-caption text-medium-emphasis ma-0">{{ item.email }}</p>
+                  </div>
+                </div>
+              </template>
+
+              <template #item.status="{ item }">
+                <v-chip
+                  :color="item.is_approved ? 'success' : 'warning'"
+                  size="x-small"
+                  variant="tonal"
+                >{{ item.is_approved ? 'Aprovado' : 'Pendente' }}</v-chip>
+              </template>
+
+              <template #item.role="{ item }">
+                <v-chip
+                  :color="item.is_staff || item.is_superuser ? 'primary' : 'grey'"
+                  size="x-small"
+                  variant="tonal"
+                >{{ item.is_staff || item.is_superuser ? 'Admin' : 'Usuário' }}</v-chip>
+              </template>
+
+              <template #item.actions="{ item }">
+                <div class="d-flex align-center gap-1 py-1">
+                  <v-btn
+                    v-if="!item.is_approved"
+                    size="x-small" color="success" variant="tonal"
+                    @click="updateUserStatus(item.id, true)"
+                  >Aprovar</v-btn>
+                  <v-btn
+                    v-else
+                    size="x-small" color="warning" variant="tonal"
+                    @click="updateUserStatus(item.id, false)"
+                  >Revogar</v-btn>
+
+                  <v-btn
+                    size="x-small" variant="tonal"
+                    :color="item.is_staff || item.is_superuser ? 'grey' : 'primary'"
+                    @click="toggleAdmin(item)"
+                  >{{ item.is_staff || item.is_superuser ? 'Remover admin' : 'Tornar admin' }}</v-btn>
+
+                  <v-btn
+                    size="x-small" color="error" icon variant="text"
+                    @click="confirmDelete(item)"
+                  >
+                    <v-icon size="16">mdi-delete</v-icon>
+                  </v-btn>
+                </div>
+              </template>
+            </v-data-table>
+          </v-card-text>
+        </v-card>
+      </v-col>
+
     </v-row>
 
-    <v-alert v-if="errorMessage" type="error" class="mb-4" dense>{{ errorMessage }}</v-alert>
-
-    <!-- Tabela de usuários -->
-    <v-card elevation="4">
-      <v-table>
-        <thead>
-          <tr>
-            <th class="text-left">Nome</th>
-            <th class="text-left">E-mail</th>
-            <th class="text-center">Status</th>
-            <th class="text-center">Permissão</th>
-            <th class="text-center">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="user in users" :key="user.id">
-            <td>{{ user.name }}</td>
-            <td>{{ user.email }}</td>
-            <td class="text-center">
-              <v-chip :color="user.is_approved ? 'success' : 'warning'" text-color="white" size="small">
-                {{ user.is_approved ? 'Aprovado' : 'Pendente' }}
-              </v-chip>
-            </td>
-            <td class="text-center">
-              <v-chip :color="user.is_staff || user.is_superuser ? 'primary' : 'grey'" text-color="white" size="small">
-                {{ user.is_staff || user.is_superuser ? 'Admin' : 'Usuário' }}
-              </v-chip>
-            </td>
-            <td class="text-center">
-              <v-btn v-if="!user.is_approved" color="success" size="small" class="mr-1" @click="updateUserStatus(user.id, true)">Aprovar</v-btn>
-              <v-btn v-else color="warning" size="small" class="mr-1" @click="updateUserStatus(user.id, false)">Revogar</v-btn>
-              <v-btn size="small" class="mr-1" :color="user.is_staff || user.is_superuser ? 'secondary' : 'primary'" @click="toggleAdmin(user)">
-                {{ user.is_staff || user.is_superuser ? 'Remover admin' : 'Tornar admin' }}
-              </v-btn>
-              <v-btn size="small" color="error" icon @click="confirmDelete(user)">
-                <v-icon>mdi-delete</v-icon>
-              </v-btn>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
-    </v-card>
-
-    <!-- Diálogo de confirmação -->
+    <!-- ── Dialog: Confirmar exclusão ── -->
     <v-dialog v-model="deleteDialog" max-width="420" persistent>
-      <v-card>
-        <v-card-title class="text-h6 pa-4">Confirmar exclusão</v-card-title>
-        <v-card-text class="px-4">
+      <v-card class="overflow-hidden">
+        <div class="delete-header">
+          <v-icon color="white" size="20" class="mr-2">mdi-alert</v-icon>
+          Confirmar exclusão
+        </div>
+        <v-card-text class="pa-5">
           Tem certeza que deseja excluir o usuário
           <strong>{{ userToDelete?.name }}</strong> ({{ userToDelete?.email }})?
           <br /><br />
-          <span class="text-error">Esta ação não pode ser desfeita.</span>
+          <span class="text-error font-weight-medium">Esta ação não pode ser desfeita.</span>
         </v-card-text>
-        <v-card-actions class="pa-4">
+        <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn variant="text" @click="deleteDialog = false" :disabled="isDeleting">Cancelar</v-btn>
           <v-btn color="error" variant="elevated" :loading="isDeleting" @click="deleteUser">
@@ -89,7 +184,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+
+  </div>
 </template>
 
 <script setup>
@@ -108,6 +204,13 @@ const createUserError = ref('')
 const deleteDialog = ref(false)
 const userToDelete = ref(null)
 const isDeleting = ref(false)
+
+const userHeaders = [
+  { title: 'Usuário',    key: 'name',    sortable: true  },
+  { title: 'Status',     key: 'status',  width: 110, sortable: false },
+  { title: 'Permissão',  key: 'role',    width: 110, sortable: false },
+  { title: 'Ações',      key: 'actions', width: 230, sortable: false },
+]
 
 const getToken = () => localStorage.getItem('access_token')
 
@@ -203,9 +306,7 @@ const handleCreateUser = async () => {
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data.detail || 'Erro ao criar usuário')
     createUserSuccess.value = 'Usuário criado com sucesso. Aguarde aprovação.'
-    newUser.name = ''
-    newUser.email = ''
-    newUser.password = ''
+    newUser.name = ''; newUser.email = ''; newUser.password = ''
     await fetchUsers()
   } catch (error) {
     createUserError.value = error.message
@@ -215,10 +316,41 @@ const handleCreateUser = async () => {
 }
 
 const goToDashboard = () => router.push('/dashboard')
-const logout = () => {
-  localStorage.removeItem('access_token')
-  router.push('/')
-}
+const logout = () => { localStorage.removeItem('access_token'); router.push('/') }
 
 onMounted(fetchUsers)
 </script>
+
+<style scoped>
+.page-icon {
+  width: 42px; height: 42px; border-radius: 11px;
+  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,168,81,0.3); flex-shrink: 0; margin-right: 8px;
+}
+.page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
+.page-subtitle { font-size: 0.82rem; opacity: .55; margin: 2px 0 0; }
+
+.section-card { border-radius: 14px !important; overflow: hidden; }
+
+.section-header {
+  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  padding: 14px 18px;
+  display: flex; align-items: center; gap: 12px;
+}
+.section-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.section-title    { color: white; font-weight: 600; font-size: 0.9rem; margin: 0; }
+.section-subtitle { color: rgba(255,255,255,0.7); font-size: 0.76rem; margin: 2px 0 0; }
+
+.delete-header {
+  background: linear-gradient(135deg, #b71c1c 0%, #e53935 100%);
+  padding: 16px 20px;
+  display: flex; align-items: center;
+  color: white; font-weight: 600; font-size: 0.95rem;
+}
+</style>
