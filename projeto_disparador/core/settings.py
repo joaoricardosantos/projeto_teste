@@ -95,6 +95,14 @@ EVOLUTION_BASE_URL = os.environ.get("EVOLUTION_BASE_URL", "http://localhost:8080
 EVOLUTION_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "minha-instancia")
 EVOLUTION_API_KEY  = os.environ.get("EVOLUTION_API_KEY", "")
 
+# Anti-spam WhatsApp
+WA_DELAY_MIN      = float(os.environ.get("WA_DELAY_MIN",      "20"))
+WA_DELAY_MAX      = float(os.environ.get("WA_DELAY_MAX",      "45"))
+WA_BATCH_SIZE     = int(os.environ.get("WA_BATCH_SIZE",       "10"))
+WA_BATCH_PAUSE    = float(os.environ.get("WA_BATCH_PAUSE",    "300"))
+WA_TYPING_MIN_MS  = int(os.environ.get("WA_TYPING_MIN_MS",   "3000"))
+WA_TYPING_MAX_MS  = int(os.environ.get("WA_TYPING_MAX_MS",   "8000"))
+
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@seudominio.com.br")
 EMAIL_BACKEND = os.environ.get(

@@ -13,7 +13,7 @@ from pydantic import UUID4, EmailStr
 
 from core.auth import JWTAuth
 from core.models import User
-from core.superlogica import gerar_relatorio_inadimplentes
+from core.superlogica import gerar_relatorio_inadimplentes, buscar_unidades
 
 admin_router = Router(auth=JWTAuth())
 
@@ -36,6 +36,13 @@ _JOBS_LOCK = threading.Lock()
 _DASHBOARD_CACHE: dict = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_TTL_MINUTES = 30
+
+def _proximas_8h():
+    agora = datetime.now()
+    proximas = agora.replace(hour=8, minute=0, second=0, microsecond=0)
+    if agora >= proximas:
+        proximas += timedelta(days=1)
+    return proximas
 
 
 def _run_job(job_id: str, id_condominio, data_posicao, data_inicio=None, ordenar_desc=False):
@@ -163,13 +170,14 @@ def delete_user(request, payload: UserDeleteIn):
 @admin_router.post("/export-defaulters/start", response={202: dict})
 def start_export(
     request,
-    id_condominio: Optional[int] = None,
+    id_condominio: Optional[str] = None,
     data_posicao: Optional[str] = None,
     ultimos_5_anos: bool = False,
     ordenar_desc: bool = False,
 ):
     """
     Inicia a geração do relatório em background.
+    id_condominio pode ser um único ID ou vários separados por vírgula.
     ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
     ordenar_desc=true ordena por Total decrescente.
     """
@@ -179,13 +187,21 @@ def start_export(
     if ultimos_5_anos:
         data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
 
+    ids = None
+    if id_condominio:
+        partes = [p.strip() for p in id_condominio.split(",") if p.strip()]
+        if len(partes) == 1:
+            ids = int(partes[0])
+        else:
+            ids = [int(p) for p in partes]
+
     job_id = str(uuid.uuid4())
     with _JOBS_LOCK:
         _JOBS[job_id] = {"status": "pending", "file": None, "filename": None, "error": None}
 
     t = threading.Thread(
         target=_run_job,
-        args=(job_id, id_condominio, data_posicao, data_inicio, ordenar_desc),
+        args=(job_id, ids, data_posicao, data_inicio, ordenar_desc),
         daemon=True,
     )
     t.start()
@@ -276,7 +292,7 @@ def clear_dashboard_cache(request):
 @admin_router.post("/export-pdf/start", response={202: dict})
 def start_export_pdf(
     request,
-    id_condominio: Optional[int] = None,
+    id_condominio: Optional[str] = None,
     data_posicao: Optional[str] = None,
     ultimos_5_anos: bool = False,
     ordenar_desc: bool = False,
@@ -289,6 +305,14 @@ def start_export_pdf(
     if ultimos_5_anos:
         data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
 
+    ids = None
+    if id_condominio:
+        partes = [p.strip() for p in id_condominio.split(",") if p.strip()]
+        if len(partes) == 1:
+            ids = int(partes[0])
+        else:
+            ids = [int(p) for p in partes]
+
     job_id = str(uuid.uuid4())
     with _JOBS_LOCK:
         _JOBS[job_id] = {"status": "pending", "file": None, "filename": None, "error": None}
@@ -299,14 +323,14 @@ def start_export_pdf(
         try:
             try:
                 content, filename = gerar_pdf_inadimplentes(
-                    id_condominio=id_condominio,
+                    id_condominio=ids,
                     data_posicao=data_posicao,
                     data_inicio=data_inicio,
                     ordenar_desc=ordenar_desc,
                 )
             except TypeError:
                 content, filename = gerar_pdf_inadimplentes(
-                    id_condominio=id_condominio,
+                    id_condominio=ids,
                     data_posicao=data_posicao,
                 )
             if not content:
@@ -496,7 +520,7 @@ def get_dashboard(
     with _CACHE_LOCK:
         _DASHBOARD_CACHE[cache_key] = {
             "data":       {**resultado, "cache": True},
-            "expires_at": datetime.now() + timedelta(minutes=_CACHE_TTL_MINUTES),
+            "expires_at": _proximas_8h(),
         }
 
     return 200, resultado
@@ -549,3 +573,263 @@ def listar_condominios(request):
 
     condominios.sort(key=lambda x: x["nome"])
     return 200, condominios
+
+
+# Condomínios cujo jurídico não é da equipe Pratika
+JURIDICO_EXTERNO = {18, 7, 19, 9, 25, 16, 20, 65, 27, 32, 22, 45, 46, 47, 3, 48}
+
+@admin_router.get("/sem-numero/xlsx")
+def relatorio_sem_numero_xlsx(
+    request,
+    id_condominio: str = None,
+    ultimos_5_anos: bool = False,
+    min_inadimplencias: int = 0,
+    excluir_juridico_externo: bool = False,
+):
+    """Gera Excel com unidades sem número cadastrado."""
+    _require_admin(request.auth)
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from io import BytesIO
+
+        from core.superlogica import _get_headers, verificar_condominio
+        from django.conf import settings as _settings
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import requests as _req
+
+        def _checar(cid):
+            try:
+                headers = _get_headers()
+                r = _req.get(f"{_settings.SUPERLOGICA_BASE_URL}/unidades", headers=headers,
+                             params={"idCondominio": cid, "pagina": 1, "itensPorPagina": 1}, timeout=10)
+                if r.status_code != 200 or not r.json():
+                    return None
+                nome = r.json()[0].get("st_nome_cond", "").strip()
+                return {"id": cid, "nome": nome} if nome else None
+            except Exception:
+                return None
+
+        max_id = getattr(_settings, "SUPERLOGICA_MAX_ID", 100)
+        if id_condominio:
+            ids_lista = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+            condominios = []
+            for cid in ids_lista:
+                acesso, nome = verificar_condominio(cid)
+                if acesso:
+                    condominios.append({"id": cid, "nome": nome})
+        else:
+            condominios = []
+            with ThreadPoolExecutor(max_workers=10) as ex:
+                futs = {ex.submit(_checar, cid): cid for cid in range(1, max_id + 1)}
+                for f in as_completed(futs):
+                    r = f.result()
+                    if r:
+                        condominios.append(r)
+            condominios.sort(key=lambda x: x["nome"])
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Sem Número"
+
+        headers = ["Condomínio", "Bloco", "Unidade", "Nome", "Qtd Inadimpl."]
+        header_fill = PatternFill(start_color="006837", end_color="006837", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+
+        from datetime import datetime as _dt
+        from core.superlogica import buscar_inadimplentes_condominio
+        data_hoje = _dt.today().strftime("%m/%d/%Y")
+        if excluir_juridico_externo:
+            condominios = [c for c in condominios if int(c["id"]) not in JURIDICO_EXTERNO]
+
+        from datetime import datetime as _dt2, timedelta as _td
+        data_inicio_filtro = None
+        if ultimos_5_anos:
+            data_inicio_filtro = (_dt2.now() - _td(days=5*365)).date()
+
+        row_idx = 2
+        for condo in condominios:
+            mapa = buscar_unidades(condo["id"])
+            try:
+                resumo_inad, det_inad = buscar_inadimplentes_condominio(condo["id"], data_hoje, mapa)
+                contagem = {}
+                for row in (det_inad or []):
+                    k = str(row.get("id_unidade") or "")
+                    if k:
+                        contagem[k] = contagem.get(k, 0) + 1
+            except Exception:
+                resumo_inad = {}
+                contagem = {}
+            for uid, dados in mapa.items():
+                if not dados.get("telefones"):
+                    qtd = contagem.get(str(uid), 0)
+                    if min_inadimplencias > 0 and qtd < min_inadimplencias:
+                        continue
+                    for col, val in enumerate([condo["nome"], dados.get("bloco",""), dados.get("unidade",""), dados.get("sacado",""), qtd], 1):
+                        cell = ws.cell(row=row_idx, column=col, value=val)
+                        cell.alignment = Alignment(wrap_text=True, vertical="center")
+                    row_idx += 1
+
+        ws.column_dimensions["A"].width = 60
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 15
+        ws.column_dimensions["D"].width = 45
+        ws.column_dimensions["E"].width = 15
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        response = HttpResponse(buffer.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = 'attachment; filename="sem_numero.xlsx"'
+        return response
+    except Exception as e:
+        raise HttpError(500, str(e))
+
+
+@admin_router.get("/sem-numero/pdf")
+def relatorio_sem_numero_pdf(
+    request,
+    id_condominio: str = None,
+    ultimos_5_anos: bool = False,
+    min_inadimplencias: int = 0,
+    excluir_juridico_externo: bool = False,
+):
+    """Gera PDF com unidades sem número cadastrado."""
+    _require_admin(request.auth)
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from io import BytesIO
+        import os
+
+        COR_VERDE  = colors.HexColor("#006837")
+        COR_BRANCO = colors.white
+        COR_ZEBRA  = colors.HexColor("#F2F2F2")
+        COR_TEXTO  = colors.HexColor("#1A1A1A")
+        COR_CINZA  = colors.HexColor("#666666")
+
+        style_cell      = ParagraphStyle("cell", fontSize=8, textColor=COR_TEXTO, fontName="Helvetica", leading=10)
+        style_cell_bold = ParagraphStyle("bold", fontSize=8, textColor=COR_BRANCO, fontName="Helvetica-Bold", leading=10, alignment=TA_CENTER)
+        style_title     = ParagraphStyle("titulo", fontSize=16, textColor=COR_VERDE, fontName="Helvetica-Bold", spaceAfter=4)
+        style_sub       = ParagraphStyle("sub", fontSize=9, textColor=COR_CINZA, fontName="Helvetica", spaceAfter=2)
+        style_section   = ParagraphStyle("section", fontSize=10, textColor=COR_VERDE, fontName="Helvetica-Bold", spaceAfter=4, spaceBefore=10)
+
+        def p(txt, style=None):
+            return Paragraph(str(txt) if txt else "", style or style_cell)
+
+        from core.superlogica import _get_headers, verificar_condominio
+        from django.conf import settings as _settings
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import requests as _req
+
+        def _checar(cid):
+            try:
+                headers = _get_headers()
+                r = _req.get(f"{_settings.SUPERLOGICA_BASE_URL}/unidades", headers=headers,
+                             params={"idCondominio": cid, "pagina": 1, "itensPorPagina": 1}, timeout=10)
+                if r.status_code != 200 or not r.json():
+                    return None
+                nome = r.json()[0].get("st_nome_cond", "").strip()
+                return {"id": cid, "nome": nome} if nome else None
+            except Exception:
+                return None
+
+        max_id = getattr(_settings, "SUPERLOGICA_MAX_ID", 100)
+        if id_condominio:
+            ids_lista = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+            condominios = []
+            for cid in ids_lista:
+                acesso, nome = verificar_condominio(cid)
+                if acesso:
+                    condominios.append({"id": cid, "nome": nome})
+        else:
+            condominios = []
+            with ThreadPoolExecutor(max_workers=10) as ex:
+                futs = {ex.submit(_checar, cid): cid for cid in range(1, max_id + 1)}
+                for f in as_completed(futs):
+                    r = f.result()
+                    if r:
+                        condominios.append(r)
+            condominios.sort(key=lambda x: x["nome"])
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=1.5*cm, rightMargin=1.5*cm, topMargin=2*cm, bottomMargin=2*cm)
+        story = []
+
+        _logo_path = os.path.join(os.path.dirname(__file__), "logo_pratika.png")
+        if os.path.exists(_logo_path):
+            from reportlab.platypus import Image as RLImage
+            logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+        else:
+            logo_img = Paragraph("", style_sub)
+
+        header_table = Table([[logo_img, Paragraph("Unidades sem Número Cadastrado", style_title)]], colWidths=[4*cm, None])
+        header_table.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("LEFTPADDING", (0,0), (-1,-1), 0)]))
+        story.append(header_table)
+
+        from datetime import datetime
+        story.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", style_sub))
+        story.append(HRFlowable(width="100%", thickness=2, color=COR_VERDE, spaceAfter=10))
+
+        if excluir_juridico_externo:
+            condominios = [c for c in condominios if int(c["id"]) not in JURIDICO_EXTERNO]
+
+        total = 0
+        for condo in condominios:
+            mapa = buscar_unidades(condo["id"])
+            linhas = [(dados.get("bloco",""), dados.get("unidade",""), dados.get("sacado",""), uid) for uid, dados in mapa.items() if not dados.get("telefones")]
+            if not linhas:
+                continue
+            total += len(linhas)
+            story.append(Paragraph(f"{condo['nome']}", style_section))
+            from datetime import datetime as _dt
+            from core.superlogica import buscar_inadimplentes_condominio
+            data_hoje = _dt.today().strftime("%m/%d/%Y")
+            try:
+                resumo_inad, det_inad = buscar_inadimplentes_condominio(condo["id"], data_hoje, mapa)
+                contagem = {}
+                for row in (det_inad or []):
+                    k = str(row.get("id_unidade") or "")
+                    if k:
+                        contagem[k] = contagem.get(k, 0) + 1
+            except Exception:
+                contagem = {}
+            cab = [p("Bloco", style_cell_bold), p("Unidade", style_cell_bold), p("Nome", style_cell_bold), p("Qtd Inadimpl.", style_cell_bold)]
+            dados_tab = [cab]
+            for i, (bloco, uni, nome, uid) in enumerate(sorted(linhas)):
+                qtd = contagem.get(str(uid), 0)
+                if min_inadimplencias > 0 and qtd < min_inadimplencias:
+                    continue
+                dados_tab.append([p(bloco), p(uni), p(nome), p(str(qtd) if qtd else "-")])
+            if len(dados_tab) <= 1:
+                continue
+            n_rows = len(dados_tab) - 1
+            zebra = [("BACKGROUND", (0, idx+1), (-1, idx+1), COR_BRANCO if idx%2==0 else COR_ZEBRA) for idx in range(n_rows)]
+            t = Table(dados_tab, colWidths=[3*cm, 3*cm, 9*cm, 2*cm])
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), COR_VERDE),
+                ("FONTSIZE", (0,0), (-1,-1), 8),
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                ("GRID", (0,0), (-1,-1), 0.4, colors.HexColor("#CCCCCC")),
+                ("TOPPADDING", (0,0), (-1,-1), 4),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ] + zebra))
+            story.append(t)
+            story.append(Spacer(1, 0.3*cm))
+
+        doc.build(story)
+        buffer.seek(0)
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="sem_numero.pdf"'
+        return response
+    except Exception as e:
+        raise HttpError(500, str(e))

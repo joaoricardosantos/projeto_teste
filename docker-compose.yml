@@ -9,6 +9,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    networks:
+      - app_network
 
   web:
     build: .
@@ -27,6 +29,8 @@ services:
     depends_on:
       - db
       - evolution_api
+    networks:
+      - app_network
 
   frontend:
     build: ./frontend
@@ -34,9 +38,14 @@ services:
       - "3000:3000"
     volumes:
       - ./frontend:/app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     depends_on:
       - web
+    networks:
+      - app_network
 
   evolution_api:
     image: atendai/evolution-api:v1.8.2
@@ -69,6 +78,12 @@ services:
       - DATABASE_ENABLED=false
       - WEBHOOK_GLOBAL_ENABLED=false
       - QRCODE_LIMIT=30
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
 
 volumes:
   postgres_data:

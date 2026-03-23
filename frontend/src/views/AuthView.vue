@@ -279,6 +279,8 @@ const handleLogin = async () => {
       throw new Error(msgs[detail] || msgs[data.detail] || detail || 'Erro ao fazer login.')
     }
     localStorage.setItem('access_token', data.access_token)
+    localStorage.setItem('is_admin', data.is_admin === true ? 'true' : 'false')
+    localStorage.setItem('user_name', data.name || data.email || '')
     // Notifica o App.vue para mostrar a sidebar imediatamente (sem esperar reload)
     window.location.href = '/dashboard'
   } catch (e) {

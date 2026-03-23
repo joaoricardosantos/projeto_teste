@@ -2,6 +2,7 @@ from typing import List
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from pydantic import UUID4
+from typing import Union
 from core.models import MessageTemplate
 from core.auth import JWTAuth
 
@@ -16,7 +17,7 @@ class TemplateIn(Schema):
 
 
 class TemplateOut(Schema):
-    id: UUID4
+    id: int
     name: str
     body: str
     created_at: str
@@ -65,7 +66,7 @@ def create_template(request, payload: TemplateIn):
 
 
 @template_router.get("/{template_id}", response=TemplateOut)
-def get_template(request, template_id: UUID4):
+def get_template(request, template_id: int):
     """Retorna um template pelo ID."""
     try:
         template = MessageTemplate.objects.get(id=template_id)
@@ -75,7 +76,7 @@ def get_template(request, template_id: UUID4):
 
 
 @template_router.put("/{template_id}", response=TemplateOut)
-def update_template(request, template_id: UUID4, payload: TemplateIn):
+def update_template(request, template_id: int, payload: TemplateIn):
     """Atualiza um template existente. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
@@ -106,7 +107,7 @@ def update_template(request, template_id: UUID4, payload: TemplateIn):
 
 
 @template_router.delete("/{template_id}", response={200: dict})
-def delete_template(request, template_id: UUID4):
+def delete_template(request, template_id: int):
     """Exclui um template. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")

@@ -13,7 +13,7 @@ const routes = [
     { path: '/dashboard', name: 'Dashboard', component: DashboardView, meta: { requiresAuth: true } },
     { path: '/painel', name: 'Painel', component: PainelView, meta: { requiresAuth: true } },
     { path: '/admin', name: 'Admin', component: AdminView, meta: { requiresAuth: true } },
-    { path: '/relatorios', name: 'Reports', component: ReportsView, meta: { requiresAuth: true } },
+    { path: '/relatorios', name: 'Reports', component: ReportsView, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/templates', name: 'Templates', component: TemplatesView, meta: { requiresAuth: true } },
 ]
 
@@ -21,8 +21,11 @@ const router = createRouter({ history: createWebHistory(), routes })
 
 router.beforeEach((to, from, next) => {
     const isAuthenticated = !!localStorage.getItem('access_token')
-    if (to.meta.requiresAuth && !isAuthenticated) next('/')
-    else next()
+    const isAdmin = localStorage.getItem('is_admin') === 'true'
+
+    if (to.meta.requiresAuth && !isAuthenticated) return next('/')
+    if (to.meta.requiresAdmin && !isAdmin) return next('/dashboard')
+    next()
 })
 
 export default router
