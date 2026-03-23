@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -:*)"
+      "Bash(python -:*)",
+      "Bash(sshpass -p 'BF!7cP4ne6XJ' ssh -o StrictHostKeyChecking=no root@186.202.209.150 \"docker logs evolution_api --tail 60 2>&1\")",
+      "Bash(winget install:*)",
+      "Read(//usr/bin/**)",
+      "Read(//c/Users/prati/.local/bin/**)",
+      "Read(//c/Users/prati/AppData/Local/Microsoft/WinGet/Packages//**)",
+      "Bash(SSHPASS=\"/c/Users/prati/AppData/Local/Microsoft/WinGet/Packages/xhcoding.sshpass-win32_Microsoft.Winget.Source_8wekyb3d8bbwe/sshpass.exe\")",
+      "Bash(\"$SSHPASS\" -p 'BF!7cP4ne6XJ' ssh -o StrictHostKeyChecking=no root@186.202.209.150 \"docker ps 2>&1 && echo ''---LOGS---'' && docker logs evolution_api --tail 40 2>&1\")",
+      "Bash(powershell -Command \"& { $pass = ConvertTo-SecureString ''''BF!7cP4ne6XJ'''' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential\\(''''root'''', $pass\\); }\")"
     ]
   }
 }
