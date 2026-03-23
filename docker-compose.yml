@@ -22,10 +22,14 @@ services:
          gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 1 --worker-class gthread --threads 8 --timeout 600"
     volumes:
       - .:/app
+      - ./credentials/google-sheets.json:/app/credentials/google-sheets.json:ro
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - GOOGLE_SHEETS_CREDENTIALS_FILE=/app/credentials/google-sheets.json
+      - SHEETS_CACHE_TTL=30
     depends_on:
       - db
       - evolution_api
