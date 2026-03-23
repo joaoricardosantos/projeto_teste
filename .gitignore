@@ -10,5 +10,9 @@ __pycache__/
 gunicorn.ctl
 projeto_disparador/gunicorn.ctl
 node_modules/
+<<<<<<< Updated upstream
 frontend/node_modules/
 credentials/
+=======
+frontend/node_modules/
+>>>>>>> Stashed changes
