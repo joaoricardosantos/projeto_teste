@@ -125,6 +125,7 @@ class SheetSetor(models.Model):
     TIPO_CHOICES = [
         ('cobrancas', 'Cobranças / Vencimentos'),
         ('advocacia', 'Honorários Advocatícios'),
+        ('despesas', 'Despesas por Unidade'),
         ('financeiro', 'Financeiro'),
         ('fluxo_caixa', 'Fluxo de Caixa'),
     ]

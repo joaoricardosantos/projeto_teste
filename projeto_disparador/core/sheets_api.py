@@ -20,6 +20,7 @@ from core.sheets_service import (
     processar_fluxo_caixa,
     processar_cobrancas_pratika,
     processar_advocacia,
+    processar_despesas_unidade,
     get_planilhas_configuradas,
 )
 
@@ -393,6 +394,23 @@ def dashboard_advocacia(request, spreadsheet_id: str, aba: str = "Sheet1", force
         if not dados:
             raise HttpError(404, "Planilha vazia")
         return processar_advocacia(dados)
+    except HttpError:
+        raise
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+@sheets_router.get("/dashboard/despesas/{spreadsheet_id}")
+def dashboard_despesas(request, spreadsheet_id: str, aba: str = "Sheet1", force: bool = False):
+    """
+    Dashboard de despesas por unidade.
+    """
+    try:
+        range_name = f"'{aba}'!A:C"
+        dados = buscar_dados_planilha(spreadsheet_id, range_name, use_cache=not force)
+        if not dados:
+            raise HttpError(404, "Planilha vazia")
+        return processar_despesas_unidade(dados)
     except HttpError:
         raise
     except Exception as e:

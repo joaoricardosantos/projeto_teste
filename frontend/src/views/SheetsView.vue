@@ -75,7 +75,7 @@
             :value="setor.id"
           >
             <v-icon size="small" class="mr-2">
-              {{ setor.tipo_dashboard === 'cobrancas' ? 'mdi-cash-clock' : setor.tipo_dashboard === 'advocacia' ? 'mdi-gavel' : 'mdi-chart-line' }}
+              {{ { cobrancas: 'mdi-cash-clock', advocacia: 'mdi-gavel', despesas: 'mdi-store-minus' }[setor.tipo_dashboard] || 'mdi-chart-line' }}
             </v-icon>
             {{ setor.nome }}
           </v-tab>
@@ -397,6 +397,143 @@
             </v-card>
           </div>
 
+          <!-- Dashboard Despesas por Unidade -->
+          <div v-else-if="dashboard && dashboard.tipo === 'despesas'" key="despesas">
+            <div class="d-flex align-center justify-space-between mb-4">
+              <div>
+                <span class="text-h6 font-weight-bold">{{ dashboard.titulo }}</span>
+                <span class="text-caption text-medium-emphasis ml-3">
+                  <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+                  Atualizado em {{ dashboard.atualizado_em }}
+                </span>
+              </div>
+              <v-chip size="small" color="green" variant="tonal">
+                <v-icon size="small" class="mr-1">mdi-check-circle</v-icon>
+                Conectado
+              </v-chip>
+            </div>
+
+            <!-- KPIs -->
+            <v-row class="mb-4">
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Despesas</span>
+                    <v-icon color="red" size="28">mdi-cash-minus</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #F44336;">{{ brl(dashboard.resumo.total_geral) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.total_registros }} lançamentos</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Unidades</span>
+                    <v-icon color="blue" size="28">mdi-store</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #2196F3;">{{ dashboard.resumo.total_unidades }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">unidades / lojas</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #FF9800;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Fornecedores</span>
+                    <v-icon color="orange" size="28">mdi-truck</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #FF9800;">{{ dashboard.resumo.fornecedores_unicos }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">fornecedores únicos</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Maior Unidade</span>
+                    <v-icon color="purple" size="28">mdi-trophy</v-icon>
+                  </div>
+                  <div class="text-subtitle-1 font-weight-bold text-truncate" style="color: #9C27B0;">{{ dashboard.resumo.maior_unidade }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ brl(dashboard.resumo.maior_unidade_valor) }}</div>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- Gráficos -->
+            <v-row class="mb-4">
+              <v-col cols="12" md="7">
+                <v-card elevation="4">
+                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                    <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
+                    Total por Unidade
+                  </v-card-title>
+                  <v-card-text>
+                    <div style="height: 340px; position: relative;">
+                      <canvas ref="chartDespesasUnidade"></canvas>
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              <v-col cols="12" md="5">
+                <v-card elevation="4">
+                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                    <v-icon class="mr-2" color="primary">mdi-chart-donut</v-icon>
+                    Top 10 Fornecedores
+                  </v-card-title>
+                  <v-card-text>
+                    <div style="height: 340px; position: relative;">
+                      <canvas ref="chartDespesasFornecedor"></canvas>
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- Tabela -->
+            <v-card elevation="4">
+              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between flex-wrap gap-2">
+                <div class="d-flex align-center">
+                  <v-icon class="mr-2" color="primary">mdi-format-list-bulleted</v-icon>
+                  Lançamentos
+                </div>
+                <div class="d-flex gap-2">
+                  <v-select
+                    v-model="filtroUnidade"
+                    :items="['Todas', ...dashboard.por_unidade.map(u => u.unidade)]"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    style="min-width: 200px; max-width: 260px;"
+                    label="Filtrar unidade"
+                  />
+                  <v-text-field
+                    v-model="buscaDespesa"
+                    density="compact"
+                    variant="outlined"
+                    placeholder="Buscar fornecedor..."
+                    prepend-inner-icon="mdi-magnify"
+                    hide-details
+                    style="max-width: 240px;"
+                    clearable
+                  />
+                </div>
+              </v-card-title>
+              <v-card-text class="pa-0">
+                <v-data-table
+                  :headers="headersDespesas"
+                  :items="despesasFiltradas"
+                  :items-per-page="20"
+                  density="comfortable"
+                  class="elevation-0"
+                  no-data-text="Nenhum lançamento encontrado"
+                  :sort-by="[{ key: 'vencimento', order: 'asc' }]"
+                >
+                  <template #item.valor="{ item }">
+                    <span class="text-red font-weight-medium">{{ brl(item.valor) }}</span>
+                  </template>
+                </v-data-table>
+              </v-card-text>
+            </v-card>
+          </div>
+
           <!-- Dashboard Financeiro -->
           <div v-else-if="dashboard" key="financeiro">
             <div class="d-flex align-center justify-space-between mb-4">
@@ -576,6 +713,7 @@
             :items="[
               { title: 'Cobranças / Vencimentos', value: 'cobrancas' },
               { title: 'Honorários Advocatícios', value: 'advocacia' },
+              { title: 'Despesas por Unidade', value: 'despesas' },
               { title: 'Financeiro', value: 'financeiro' },
             ]"
             item-title="title"
@@ -644,6 +782,8 @@ const dashboard = ref(null)
 const buscaTransacao = ref('')
 const buscaCobranca = ref('')
 const buscaAdvocacia = ref('')
+const buscaDespesa = ref('')
+const filtroUnidade = ref('Todas')
 
 const dialogSetores = ref(false)
 const dialogConfig = ref(false)
@@ -659,10 +799,14 @@ const chartMensal = ref(null)
 const chartCategoria = ref(null)
 const chartCobrancas = ref(null)
 const chartAdvocacia = ref(null)
+const chartDespesasUnidade = ref(null)
+const chartDespesasFornecedor = ref(null)
 let chartMensalInstance = null
 let chartCategoriaInstance = null
 let chartCobrancasInstance = null
 let chartAdvocaciaInstance = null
+let chartDespesasUnidadeInstance = null
+let chartDespesasFornecedorInstance = null
 
 // ── Computed ────────────────────────────────────────────────────────────────
 
@@ -675,6 +819,16 @@ const transacoesFiltradas = computed(() => {
   return dashboard.value.ultimas_transacoes.filter(t =>
     t.descricao.toLowerCase().includes(q) || t.categoria.toLowerCase().includes(q)
   )
+})
+
+const despesasFiltradas = computed(() => {
+  if (!dashboard.value?.registros) return []
+  return dashboard.value.registros.filter(r => {
+    const unidadeOk = filtroUnidade.value === 'Todas' || r.unidade === filtroUnidade.value
+    const q = buscaDespesa.value?.toLowerCase().trim()
+    const buscaOk = !q || r.fornecedor.toLowerCase().includes(q)
+    return unidadeOk && buscaOk
+  })
 })
 
 const advocaciaFiltrada = computed(() => {
@@ -703,6 +857,13 @@ const headersTransacoes = [
   { title: 'Categoria', key: 'categoria', width: 140 },
   { title: 'Valor', key: 'valor', width: 140 },
   { title: 'Tipo', key: 'tipo', width: 110 },
+]
+
+const headersDespesas = [
+  { title: 'Unidade', key: 'unidade', width: 200 },
+  { title: 'Vencimento', key: 'vencimento', width: 120 },
+  { title: 'Fornecedor', key: 'fornecedor' },
+  { title: 'Valor', key: 'valor', width: 130 },
 ]
 
 const headersAdvocacia = [
@@ -739,6 +900,7 @@ const brl = (valor) => {
 const tipoDashboardLabel = (tipo) => ({
   cobrancas: 'Cobranças / Vencimentos',
   advocacia: 'Honorários Advocatícios',
+  despesas: 'Despesas por Unidade',
   financeiro: 'Financeiro',
   fluxo_caixa: 'Fluxo de Caixa',
 }[tipo] || tipo)
@@ -776,14 +938,17 @@ const carregarDashboard = async (force = false) => {
   loadingDashboard.value = true
   erro.value = ''
   dashboard.value = null
+  filtroUnidade.value = 'Todas'
 
   try {
     const q = `?aba=${encodeURIComponent(setor.aba)}${force ? '&force=true' : ''}`
-    const endpoint = setor.tipo_dashboard === 'cobrancas'
-      ? `/api/sheets/dashboard/cobrancas/${setor.spreadsheet_id}${q}`
-      : setor.tipo_dashboard === 'advocacia'
-        ? `/api/sheets/dashboard/advocacia/${setor.spreadsheet_id}${q}`
-        : `/api/sheets/dashboard/rapido/${setor.spreadsheet_id}${q}`
+    const endpointMap = {
+    cobrancas: 'cobrancas',
+    advocacia: 'advocacia',
+    despesas: 'despesas',
+  }
+  const path = endpointMap[setor.tipo_dashboard] || 'rapido'
+  const endpoint = `/api/sheets/dashboard/${path}/${setor.spreadsheet_id}${q}`
 
     const res = await fetch(endpoint, { headers: authHeader() })
     if (res.ok) {
@@ -873,6 +1038,8 @@ const destroyCharts = () => {
   if (chartCategoriaInstance) { chartCategoriaInstance.destroy(); chartCategoriaInstance = null }
   if (chartCobrancasInstance) { chartCobrancasInstance.destroy(); chartCobrancasInstance = null }
   if (chartAdvocaciaInstance) { chartAdvocaciaInstance.destroy(); chartAdvocaciaInstance = null }
+  if (chartDespesasUnidadeInstance) { chartDespesasUnidadeInstance.destroy(); chartDespesasUnidadeInstance = null }
+  if (chartDespesasFornecedorInstance) { chartDespesasFornecedorInstance.destroy(); chartDespesasFornecedorInstance = null }
 }
 
 const renderizarGraficos = () => {
@@ -926,6 +1093,58 @@ const renderizarGraficoCobrancas = () => {
   })
 }
 
+const renderizarGraficosDespesas = () => {
+  if (!dashboard.value?.por_unidade?.length) return
+  destroyCharts()
+
+  const cores = ['#F44336','#E91E63','#9C27B0','#673AB7','#3F51B5','#2196F3','#00BCD4','#009688','#4CAF50','#FF9800','#FF5722','#795548','#607D8B','#263238']
+
+  // Gráfico horizontal de barras por unidade
+  if (chartDespesasUnidade.value) {
+    const pu = [...dashboard.value.por_unidade].reverse() // menor → maior (eixo Y de baixo p/ cima)
+    chartDespesasUnidadeInstance = new Chart(chartDespesasUnidade.value.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: pu.map(u => u.unidade),
+        datasets: [{
+          label: 'Total (R$)',
+          data: pu.map(u => u.total),
+          backgroundColor: cores.slice(0, pu.length).reverse(),
+          borderWidth: 0,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(0)}k` } },
+          y: { ticks: { font: { size: 11 } } },
+        },
+      },
+    })
+  }
+
+  // Donut top 10 fornecedores
+  if (chartDespesasFornecedor.value && dashboard.value.por_fornecedor?.length) {
+    const pf = dashboard.value.por_fornecedor
+    chartDespesasFornecedorInstance = new Chart(chartDespesasFornecedor.value.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: pf.map(f => f.fornecedor.length > 25 ? f.fornecedor.slice(0, 25) + '…' : f.fornecedor),
+        datasets: [{ data: pf.map(f => f.total), backgroundColor: cores.slice(0, pf.length), borderWidth: 1 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } } },
+      },
+    })
+  }
+}
+
 const renderizarGraficoAdvocacia = () => {
   if (!dashboard.value?.por_advogado?.length || !chartAdvocacia.value) return
   destroyCharts()
@@ -961,6 +1180,10 @@ watch(chartCobrancas, (canvas) => {
 
 watch(chartAdvocacia, (canvas) => {
   if (canvas && dashboard.value?.tipo === 'advocacia') renderizarGraficoAdvocacia()
+})
+
+watch(chartDespesasUnidade, (canvas) => {
+  if (canvas && dashboard.value?.tipo === 'despesas') renderizarGraficosDespesas()
 })
 
 watch([chartMensal, chartCategoria], ([mensal]) => {

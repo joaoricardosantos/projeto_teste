@@ -681,6 +681,113 @@ def processar_advocacia(dados: List[List[Any]]) -> Dict[str, Any]:
     }
 
 
+def processar_despesas_unidade(dados: List[List[Any]]) -> Dict[str, Any]:
+    """
+    Processa planilha de despesas por unidade.
+
+    Layout: múltiplas seções empilhadas verticalmente.
+    Cada seção: nome da unidade → cabeçalho → linhas de despesa → TOTAL
+    Colunas: 0=Vencimento, 1=Fornecedor, 2=Valor líquido
+    """
+    registros: List[Dict[str, Any]] = []
+    unidade_atual: Optional[str] = None
+    titulo = ""
+
+    def cell(row, i):
+        return str(row[i]).strip() if i < len(row) else ""
+
+    def _is_date(s: str) -> bool:
+        return bool(re.search(r"\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}", s))
+
+    for raw_row in dados:
+        row = list(raw_row) + [""] * max(0, 3 - len(raw_row))
+        c0, c1, c2 = cell(row, 0), cell(row, 1), cell(row, 2)
+
+        # Ignora linhas totalmente vazias
+        if not c0 and not c1 and not c2:
+            continue
+
+        # Ignora linha de total geral (só col 2 tem valor)
+        if not c0 and not c1 and c2:
+            continue
+
+        # Ignora cabeçalho de coluna
+        if "venc" in c0.lower() and "fornec" in c1.lower():
+            continue
+
+        # Ignora linha de TOTAL da seção
+        if c0.upper().startswith("TOTAL"):
+            continue
+
+        # Ignora subtítulos entre parênteses
+        if c0.startswith("("):
+            continue
+
+        # Nome da seção: col0 com texto, col1 e col2 vazios, sem data
+        if c0 and not c1 and not c2 and not _is_date(c0):
+            if not titulo:
+                titulo = c0
+            else:
+                unidade_atual = c0
+            continue
+
+        # Linha de dados
+        if unidade_atual and c1 and c2:
+            valor = _parse_valor(c2)
+            if valor > 0:
+                registros.append({
+                    "unidade": unidade_atual,
+                    "vencimento": c0,
+                    "fornecedor": c1,
+                    "valor": float(valor),
+                })
+
+    # Resumo
+    total_geral = sum(r["valor"] for r in registros)
+
+    # Por unidade
+    por_unidade_map: Dict[str, Any] = {}
+    for r in registros:
+        u = r["unidade"]
+        if u not in por_unidade_map:
+            por_unidade_map[u] = {"unidade": u, "total": 0.0, "count": 0}
+        por_unidade_map[u]["total"] += r["valor"]
+        por_unidade_map[u]["count"] += 1
+
+    por_unidade = sorted(por_unidade_map.values(), key=lambda x: x["total"], reverse=True)
+    for pu in por_unidade:
+        pu["total"] = round(pu["total"], 2)
+
+    # Por fornecedor (top 10)
+    por_forn_map: Dict[str, float] = {}
+    for r in registros:
+        f = r["fornecedor"]
+        por_forn_map[f] = por_forn_map.get(f, 0.0) + r["valor"]
+
+    por_fornecedor = sorted(
+        [{"fornecedor": k, "total": round(v, 2)} for k, v in por_forn_map.items()],
+        key=lambda x: x["total"],
+        reverse=True,
+    )[:10]
+
+    return {
+        "tipo": "despesas",
+        "titulo": titulo,
+        "resumo": {
+            "total_geral": round(total_geral, 2),
+            "total_unidades": len(por_unidade_map),
+            "total_registros": len(registros),
+            "fornecedores_unicos": len(por_forn_map),
+            "maior_unidade": por_unidade[0]["unidade"] if por_unidade else "",
+            "maior_unidade_valor": por_unidade[0]["total"] if por_unidade else 0.0,
+        },
+        "por_unidade": por_unidade,
+        "por_fornecedor": por_fornecedor,
+        "registros": registros,
+        "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
+    }
+
+
 def adicionar_planilha_config(planilha: Dict[str, str]) -> bool:
     """
     Adiciona planilha à configuração.
