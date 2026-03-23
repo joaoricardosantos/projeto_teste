@@ -8,6 +8,7 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 from pydantic import Field
 from core.auth import JWTAuth
+from core.models import SheetSetor
 
 # Importa o serviço (ajustar path conforme estrutura)
 from core.sheets_service import (
@@ -23,6 +24,60 @@ from core.sheets_service import (
 
 
 sheets_router = Router(auth=JWTAuth(), tags=["Google Sheets"])
+
+
+# ── Schemas de Setor ─────────────────────────────────────────────────────────
+
+class SetorOut(Schema):
+    id: int
+    nome: str
+    spreadsheet_id: str
+    aba: str
+    tipo_dashboard: str
+    ativo: bool
+
+
+class SetorIn(Schema):
+    nome: str
+    spreadsheet_id: str
+    aba: str = "Sheet1"
+    tipo_dashboard: str = "cobrancas"
+    ativo: bool = True
+
+
+# ── Endpoints de Setor ───────────────────────────────────────────────────────
+
+@sheets_router.get("/setores", response=List[SetorOut])
+def listar_setores(request):
+    return list(SheetSetor.objects.filter(ativo=True))
+
+
+@sheets_router.post("/setores", response=SetorOut)
+def criar_setor(request, payload: SetorIn):
+    setor = SheetSetor.objects.create(**payload.dict())
+    return setor
+
+
+@sheets_router.put("/setores/{setor_id}", response=SetorOut)
+def atualizar_setor(request, setor_id: int, payload: SetorIn):
+    try:
+        setor = SheetSetor.objects.get(id=setor_id)
+    except SheetSetor.DoesNotExist:
+        raise HttpError(404, "Setor não encontrado")
+    for attr, value in payload.dict().items():
+        setattr(setor, attr, value)
+    setor.save()
+    return setor
+
+
+@sheets_router.delete("/setores/{setor_id}")
+def deletar_setor(request, setor_id: int):
+    try:
+        setor = SheetSetor.objects.get(id=setor_id)
+    except SheetSetor.DoesNotExist:
+        raise HttpError(404, "Setor não encontrado")
+    setor.delete()
+    return {"ok": True}
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -251,7 +306,7 @@ def dashboard_rapido(request, spreadsheet_id: str, aba: str = "Dados", force: bo
     - force: Se True, ignora cache
     """
     try:
-        range_name = f"{aba}!A:Z"
+        range_name = f"'{aba}'!A:Z"
         dados = buscar_dados_planilha(spreadsheet_id, range_name, use_cache=not force)
         
         if not dados:
@@ -315,7 +370,7 @@ def dashboard_cobrancas(request, spreadsheet_id: str, aba: str = "Sheet1", force
     Dashboard de cobrança no formato Pratika (multi-bloco de vencimentos).
     """
     try:
-        range_name = f"{aba}!A:O"
+        range_name = f"'{aba}'!A:O"
         dados = buscar_dados_planilha(spreadsheet_id, range_name, use_cache=not force)
         if not dados:
             raise HttpError(404, "Planilha vazia")
@@ -332,7 +387,7 @@ def preview_planilha(request, spreadsheet_id: str, aba: str = "Sheet1", linhas: 
     Preview dos primeiros dados de uma planilha para configuração.
     """
     try:
-        range_name = f"{aba}!A1:Z{linhas + 1}"
+        range_name = f"'{aba}'!A1:Z{linhas + 1}"
         dados = buscar_dados_planilha(spreadsheet_id, range_name, use_cache=False)
         
         if not dados:

@@ -121,6 +121,29 @@ class MensagemEnviada(models.Model):
     def __str__(self):
         return f"{self.telefone} — {self.status}"
 
+class SheetSetor(models.Model):
+    TIPO_CHOICES = [
+        ('cobrancas', 'Cobranças / Vencimentos'),
+        ('financeiro', 'Financeiro'),
+        ('fluxo_caixa', 'Fluxo de Caixa'),
+    ]
+
+    nome = models.CharField(max_length=100)
+    spreadsheet_id = models.CharField(max_length=200)
+    aba = models.CharField(max_length=100, default='Sheet1')
+    tipo_dashboard = models.CharField(max_length=20, choices=TIPO_CHOICES, default='cobrancas')
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Setor Planilha'
+        verbose_name_plural = 'Setores Planilha'
+
+    def __str__(self):
+        return self.nome
+
+
 class PasswordResetToken(models.Model):
     """Token de redefinição de senha com expiração de 1 hora."""
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

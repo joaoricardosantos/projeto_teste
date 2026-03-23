@@ -8,17 +8,22 @@
           Dashboards Google Sheets
         </h1>
         <p class="text-body-2 text-medium-emphasis mt-1">
-          Visualize dados financeiros diretamente das suas planilhas em tempo real.
+          Visualize dados das planilhas configuradas em tempo real.
         </p>
       </v-col>
-      <v-col cols="12" sm="4" class="text-sm-right">
+      <v-col cols="12" sm="4" class="text-sm-right d-flex justify-end gap-2">
+        <v-btn variant="outlined" prepend-icon="mdi-cog" @click="dialogSetores = true">
+          Gerenciar Setores
+        </v-btn>
         <v-btn
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="dialogNovaPlanilha = true"
-          :disabled="!statusConexao.conectado"
+          v-if="setorAtivo"
+          color="secondary"
+          variant="outlined"
+          :loading="loadingDashboard"
+          @click="carregarDashboard(true)"
+          title="Recarregar"
         >
-          Adicionar planilha
+          <v-icon>mdi-refresh</v-icon>
         </v-btn>
       </v-col>
     </v-row>
@@ -34,13 +39,9 @@
       <div class="d-flex align-center justify-space-between flex-wrap gap-2">
         <div>
           <strong>Google Sheets não configurado</strong>
-          <p class="text-body-2 mb-0 mt-1">
-            {{ statusConexao.erro || 'Configure as credenciais para conectar.' }}
-          </p>
+          <p class="text-body-2 mb-0 mt-1">{{ statusConexao.erro || 'Configure as credenciais.' }}</p>
         </div>
-        <v-btn variant="outlined" size="small" @click="dialogConfig = true">
-          Ver instruções
-        </v-btn>
+        <v-btn variant="outlined" size="small" @click="dialogConfig = true">Ver instruções</v-btn>
       </div>
     </v-alert>
 
@@ -48,528 +49,426 @@
       {{ erro }}
     </v-alert>
 
-    <!-- Loading status -->
     <div v-if="loadingStatus" class="d-flex justify-center my-8">
       <v-progress-circular indeterminate color="primary" />
     </div>
 
-    <!-- Seletor de planilha -->
-    <v-card v-if="statusConexao.conectado && !loadingStatus" elevation="2" class="mb-4">
-      <v-card-text>
-        <v-row align="center">
-          <v-col cols="12" md="4">
-            <v-text-field
-              v-model="spreadsheetId"
-              label="ID da Planilha Google Sheets"
-              placeholder="Cole o ID da planilha aqui"
-              variant="outlined"
-              density="compact"
-              hide-details
-              prepend-inner-icon="mdi-link"
-              :loading="loadingAbas"
+    <!-- Menu de Setores -->
+    <div v-if="statusConexao.conectado && !loadingStatus">
+      <div v-if="setores.length === 0" class="text-center my-8">
+        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-google-spreadsheet</v-icon>
+        <p class="text-h6 text-medium-emphasis">Nenhum setor configurado</p>
+        <p class="text-body-2 text-medium-emphasis mb-6">
+          Clique em "Gerenciar Setores" para adicionar uma planilha.
+        </p>
+        <v-btn color="primary" prepend-icon="mdi-plus" @click="dialogSetores = true">
+          Adicionar Setor
+        </v-btn>
+      </div>
+
+      <div v-else>
+        <!-- Tabs de Setores -->
+        <v-tabs v-model="setorAtivoId" color="primary" class="mb-4" show-arrows>
+          <v-tab
+            v-for="setor in setores"
+            :key="setor.id"
+            :value="setor.id"
+          >
+            <v-icon size="small" class="mr-2">
+              {{ setor.tipo_dashboard === 'cobrancas' ? 'mdi-cash-clock' : 'mdi-chart-line' }}
+            </v-icon>
+            {{ setor.nome }}
+          </v-tab>
+        </v-tabs>
+
+        <!-- Dashboard -->
+        <Transition name="fade" mode="out-in">
+          <div v-if="loadingDashboard" key="loading" class="d-flex flex-column align-center my-12">
+            <v-progress-circular indeterminate color="primary" size="56" />
+            <p class="text-body-2 text-medium-emphasis mt-4">Carregando dados da planilha...</p>
+          </div>
+
+          <!-- Dashboard Cobranças -->
+          <div v-else-if="dashboard && dashboard.tipo === 'cobrancas'" key="cobrancas">
+            <div class="d-flex align-center justify-space-between mb-4">
+              <div>
+                <span class="text-h6 font-weight-bold">{{ dashboard.titulo }}</span>
+                <span class="text-caption text-medium-emphasis ml-3">
+                  <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+                  Atualizado em {{ dashboard.atualizado_em }}
+                </span>
+              </div>
+              <v-chip size="small" color="green" variant="tonal">
+                <v-icon size="small" class="mr-1">mdi-check-circle</v-icon>
+                Conectado
+              </v-chip>
+            </div>
+
+            <!-- KPIs -->
+            <v-row class="mb-4">
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Previsto</span>
+                    <v-icon color="blue" size="28">mdi-cash-multiple</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #2196F3;">{{ brl(dashboard.resumo.total_previsto) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.total_condominios }} condomínios</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Recebido</span>
+                    <v-icon color="green" size="28">mdi-check-circle</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #4CAF50;">{{ brl(dashboard.resumo.total_recebido) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pagos }} pagos</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Pendente</span>
+                    <v-icon color="red" size="28">mdi-alert-circle</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #F44336;">{{ brl(dashboard.resumo.pendente) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pendentes }} pendentes</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">% Recebido</span>
+                    <v-icon color="purple" size="28">mdi-percent</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #9C27B0;">{{ dashboard.resumo.percentual_recebido }}%</div>
+                  <div class="text-caption text-medium-emphasis mt-1">Antecipado: {{ brl(dashboard.resumo.total_antecipado) }}</div>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- Gráfico + Lista -->
+            <v-row class="mb-4">
+              <v-col cols="12" md="8">
+                <v-card elevation="4">
+                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                    <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
+                    Previsto vs Recebido por Vencimento
+                  </v-card-title>
+                  <v-card-text>
+                    <div class="chart-container">
+                      <canvas ref="chartCobrancas"></canvas>
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-card elevation="4" height="100%">
+                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                    <v-icon class="mr-2" color="primary">mdi-view-list</v-icon>
+                    Por Vencimento
+                  </v-card-title>
+                  <v-card-text class="pa-0">
+                    <v-list density="compact">
+                      <v-list-item v-for="pv in dashboard.por_vencimento" :key="pv.vencimento" class="px-4">
+                        <template #title>
+                          <span class="text-body-2 font-weight-medium">{{ pv.vencimento }}</span>
+                        </template>
+                        <template #subtitle>
+                          <span class="text-caption">Previsto: {{ brl(pv.previsto) }} · Recebido: {{ brl(pv.recebido) }}</span>
+                        </template>
+                        <template #append>
+                          <div class="d-flex gap-1">
+                            <v-chip v-if="pv.pagos" size="x-small" color="green" variant="tonal">{{ pv.pagos }} ✓</v-chip>
+                            <v-chip v-if="pv.pendentes" size="x-small" color="red" variant="tonal">{{ pv.pendentes }} ✗</v-chip>
+                          </div>
+                        </template>
+                      </v-list-item>
+                    </v-list>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- Tabela -->
+            <v-card elevation="4">
+              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
+                <div class="d-flex align-center">
+                  <v-icon class="mr-2" color="primary">mdi-office-building</v-icon>
+                  Condomínios
+                </div>
+                <v-text-field
+                  v-model="buscaCobranca"
+                  density="compact"
+                  variant="outlined"
+                  placeholder="Buscar condomínio..."
+                  prepend-inner-icon="mdi-magnify"
+                  hide-details
+                  style="max-width: 260px;"
+                  clearable
+                />
+              </v-card-title>
+              <v-card-text class="pa-0">
+                <v-data-table
+                  :headers="headersCobrancas"
+                  :items="cobrancasFiltradas"
+                  :items-per-page="20"
+                  density="comfortable"
+                  class="elevation-0"
+                  no-data-text="Nenhum registro encontrado"
+                  :sort-by="[{ key: 'vencimento', order: 'asc' }]"
+                >
+                  <template #item.valor_previsto="{ item }">
+                    {{ item.valor_previsto != null ? brl(item.valor_previsto) : '—' }}
+                  </template>
+                  <template #item.valor_pago="{ item }">
+                    <span :class="item.status === 'pendente' ? 'text-red' : 'text-green'">
+                      {{ item.valor_pago > 0 ? brl(item.valor_pago) : '—' }}
+                    </span>
+                  </template>
+                  <template #item.diferenca="{ item }">
+                    <span v-if="item.diferenca != null" :class="item.diferenca >= 0 ? 'text-orange' : 'text-blue'">
+                      {{ item.diferenca >= 0 ? '+' : '' }}{{ brl(item.diferenca) }}
+                    </span>
+                    <span v-else class="text-medium-emphasis">—</span>
+                  </template>
+                  <template #item.status="{ item }">
+                    <v-chip
+                      :color="item.status === 'pago' ? 'green' : item.status === 'antecipado' ? 'blue' : 'red'"
+                      size="small"
+                      variant="tonal"
+                    >
+                      {{ item.status === 'pago' ? 'Pago' : item.status === 'antecipado' ? 'Antecipado' : 'Pendente' }}
+                    </v-chip>
+                  </template>
+                </v-data-table>
+              </v-card-text>
+            </v-card>
+          </div>
+
+          <!-- Dashboard Financeiro -->
+          <div v-else-if="dashboard" key="financeiro">
+            <div class="d-flex align-center justify-space-between mb-4">
+              <span class="text-caption text-medium-emphasis">
+                <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+                Atualizado em {{ dashboard.atualizado_em }}
+              </span>
+              <v-chip size="small" color="green" variant="tonal">
+                <v-icon size="small" class="mr-1">mdi-check-circle</v-icon>
+                Conectado
+              </v-chip>
+            </div>
+            <v-row class="mb-4">
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Receitas</span>
+                    <v-icon color="green" size="28">mdi-trending-up</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #4CAF50;">{{ brl(dashboard.resumo.total_receitas) }}</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Despesas</span>
+                    <v-icon color="red" size="28">mdi-trending-down</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #F44336;">{{ brl(dashboard.resumo.total_despesas) }}</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" :style="{ borderLeft: `4px solid ${dashboard.resumo.saldo >= 0 ? '#2196F3' : '#FF9800'}` }">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Saldo</span>
+                    <v-icon :color="dashboard.resumo.saldo >= 0 ? 'blue' : 'orange'" size="28">mdi-wallet-plus</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" :style="{ color: dashboard.resumo.saldo >= 0 ? '#2196F3' : '#FF9800' }">{{ brl(dashboard.resumo.saldo) }}</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Transações</span>
+                    <v-icon color="purple" size="28">mdi-swap-horizontal</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #9C27B0;">{{ dashboard.resumo.total_transacoes }}</div>
+                </v-card>
+              </v-col>
+            </v-row>
+            <v-row class="mb-4">
+              <v-col cols="12" md="8">
+                <v-card elevation="4">
+                  <v-card-title class="pa-4 pb-2"><v-icon class="mr-2" color="primary">mdi-chart-line</v-icon>Evolução Mensal</v-card-title>
+                  <v-card-text>
+                    <div v-if="dashboard.por_mes.length" class="chart-container"><canvas ref="chartMensal"></canvas></div>
+                    <div v-else class="text-center text-medium-emphasis pa-8">Sem dados mensais</div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-card elevation="4">
+                  <v-card-title class="pa-4 pb-2"><v-icon class="mr-2" color="primary">mdi-chart-pie</v-icon>Por Categoria</v-card-title>
+                  <v-card-text>
+                    <div v-if="Object.keys(dashboard.por_categoria).length" class="chart-container-pie"><canvas ref="chartCategoria"></canvas></div>
+                    <div v-else class="text-center text-medium-emphasis pa-8">Sem categorias</div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+            </v-row>
+            <v-card elevation="4">
+              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
+                <div><v-icon class="mr-2" color="primary">mdi-format-list-bulleted</v-icon>Últimas Transações</div>
+                <v-text-field v-model="buscaTransacao" density="compact" variant="outlined" placeholder="Buscar..." prepend-inner-icon="mdi-magnify" hide-details style="max-width: 250px;" clearable />
+              </v-card-title>
+              <v-card-text class="pa-0">
+                <v-data-table :headers="headersTransacoes" :items="transacoesFiltradas" :items-per-page="10" density="comfortable" class="elevation-0">
+                  <template #item.valor="{ item }">
+                    <span :class="item.tipo === 'receita' ? 'text-green' : 'text-red'">
+                      {{ item.tipo === 'receita' ? '+' : '-' }} {{ brl(Math.abs(item.valor)) }}
+                    </span>
+                  </template>
+                  <template #item.tipo="{ item }">
+                    <v-chip :color="item.tipo === 'receita' ? 'green' : 'red'" size="small" variant="tonal">
+                      {{ item.tipo === 'receita' ? 'Receita' : 'Despesa' }}
+                    </v-chip>
+                  </template>
+                </v-data-table>
+              </v-card-text>
+            </v-card>
+          </div>
+
+          <!-- Estado vazio (setor selecionado mas sem dados ainda) -->
+          <v-card v-else key="empty" elevation="2" class="pa-10 text-center">
+            <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-table-large</v-icon>
+            <p class="text-h6 text-medium-emphasis">Selecione um setor acima</p>
+          </v-card>
+        </Transition>
+      </div>
+    </div>
+
+    <!-- ── Dialog Gerenciar Setores ─────────────────────────────────────────── -->
+    <v-dialog v-model="dialogSetores" max-width="680">
+      <v-card>
+        <v-card-title class="pa-4 d-flex align-center justify-space-between">
+          <div><v-icon class="mr-2">mdi-cog</v-icon>Gerenciar Setores</div>
+          <v-btn icon variant="text" @click="dialogSetores = false"><v-icon>mdi-close</v-icon></v-btn>
+        </v-card-title>
+        <v-divider />
+
+        <v-card-text class="pa-4">
+          <!-- Lista de setores existentes -->
+          <v-list v-if="setores.length" class="mb-4">
+            <v-list-item
+              v-for="s in setores"
+              :key="s.id"
+              :title="s.nome"
+              :subtitle="`${tipoDashboardLabel(s.tipo_dashboard)} · Aba: ${s.aba}`"
+              rounded="lg"
+              class="mb-1"
             >
               <template #append>
-                <v-tooltip text="O ID está na URL da planilha: docs.google.com/spreadsheets/d/[ID]/edit">
-                  <template #activator="{ props }">
-                    <v-icon v-bind="props" size="small">mdi-help-circle-outline</v-icon>
-                  </template>
-                </v-tooltip>
+                <v-btn icon size="small" variant="text" @click="editarSetor(s)">
+                  <v-icon size="18">mdi-pencil</v-icon>
+                </v-btn>
+                <v-btn icon size="small" variant="text" color="red" @click="confirmarDeletar(s)">
+                  <v-icon size="18">mdi-delete</v-icon>
+                </v-btn>
               </template>
-            </v-text-field>
-          </v-col>
-          <v-col cols="12" md="2">
+            </v-list-item>
+          </v-list>
+
+          <v-divider v-if="setores.length" class="mb-4" />
+
+          <!-- Formulário -->
+          <p class="text-subtitle-2 font-weight-bold mb-3">
+            {{ formSetor.id ? 'Editar Setor' : 'Adicionar Novo Setor' }}
+          </p>
+          <v-text-field v-model="formSetor.nome" label="Nome do Setor" variant="outlined" density="compact" class="mb-3" placeholder="Ex: Cobranças Janeiro" />
+          <v-text-field v-model="formSetor.spreadsheet_id" label="ID da Planilha Google Sheets" variant="outlined" density="compact" class="mb-3" placeholder="Cole o ID da URL" hint="docs.google.com/spreadsheets/d/[ID]/edit" persistent-hint />
+          <div class="d-flex gap-2 align-start mb-3">
             <v-select
-              v-model="abaSelecionada"
-              :items="abas"
+              v-if="abasDisponiveis.length"
+              v-model="formSetor.aba"
+              :items="abasDisponiveis"
               item-title="title"
               item-value="title"
               label="Aba"
               variant="outlined"
               density="compact"
               hide-details
-              :disabled="!abas.length"
-              :loading="loadingAbas"
+              style="flex: 1"
             />
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-select
-              v-model="tipoDashboard"
-              :items="[
-                { title: 'Financeiro (automático)', value: 'financeiro' },
-                { title: 'Cobranças / Vencimentos', value: 'cobrancas' },
-              ]"
-              item-title="title"
-              item-value="value"
-              label="Tipo de dashboard"
+            <v-text-field
+              v-else
+              v-model="formSetor.aba"
+              label="Nome da Aba"
               variant="outlined"
               density="compact"
               hide-details
+              placeholder="Ex: COMP JAN 2026"
+              style="flex: 1"
             />
-          </v-col>
-          <v-col cols="12" md="2">
             <v-btn
-              color="primary"
-              block
-              :loading="loadingDashboard"
-              :disabled="!spreadsheetId || !abaSelecionada"
-              @click="carregarDashboard()"
-            >
-              <v-icon class="mr-1">mdi-chart-box</v-icon>
-              Carregar
-            </v-btn>
-          </v-col>
-          <v-col cols="12" md="1">
-            <v-btn
-              color="secondary"
+              :loading="carregandoAbas"
               variant="outlined"
-              block
-              :loading="loadingDashboard"
-              :disabled="!spreadsheetId || !abaSelecionada"
-              @click="carregarDashboard(true)"
-              title="Ignorar cache"
+              density="compact"
+              style="height: 40px"
+              @click="carregarAbasForm"
+              title="Buscar abas disponíveis"
             >
-              <v-icon>mdi-refresh</v-icon>
+              <v-icon>mdi-magnify</v-icon>
             </v-btn>
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
-
-    <!-- Dashboard -->
-    <Transition name="fade" mode="out-in">
-      <div v-if="loadingDashboard" key="loading" class="d-flex flex-column align-center my-12">
-        <v-progress-circular indeterminate color="primary" size="56" />
-        <p class="text-body-2 text-medium-emphasis mt-4">Carregando dados da planilha...</p>
-      </div>
-
-      <!-- ── Dashboard Cobranças ────────────────────────────────────────────── -->
-      <div v-else-if="dashboard && dashboard.tipo === 'cobrancas'" key="dashboard-cobrancas">
-        <div class="d-flex align-center justify-space-between mb-4">
-          <div>
-            <span class="text-h6 font-weight-bold">{{ dashboard.titulo }}</span>
-            <span class="text-caption text-medium-emphasis ml-3">
-              <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
-              Atualizado em {{ dashboard.atualizado_em }}
-            </span>
           </div>
-          <v-chip size="small" color="green" variant="tonal">
-            <v-icon size="small" class="mr-1">mdi-check-circle</v-icon>
-            Conectado ao Google Sheets
-          </v-chip>
-        </div>
-
-        <!-- KPIs -->
-        <v-row class="mb-4">
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Previsto</span>
-                <v-icon color="blue" size="28">mdi-cash-multiple</v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" style="color: #2196F3;">
-                {{ brl(dashboard.resumo.total_previsto) }}
-              </div>
-              <div class="text-caption text-medium-emphasis mt-1">
-                {{ dashboard.resumo.total_condominios }} condomínios
-              </div>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Recebido</span>
-                <v-icon color="green" size="28">mdi-check-circle</v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" style="color: #4CAF50;">
-                {{ brl(dashboard.resumo.total_recebido) }}
-              </div>
-              <div class="text-caption text-medium-emphasis mt-1">
-                {{ dashboard.resumo.pagos }} pagos
-              </div>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Pendente</span>
-                <v-icon color="red" size="28">mdi-alert-circle</v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" style="color: #F44336;">
-                {{ brl(dashboard.resumo.pendente) }}
-              </div>
-              <div class="text-caption text-medium-emphasis mt-1">
-                {{ dashboard.resumo.pendentes }} pendentes
-              </div>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">% Recebido</span>
-                <v-icon color="purple" size="28">mdi-percent</v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" style="color: #9C27B0;">
-                {{ dashboard.resumo.percentual_recebido }}%
-              </div>
-              <div class="text-caption text-medium-emphasis mt-1">
-                Antecipado: {{ brl(dashboard.resumo.total_antecipado) }}
-              </div>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Gráfico por vencimento -->
-        <v-row class="mb-4">
-          <v-col cols="12" md="8">
-            <v-card elevation="4">
-              <v-card-title class="pa-4 pb-2 d-flex align-center">
-                <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
-                Previsto vs Recebido por Vencimento
-              </v-card-title>
-              <v-card-text>
-                <div class="chart-container">
-                  <canvas ref="chartCobrancas"></canvas>
-                </div>
-              </v-card-text>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" md="4">
-            <v-card elevation="4" height="100%">
-              <v-card-title class="pa-4 pb-2 d-flex align-center">
-                <v-icon class="mr-2" color="primary">mdi-view-list</v-icon>
-                Por Vencimento
-              </v-card-title>
-              <v-card-text class="pa-0">
-                <v-list density="compact">
-                  <v-list-item
-                    v-for="pv in dashboard.por_vencimento"
-                    :key="pv.vencimento"
-                    class="px-4"
-                  >
-                    <template #title>
-                      <span class="text-body-2 font-weight-medium">{{ pv.vencimento }}</span>
-                    </template>
-                    <template #subtitle>
-                      <span class="text-caption">
-                        Previsto: {{ brl(pv.previsto) }} · Recebido: {{ brl(pv.recebido) }}
-                      </span>
-                    </template>
-                    <template #append>
-                      <div class="d-flex gap-1">
-                        <v-chip v-if="pv.pagos" size="x-small" color="green" variant="tonal">{{ pv.pagos }} ✓</v-chip>
-                        <v-chip v-if="pv.pendentes" size="x-small" color="red" variant="tonal">{{ pv.pendentes }} ✗</v-chip>
-                      </div>
-                    </template>
-                  </v-list-item>
-                </v-list>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Tabela de condomínios -->
-        <v-card elevation="4">
-          <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
-            <div class="d-flex align-center">
-              <v-icon class="mr-2" color="primary">mdi-office-building</v-icon>
-              Condomínios
-            </div>
-            <v-text-field
-              v-model="buscaCobranca"
-              density="compact"
-              variant="outlined"
-              placeholder="Buscar condomínio..."
-              prepend-inner-icon="mdi-magnify"
-              hide-details
-              style="max-width: 260px;"
-              clearable
-            />
-          </v-card-title>
-          <v-card-text class="pa-0">
-            <v-data-table
-              :headers="headersCobrancas"
-              :items="cobrancasFiltradas"
-              :items-per-page="20"
-              density="comfortable"
-              class="elevation-0"
-              no-data-text="Nenhum registro encontrado"
-              :sort-by="[{ key: 'vencimento', order: 'asc' }]"
-            >
-              <template #item.valor_previsto="{ item }">
-                {{ item.valor_previsto != null ? brl(item.valor_previsto) : '—' }}
-              </template>
-              <template #item.valor_pago="{ item }">
-                <span :class="item.status === 'pendente' ? 'text-red' : 'text-green'">
-                  {{ item.valor_pago > 0 ? brl(item.valor_pago) : '—' }}
-                </span>
-              </template>
-              <template #item.diferenca="{ item }">
-                <span v-if="item.diferenca != null" :class="item.diferenca >= 0 ? 'text-orange' : 'text-blue'">
-                  {{ item.diferenca >= 0 ? '+' : '' }}{{ brl(item.diferenca) }}
-                </span>
-                <span v-else class="text-medium-emphasis">—</span>
-              </template>
-              <template #item.status="{ item }">
-                <v-chip
-                  :color="item.status === 'pago' ? 'green' : item.status === 'antecipado' ? 'blue' : 'red'"
-                  size="small"
-                  variant="tonal"
-                >
-                  {{ item.status === 'pago' ? 'Pago' : item.status === 'antecipado' ? 'Antecipado' : 'Pendente' }}
-                </v-chip>
-              </template>
-            </v-data-table>
-          </v-card-text>
-        </v-card>
-      </div>
-
-      <!-- ── Dashboard Financeiro (padrão) ─────────────────────────────────── -->
-      <div v-else-if="dashboard" key="dashboard">
-        <!-- Info de atualização -->
-        <div class="d-flex align-center justify-space-between mb-4">
-          <span class="text-caption text-medium-emphasis">
-            <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
-            Atualizado em {{ dashboard.atualizado_em }}
-          </span>
-          <v-chip size="small" color="green" variant="tonal">
-            <v-icon size="small" class="mr-1">mdi-check-circle</v-icon>
-            Conectado ao Google Sheets
-          </v-chip>
-        </div>
-
-        <!-- KPIs -->
-        <v-row class="mb-4">
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Receitas</span>
-                <v-icon color="green" size="28">mdi-trending-up</v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" style="color: #4CAF50;">
-                {{ brl(dashboard.resumo.total_receitas) }}
-              </div>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Despesas</span>
-                <v-icon color="red" size="28">mdi-trending-down</v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" style="color: #F44336;">
-                {{ brl(dashboard.resumo.total_despesas) }}
-              </div>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" :style="{ borderLeft: `4px solid ${dashboard.resumo.saldo >= 0 ? '#2196F3' : '#FF9800'}` }">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Saldo</span>
-                <v-icon :color="dashboard.resumo.saldo >= 0 ? 'blue' : 'orange'" size="28">
-                  {{ dashboard.resumo.saldo >= 0 ? 'mdi-wallet-plus' : 'mdi-wallet-outline' }}
-                </v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" :style="{ color: dashboard.resumo.saldo >= 0 ? '#2196F3' : '#FF9800' }">
-                {{ brl(dashboard.resumo.saldo) }}
-              </div>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="3">
-            <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Transações</span>
-                <v-icon color="purple" size="28">mdi-swap-horizontal</v-icon>
-              </div>
-              <div class="text-h5 font-weight-bold" style="color: #9C27B0;">
-                {{ dashboard.resumo.total_transacoes }}
-              </div>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Gráficos -->
-        <v-row class="mb-4">
-          <v-col cols="12" md="8">
-            <v-card elevation="4">
-              <v-card-title class="pa-4 pb-2 d-flex align-center">
-                <v-icon class="mr-2" color="primary">mdi-chart-line</v-icon>
-                Evolução Mensal
-              </v-card-title>
-              <v-card-text>
-                <div v-if="dashboard.por_mes.length" class="chart-container">
-                  <canvas ref="chartMensal"></canvas>
-                </div>
-                <div v-else class="text-center text-medium-emphasis pa-8">
-                  <v-icon size="48" color="grey">mdi-chart-line-variant</v-icon>
-                  <p class="mt-2">Sem dados mensais para exibir</p>
-                </div>
-              </v-card-text>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" md="4">
-            <v-card elevation="4">
-              <v-card-title class="pa-4 pb-2 d-flex align-center">
-                <v-icon class="mr-2" color="primary">mdi-chart-pie</v-icon>
-                Por Categoria
-              </v-card-title>
-              <v-card-text>
-                <div v-if="Object.keys(dashboard.por_categoria).length" class="chart-container-pie">
-                  <canvas ref="chartCategoria"></canvas>
-                </div>
-                <div v-else class="text-center text-medium-emphasis pa-8">
-                  <v-icon size="48" color="grey">mdi-chart-donut</v-icon>
-                  <p class="mt-2">Sem categorias para exibir</p>
-                </div>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Tabela de transações -->
-        <v-card elevation="4">
-          <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
-            <div class="d-flex align-center">
-              <v-icon class="mr-2" color="primary">mdi-format-list-bulleted</v-icon>
-              Últimas Transações
-            </div>
-            <v-text-field
-              v-model="buscaTransacao"
-              density="compact"
-              variant="outlined"
-              placeholder="Buscar..."
-              prepend-inner-icon="mdi-magnify"
-              hide-details
-              style="max-width: 250px;"
-              clearable
-            />
-          </v-card-title>
-          <v-card-text class="pa-0">
-            <v-data-table
-              :headers="headersTransacoes"
-              :items="transacoesFiltradas"
-              :items-per-page="10"
-              density="comfortable"
-              class="elevation-0"
-              no-data-text="Nenhuma transação encontrada"
-            >
-              <template #item.valor="{ item }">
-                <span :class="item.tipo === 'receita' ? 'text-green' : 'text-red'">
-                  {{ item.tipo === 'receita' ? '+' : '-' }} {{ brl(Math.abs(item.valor)) }}
-                </span>
-              </template>
-              <template #item.tipo="{ item }">
-                <v-chip
-                  :color="item.tipo === 'receita' ? 'green' : 'red'"
-                  size="small"
-                  variant="tonal"
-                >
-                  {{ item.tipo === 'receita' ? 'Receita' : 'Despesa' }}
-                </v-chip>
-              </template>
-            </v-data-table>
-          </v-card-text>
-        </v-card>
-      </div>
-
-      <!-- Estado vazio -->
-      <v-card v-else-if="statusConexao.conectado" key="empty" elevation="2" class="pa-10 text-center">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-table-large</v-icon>
-        <p class="text-h6 text-medium-emphasis">Nenhum dashboard carregado</p>
-        <p class="text-body-2 text-medium-emphasis mb-6">
-          Cole o ID de uma planilha Google Sheets acima e clique em "Carregar".
-        </p>
-      </v-card>
-    </Transition>
-
-    <!-- Dialog de configuração -->
-    <v-dialog v-model="dialogConfig" max-width="700">
-      <v-card>
-        <v-card-title class="pa-4 bg-primary">
-          <v-icon class="mr-2">mdi-cog</v-icon>
-          Configuração do Google Sheets
-        </v-card-title>
-        <v-card-text class="pa-4">
-          <h3 class="text-subtitle-1 font-weight-bold mb-3">1. Criar conta de serviço no Google Cloud</h3>
-          <ol class="text-body-2 mb-4">
-            <li>Acesse o <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a></li>
-            <li>Crie um novo projeto ou selecione um existente</li>
-            <li>Ative a <strong>Google Sheets API</strong></li>
-            <li>Vá em "Credenciais" → "Criar credenciais" → "Conta de serviço"</li>
-            <li>Baixe o arquivo JSON da chave</li>
-          </ol>
-
-          <h3 class="text-subtitle-1 font-weight-bold mb-3">2. Configurar variáveis de ambiente</h3>
-          <v-code class="mb-4 pa-3 d-block" style="white-space: pre-wrap;">
-# Opção 1: JSON direto (recomendado para Docker)
-GOOGLE_SHEETS_CREDENTIALS='{"type":"service_account",...}'
-
-# Opção 2: Caminho do arquivo
-GOOGLE_SHEETS_CREDENTIALS_FILE=/path/to/credentials.json
-
-# Cache (segundos)
-SHEETS_CACHE_TTL=30
-          </v-code>
-
-          <h3 class="text-subtitle-1 font-weight-bold mb-3">3. Compartilhar planilhas</h3>
-          <p class="text-body-2">
-            Compartilhe cada planilha com o e-mail da conta de serviço
-            (ex: <code>nome@projeto.iam.gserviceaccount.com</code>) com permissão de <strong>Leitor</strong>.
-          </p>
-
-          <v-alert type="info" variant="tonal" class="mt-4" density="compact">
-            <strong>Dica:</strong> O ID da planilha está na URL:
-            <code>docs.google.com/spreadsheets/d/<strong>[ID]</strong>/edit</code>
-          </v-alert>
+          <v-select
+            v-model="formSetor.tipo_dashboard"
+            :items="[
+              { title: 'Cobranças / Vencimentos', value: 'cobrancas' },
+              { title: 'Financeiro', value: 'financeiro' },
+            ]"
+            item-title="title"
+            item-value="value"
+            label="Tipo de Dashboard"
+            variant="outlined"
+            density="compact"
+          />
         </v-card-text>
-        <v-card-actions class="pa-4">
+
+        <v-card-actions class="pa-4 pt-0">
+          <v-btn v-if="formSetor.id" variant="text" color="grey" @click="resetarForm">Cancelar edição</v-btn>
           <v-spacer />
-          <v-btn variant="text" @click="dialogConfig = false">Fechar</v-btn>
+          <v-btn color="primary" :loading="salvandoSetor" @click="salvarSetor">
+            {{ formSetor.id ? 'Salvar Alterações' : 'Adicionar Setor' }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Dialog nova planilha -->
-    <v-dialog v-model="dialogNovaPlanilha" max-width="500">
+    <!-- Dialog confirmar deleção -->
+    <v-dialog v-model="dialogDeletar" max-width="400">
       <v-card>
-        <v-card-title class="pa-4">
-          <v-icon class="mr-2">mdi-plus</v-icon>
-          Adicionar Planilha
-        </v-card-title>
-        <v-card-text class="pa-4">
-          <v-text-field
-            v-model="novaPlanilha.id"
-            label="ID da Planilha"
-            variant="outlined"
-            class="mb-3"
-            hint="Cole o ID da URL do Google Sheets"
-            persistent-hint
-          />
-          <v-text-field
-            v-model="novaPlanilha.nome"
-            label="Nome de exibição"
-            variant="outlined"
-            class="mb-3"
-          />
-          <v-select
-            v-model="novaPlanilha.tipo"
-            :items="['financeiro', 'cobrancas', 'fluxo_caixa']"
-            label="Tipo de dashboard"
-            variant="outlined"
-          />
-        </v-card-text>
+        <v-card-title class="pa-4">Remover Setor</v-card-title>
+        <v-card-text>Deseja remover o setor <strong>{{ setorParaDeletar?.nome }}</strong>?</v-card-text>
         <v-card-actions class="pa-4">
           <v-spacer />
-          <v-btn variant="text" @click="dialogNovaPlanilha = false">Cancelar</v-btn>
-          <v-btn color="primary" @click="salvarPlanilha">Salvar</v-btn>
+          <v-btn variant="text" @click="dialogDeletar = false">Cancelar</v-btn>
+          <v-btn color="red" variant="tonal" @click="deletarSetor">Remover</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog de configuração de credenciais -->
+    <v-dialog v-model="dialogConfig" max-width="700">
+      <v-card>
+        <v-card-title class="pa-4 bg-primary"><v-icon class="mr-2">mdi-cog</v-icon>Configuração do Google Sheets</v-card-title>
+        <v-card-text class="pa-4">
+          <p class="text-body-2 mb-3">Ative a <strong>Google Sheets API</strong> no Google Cloud Console e configure a variável <code>GOOGLE_SHEETS_CREDENTIALS_FILE</code> no docker-compose.</p>
+          <v-alert type="info" variant="tonal" density="compact">
+            Compartilhe cada planilha com <code>sheets-reader@projetoteste-491111.iam.gserviceaccount.com</code> como Leitor.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4"><v-spacer /><v-btn variant="text" @click="dialogConfig = false">Fechar</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -584,22 +483,25 @@ import Chart from 'chart.js/auto'
 
 const statusConexao = ref({ conectado: false, erro: null })
 const loadingStatus = ref(true)
-const loadingAbas = ref(false)
 const loadingDashboard = ref(false)
 const erro = ref('')
 
-const spreadsheetId = ref('')
-const abas = ref([])
-const abaSelecionada = ref('')
-const tipoDashboard = ref('financeiro')
+const setores = ref([])
+const setorAtivoId = ref(null)
 const dashboard = ref(null)
 
 const buscaTransacao = ref('')
 const buscaCobranca = ref('')
-const dialogConfig = ref(false)
-const dialogNovaPlanilha = ref(false)
 
-const novaPlanilha = ref({ id: '', nome: '', tipo: 'financeiro' })
+const dialogSetores = ref(false)
+const dialogConfig = ref(false)
+const dialogDeletar = ref(false)
+const salvandoSetor = ref(false)
+const setorParaDeletar = ref(null)
+
+const formSetor = ref({ id: null, nome: '', spreadsheet_id: '', aba: '', tipo_dashboard: 'cobrancas' })
+const abasDisponiveis = ref([])
+const carregandoAbas = ref(false)
 
 const chartMensal = ref(null)
 const chartCategoria = ref(null)
@@ -608,18 +510,16 @@ let chartMensalInstance = null
 let chartCategoriaInstance = null
 let chartCobrancasInstance = null
 
-let pollingInterval = null
-
 // ── Computed ────────────────────────────────────────────────────────────────
+
+const setorAtivo = computed(() => setores.value.find(s => s.id === setorAtivoId.value))
 
 const transacoesFiltradas = computed(() => {
   if (!dashboard.value?.ultimas_transacoes) return []
   const q = buscaTransacao.value?.toLowerCase().trim()
   if (!q) return dashboard.value.ultimas_transacoes
   return dashboard.value.ultimas_transacoes.filter(t =>
-    t.descricao.toLowerCase().includes(q) ||
-    t.categoria.toLowerCase().includes(q) ||
-    t.data.includes(q)
+    t.descricao.toLowerCase().includes(q) || t.categoria.toLowerCase().includes(q)
   )
 })
 
@@ -628,9 +528,7 @@ const cobrancasFiltradas = computed(() => {
   const q = buscaCobranca.value?.toLowerCase().trim()
   if (!q) return dashboard.value.registros
   return dashboard.value.registros.filter(r =>
-    r.condominio.toLowerCase().includes(q) ||
-    r.vencimento.toLowerCase().includes(q) ||
-    r.status.toLowerCase().includes(q)
+    r.condominio.toLowerCase().includes(q) || r.vencimento.toLowerCase().includes(q) || r.status.toLowerCase().includes(q)
   )
 })
 
@@ -654,29 +552,26 @@ const headersCobrancas = [
 
 // ── Utils ───────────────────────────────────────────────────────────────────
 
-const authHeader = () => ({
-  Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-})
+const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` })
 
 const brl = (valor) => {
-  try {
-    return `R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  } catch {
-    return `R$ ${valor}`
-  }
+  try { return `R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
+  catch { return `R$ ${valor}` }
 }
 
-// ── API Calls ───────────────────────────────────────────────────────────────
+const tipoDashboardLabel = (tipo) => ({
+  cobrancas: 'Cobranças / Vencimentos',
+  financeiro: 'Financeiro',
+  fluxo_caixa: 'Fluxo de Caixa',
+}[tipo] || tipo)
+
+// ── API ──────────────────────────────────────────────────────────────────────
 
 const verificarStatus = async () => {
   loadingStatus.value = true
   try {
     const res = await fetch('/api/sheets/status', { headers: authHeader() })
-    if (res.ok) {
-      statusConexao.value = await res.json()
-    } else {
-      statusConexao.value = { conectado: false, erro: 'Erro ao verificar conexão' }
-    }
+    statusConexao.value = res.ok ? await res.json() : { conectado: false, erro: 'Erro ao verificar conexão' }
   } catch (e) {
     statusConexao.value = { conectado: false, erro: e.message }
   } finally {
@@ -684,55 +579,35 @@ const verificarStatus = async () => {
   }
 }
 
-const sheetId = () => spreadsheetId.value.trim().replace(/\/+$/, '')
-
-const carregarAbas = async () => {
-  if (!spreadsheetId.value) {
-    abas.value = []
-    return
-  }
-
-  loadingAbas.value = true
+const carregarSetores = async () => {
   try {
-    const res = await fetch(`/api/sheets/planilha/${sheetId()}/abas`, { headers: authHeader() })
+    const res = await fetch('/api/sheets/setores', { headers: authHeader() })
     if (res.ok) {
-      abas.value = await res.json()
-      if (abas.value.length && !abaSelecionada.value) {
-        abaSelecionada.value = abas.value[0].title
+      setores.value = await res.json()
+      if (setores.value.length && !setorAtivoId.value) {
+        setorAtivoId.value = setores.value[0].id
       }
-    } else {
-      const data = await res.json()
-      erro.value = data.detail || 'Erro ao carregar abas'
-      abas.value = []
     }
-  } catch (e) {
-    erro.value = e.message
-    abas.value = []
-  } finally {
-    loadingAbas.value = false
-  }
+  } catch { /* silencioso */ }
 }
 
 const carregarDashboard = async (force = false) => {
-  if (!spreadsheetId.value || !abaSelecionada.value) return
+  const setor = setorAtivo.value
+  if (!setor) return
 
   loadingDashboard.value = true
   erro.value = ''
+  dashboard.value = null
 
   try {
-    let url
-    if (tipoDashboard.value === 'cobrancas') {
-      url = `/api/sheets/dashboard/cobrancas/${sheetId()}?aba=${encodeURIComponent(abaSelecionada.value)}${force ? '&force=true' : ''}`
-    } else {
-      url = `/api/sheets/dashboard/rapido/${sheetId()}?aba=${encodeURIComponent(abaSelecionada.value)}${force ? '&force=true' : ''}`
-    }
+    const q = `?aba=${encodeURIComponent(setor.aba)}${force ? '&force=true' : ''}`
+    const endpoint = setor.tipo_dashboard === 'cobrancas'
+      ? `/api/sheets/dashboard/cobrancas/${setor.spreadsheet_id}${q}`
+      : `/api/sheets/dashboard/rapido/${setor.spreadsheet_id}${q}`
 
-    const res = await fetch(url, { headers: authHeader() })
-
+    const res = await fetch(endpoint, { headers: authHeader() })
     if (res.ok) {
       dashboard.value = await res.json()
-      // Os gráficos são renderizados via watch nos refs dos canvas
-      // (o <Transition mode="out-in"> insere o canvas só após a animação de saída)
     } else {
       const data = await res.json()
       erro.value = data.detail || 'Erro ao carregar dashboard'
@@ -744,12 +619,74 @@ const carregarDashboard = async (force = false) => {
   }
 }
 
-const salvarPlanilha = () => {
-  dialogNovaPlanilha.value = false
-  novaPlanilha.value = { id: '', nome: '', tipo: 'financeiro' }
+// ── CRUD Setores ─────────────────────────────────────────────────────────────
+
+const salvarSetor = async () => {
+  if (!formSetor.value.nome || !formSetor.value.spreadsheet_id) return
+  salvandoSetor.value = true
+  try {
+    const { id, ...payload } = formSetor.value
+    const url = id ? `/api/sheets/setores/${id}` : '/api/sheets/setores'
+    const method = id ? 'PUT' : 'POST'
+    const res = await fetch(url, {
+      method,
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      await carregarSetores()
+      resetarForm()
+    }
+  } finally {
+    salvandoSetor.value = false
+  }
 }
 
-// ── Gráficos ────────────────────────────────────────────────────────────────
+const editarSetor = (s) => {
+  formSetor.value = { id: s.id, nome: s.nome, spreadsheet_id: s.spreadsheet_id, aba: s.aba, tipo_dashboard: s.tipo_dashboard }
+  abasDisponiveis.value = []
+}
+
+const resetarForm = () => {
+  formSetor.value = { id: null, nome: '', spreadsheet_id: '', aba: '', tipo_dashboard: 'cobrancas' }
+  abasDisponiveis.value = []
+}
+
+const carregarAbasForm = async () => {
+  const id = formSetor.value.spreadsheet_id.trim()
+  if (!id) return
+  carregandoAbas.value = true
+  try {
+    const res = await fetch(`/api/sheets/planilha/${id}/abas`, { headers: authHeader() })
+    if (res.ok) {
+      abasDisponiveis.value = await res.json()
+      if (abasDisponiveis.value.length && !formSetor.value.aba) {
+        formSetor.value.aba = abasDisponiveis.value[0].title
+      }
+    }
+  } finally {
+    carregandoAbas.value = false
+  }
+}
+
+const confirmarDeletar = (s) => {
+  setorParaDeletar.value = s
+  dialogDeletar.value = true
+}
+
+const deletarSetor = async () => {
+  if (!setorParaDeletar.value) return
+  await fetch(`/api/sheets/setores/${setorParaDeletar.value.id}`, { method: 'DELETE', headers: authHeader() })
+  dialogDeletar.value = false
+  setorParaDeletar.value = null
+  if (setorAtivoId.value === setorParaDeletar.value?.id) {
+    setorAtivoId.value = null
+    dashboard.value = null
+  }
+  await carregarSetores()
+}
+
+// ── Gráficos ──────────────────────────────────────────────────────────────────
 
 const destroyCharts = () => {
   if (chartMensalInstance) { chartMensalInstance.destroy(); chartMensalInstance = null }
@@ -758,163 +695,78 @@ const destroyCharts = () => {
 }
 
 const renderizarGraficos = () => {
-  if (!dashboard.value) return
+  if (!dashboard.value || !chartMensal.value) return
   destroyCharts()
 
-  if (chartMensal.value && dashboard.value.por_mes?.length) {
+  if (dashboard.value.por_mes?.length) {
     const ctx = chartMensal.value.getContext('2d')
-    const labels = dashboard.value.por_mes.map(m => {
-      const [ano, mes] = m.mes.split('-')
-      return `${mes}/${ano.slice(2)}`
-    })
-
+    const labels = dashboard.value.por_mes.map(m => { const [a, ms] = m.mes.split('-'); return `${ms}/${a.slice(2)}` })
     chartMensalInstance = new Chart(ctx, {
       type: 'line',
       data: {
         labels,
         datasets: [
-          {
-            label: 'Receitas',
-            data: dashboard.value.por_mes.map(m => m.receitas),
-            borderColor: '#4CAF50',
-            backgroundColor: 'rgba(76, 175, 80, 0.1)',
-            fill: true,
-            tension: 0.3,
-          },
-          {
-            label: 'Despesas',
-            data: dashboard.value.por_mes.map(m => m.despesas),
-            borderColor: '#F44336',
-            backgroundColor: 'rgba(244, 67, 54, 0.1)',
-            fill: true,
-            tension: 0.3,
-          },
-          {
-            label: 'Saldo',
-            data: dashboard.value.por_mes.map(m => m.saldo),
-            borderColor: '#2196F3',
-            backgroundColor: 'transparent',
-            borderDash: [5, 5],
-            tension: 0.3,
-          },
+          { label: 'Receitas', data: dashboard.value.por_mes.map(m => m.receitas), borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.1)', fill: true, tension: 0.3 },
+          { label: 'Despesas', data: dashboard.value.por_mes.map(m => m.despesas), borderColor: '#F44336', backgroundColor: 'rgba(244,67,54,0.1)', fill: true, tension: 0.3 },
+          { label: 'Saldo', data: dashboard.value.por_mes.map(m => m.saldo), borderColor: '#2196F3', backgroundColor: 'transparent', borderDash: [5, 5], tension: 0.3 },
         ],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { callback: (v) => `R$ ${(v / 1000).toFixed(0)}k` },
-          },
-        },
-      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(0)}k` } } } },
     })
   }
 
   if (chartCategoria.value && Object.keys(dashboard.value.por_categoria || {}).length) {
     const ctx = chartCategoria.value.getContext('2d')
-    const categorias = Object.entries(dashboard.value.por_categoria)
-    const labels = categorias.map(([k]) => k)
-    const totais = categorias.map(([, v]) => v.despesas + v.receitas)
-    const cores = [
-      '#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336',
-      '#00BCD4', '#795548', '#607D8B', '#E91E63', '#3F51B5',
-    ]
-
+    const cats = Object.entries(dashboard.value.por_categoria)
+    const cores = ['#4CAF50','#2196F3','#FF9800','#9C27B0','#F44336','#00BCD4','#795548','#607D8B','#E91E63','#3F51B5']
     chartCategoriaInstance = new Chart(ctx, {
       type: 'doughnut',
-      data: {
-        labels,
-        datasets: [{ data: totais, backgroundColor: cores.slice(0, labels.length) }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'right' } },
-      },
+      data: { labels: cats.map(([k]) => k), datasets: [{ data: cats.map(([,v]) => v.despesas + v.receitas), backgroundColor: cores }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } },
     })
   }
 }
 
 const renderizarGraficoCobrancas = () => {
-  if (!dashboard.value?.por_vencimento?.length) return
+  if (!dashboard.value?.por_vencimento?.length || !chartCobrancas.value) return
   destroyCharts()
 
-  if (!chartCobrancas.value) return
-  const ctx = chartCobrancas.value.getContext('2d')
   const pv = dashboard.value.por_vencimento
-
-  chartCobrancasInstance = new Chart(ctx, {
+  chartCobrancasInstance = new Chart(chartCobrancas.value.getContext('2d'), {
     type: 'bar',
     data: {
       labels: pv.map(p => p.vencimento),
       datasets: [
-        {
-          label: 'Previsto',
-          data: pv.map(p => p.previsto),
-          backgroundColor: 'rgba(33, 150, 243, 0.6)',
-          borderColor: '#2196F3',
-          borderWidth: 1,
-        },
-        {
-          label: 'Recebido',
-          data: pv.map(p => p.recebido),
-          backgroundColor: 'rgba(76, 175, 80, 0.7)',
-          borderColor: '#4CAF50',
-          borderWidth: 1,
-        },
+        { label: 'Previsto', data: pv.map(p => p.previsto), backgroundColor: 'rgba(33,150,243,0.6)', borderColor: '#2196F3', borderWidth: 1 },
+        { label: 'Recebido', data: pv.map(p => p.recebido), backgroundColor: 'rgba(76,175,80,0.7)', borderColor: '#4CAF50', borderWidth: 1 },
       ],
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: { callback: (v) => `R$ ${(v / 1000).toFixed(1)}k` },
-        },
-      },
-    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(1)}k` } } } },
   })
 }
 
-// ── Watchers ────────────────────────────────────────────────────────────────
+// ── Watchers ──────────────────────────────────────────────────────────────────
 
-watch(spreadsheetId, (newVal) => {
-  if (newVal && newVal.length > 20) {
-    carregarAbas()
-  } else {
-    abas.value = []
-    abaSelecionada.value = ''
-  }
+watch(setorAtivoId, (id) => {
+  if (id) carregarDashboard()
 })
 
-// Renderiza gráfico de cobranças quando o canvas entra no DOM (após transição)
 watch(chartCobrancas, (canvas) => {
-  if (canvas && dashboard.value?.tipo === 'cobrancas') {
-    renderizarGraficoCobrancas()
-  }
+  if (canvas && dashboard.value?.tipo === 'cobrancas') renderizarGraficoCobrancas()
 })
 
-// Renderiza gráficos financeiros quando os canvas entram no DOM
 watch([chartMensal, chartCategoria], ([mensal]) => {
-  if (mensal && dashboard.value && dashboard.value.tipo !== 'cobrancas') {
-    renderizarGraficos()
-  }
+  if (mensal && dashboard.value && dashboard.value.tipo !== 'cobrancas') renderizarGraficos()
 })
 
-// ── Lifecycle ───────────────────────────────────────────────────────────────
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
   await verificarStatus()
+  if (statusConexao.value.conectado) await carregarSetores()
 })
 
-onUnmounted(() => {
-  destroyCharts()
-})
+onUnmounted(() => { destroyCharts() })
 </script>
 
 <style scoped>
@@ -924,24 +776,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
 }
-
-.chart-container {
-  height: 300px;
-  position: relative;
-}
-
-.chart-container-pie {
-  height: 280px;
-  position: relative;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+.chart-container { height: 300px; position: relative; }
+.chart-container-pie { height: 280px; position: relative; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
