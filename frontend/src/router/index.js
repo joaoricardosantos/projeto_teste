@@ -6,6 +6,7 @@ import AdminView from '../views/AdminView.vue'
 import ReportsView from '../views/ReportsView.vue'
 import TemplatesView from '../views/TemplatesView.vue'
 import ResetPasswordView from '../views/ResetPasswordView.vue'
+import SheetsView from '../views/SheetsView.vue'  // ← NOVA INTEGRAÇÃO
 
 const routes = [
     { path: '/', name: 'Auth', component: AuthView },
@@ -15,6 +16,7 @@ const routes = [
     { path: '/admin', name: 'Admin', component: AdminView, meta: { requiresAuth: true } },
     { path: '/relatorios', name: 'Reports', component: ReportsView, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/templates', name: 'Templates', component: TemplatesView, meta: { requiresAuth: true } },
+    { path: '/sheets', name: 'Sheets', component: SheetsView, meta: { requiresAuth: true } },  // ← NOVA INTEGRAÇÃO
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })
