@@ -75,7 +75,7 @@
             :value="setor.id"
           >
             <v-icon size="small" class="mr-2">
-              {{ setor.tipo_dashboard === 'cobrancas' ? 'mdi-cash-clock' : 'mdi-chart-line' }}
+              {{ setor.tipo_dashboard === 'cobrancas' ? 'mdi-cash-clock' : setor.tipo_dashboard === 'advocacia' ? 'mdi-gavel' : 'mdi-chart-line' }}
             </v-icon>
             {{ setor.nome }}
           </v-tab>
@@ -240,6 +240,156 @@
                       variant="tonal"
                     >
                       {{ item.status === 'pago' ? 'Pago' : item.status === 'antecipado' ? 'Antecipado' : 'Pendente' }}
+                    </v-chip>
+                  </template>
+                </v-data-table>
+              </v-card-text>
+            </v-card>
+          </div>
+
+          <!-- Dashboard Advocacia -->
+          <div v-else-if="dashboard && dashboard.tipo === 'advocacia'" key="advocacia">
+            <div class="d-flex align-center justify-space-between mb-4">
+              <div>
+                <span class="text-h6 font-weight-bold">{{ dashboard.titulo }}</span>
+                <span class="text-caption text-medium-emphasis ml-3">
+                  <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+                  Atualizado em {{ dashboard.atualizado_em }}
+                </span>
+              </div>
+              <v-chip size="small" color="green" variant="tonal">
+                <v-icon size="small" class="mr-1">mdi-check-circle</v-icon>
+                Conectado
+              </v-chip>
+            </div>
+
+            <!-- KPIs -->
+            <v-row class="mb-4">
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Taxa de Cobrança</span>
+                    <v-icon color="blue" size="28">mdi-gavel</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #2196F3;">{{ brl(dashboard.resumo.total_taxa_cobranca) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.total_unidades }} unidades</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Creditado</span>
+                    <v-icon color="green" size="28">mdi-check-circle</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #4CAF50;">{{ brl(dashboard.resumo.total_creditado) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.liquidados }} liquidados</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #FF9800;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Honorários</span>
+                    <v-icon color="orange" size="28">mdi-currency-usd</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #FF9800;">{{ brl(dashboard.resumo.total_honorarios) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pendentes }} pendentes</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">% Liquidado</span>
+                    <v-icon color="purple" size="28">mdi-percent</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #9C27B0;">{{ dashboard.resumo.percentual_liquidado }}%</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.liquidados }} de {{ dashboard.resumo.total_unidades }}</div>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- Gráfico + Lista por Advogado -->
+            <v-row class="mb-4">
+              <v-col cols="12" md="8">
+                <v-card elevation="4">
+                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                    <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
+                    Taxa de Cobrança por Advogado
+                  </v-card-title>
+                  <v-card-text>
+                    <div class="chart-container">
+                      <canvas ref="chartAdvocacia"></canvas>
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-card elevation="4" height="100%">
+                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                    <v-icon class="mr-2" color="primary">mdi-account-group</v-icon>
+                    Por Advogado
+                  </v-card-title>
+                  <v-card-text class="pa-0">
+                    <v-list density="compact">
+                      <v-list-item v-for="pa in dashboard.por_advogado" :key="pa.advogado" class="px-4">
+                        <template #title>
+                          <span class="text-body-2 font-weight-medium">{{ pa.advogado }}</span>
+                        </template>
+                        <template #subtitle>
+                          <span class="text-caption">Taxa: {{ brl(pa.taxa_total) }} · Creditado: {{ brl(pa.creditado_total) }}</span>
+                        </template>
+                        <template #append>
+                          <div class="d-flex gap-1">
+                            <v-chip v-if="pa.liquidados" size="x-small" color="green" variant="tonal">{{ pa.liquidados }} ✓</v-chip>
+                            <v-chip v-if="pa.pendentes" size="x-small" color="orange" variant="tonal">{{ pa.pendentes }} ⏳</v-chip>
+                          </div>
+                        </template>
+                      </v-list-item>
+                    </v-list>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- Tabela -->
+            <v-card elevation="4">
+              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
+                <div class="d-flex align-center">
+                  <v-icon class="mr-2" color="primary">mdi-office-building</v-icon>
+                  Unidades
+                </div>
+                <v-text-field
+                  v-model="buscaAdvocacia"
+                  density="compact"
+                  variant="outlined"
+                  placeholder="Buscar unidade ou advogado..."
+                  prepend-inner-icon="mdi-magnify"
+                  hide-details
+                  style="max-width: 300px;"
+                  clearable
+                />
+              </v-card-title>
+              <v-card-text class="pa-0">
+                <v-data-table
+                  :headers="headersAdvocacia"
+                  :items="advocaciaFiltrada"
+                  :items-per-page="20"
+                  density="comfortable"
+                  class="elevation-0"
+                  no-data-text="Nenhum registro encontrado"
+                >
+                  <template #item.taxa_cobranca="{ item }">{{ brl(item.taxa_cobranca) }}</template>
+                  <template #item.honorarios="{ item }">
+                    <span v-if="item.honorarios > 0">{{ brl(item.honorarios) }}</span>
+                    <span v-else class="text-medium-emphasis">—</span>
+                  </template>
+                  <template #item.creditado="{ item }">
+                    <span :class="item.creditado > 0 ? 'text-green' : 'text-medium-emphasis'">
+                      {{ item.creditado > 0 ? brl(item.creditado) : '—' }}
+                    </span>
+                  </template>
+                  <template #item.status="{ item }">
+                    <v-chip :color="item.status === 'liquidado' ? 'green' : 'orange'" size="small" variant="tonal">
+                      {{ item.status === 'liquidado' ? 'Liquidado' : 'Pendente' }}
                     </v-chip>
                   </template>
                 </v-data-table>
@@ -425,6 +575,7 @@
             v-model="formSetor.tipo_dashboard"
             :items="[
               { title: 'Cobranças / Vencimentos', value: 'cobrancas' },
+              { title: 'Honorários Advocatícios', value: 'advocacia' },
               { title: 'Financeiro', value: 'financeiro' },
             ]"
             item-title="title"
@@ -492,6 +643,7 @@ const dashboard = ref(null)
 
 const buscaTransacao = ref('')
 const buscaCobranca = ref('')
+const buscaAdvocacia = ref('')
 
 const dialogSetores = ref(false)
 const dialogConfig = ref(false)
@@ -506,9 +658,11 @@ const carregandoAbas = ref(false)
 const chartMensal = ref(null)
 const chartCategoria = ref(null)
 const chartCobrancas = ref(null)
+const chartAdvocacia = ref(null)
 let chartMensalInstance = null
 let chartCategoriaInstance = null
 let chartCobrancasInstance = null
+let chartAdvocaciaInstance = null
 
 // ── Computed ────────────────────────────────────────────────────────────────
 
@@ -520,6 +674,17 @@ const transacoesFiltradas = computed(() => {
   if (!q) return dashboard.value.ultimas_transacoes
   return dashboard.value.ultimas_transacoes.filter(t =>
     t.descricao.toLowerCase().includes(q) || t.categoria.toLowerCase().includes(q)
+  )
+})
+
+const advocaciaFiltrada = computed(() => {
+  if (!dashboard.value?.registros) return []
+  const q = buscaAdvocacia.value?.toLowerCase().trim()
+  if (!q) return dashboard.value.registros
+  return dashboard.value.registros.filter(r =>
+    r.unidade.toLowerCase().includes(q) ||
+    r.advogado.toLowerCase().includes(q) ||
+    r.status.toLowerCase().includes(q)
   )
 })
 
@@ -538,6 +703,18 @@ const headersTransacoes = [
   { title: 'Categoria', key: 'categoria', width: 140 },
   { title: 'Valor', key: 'valor', width: 140 },
   { title: 'Tipo', key: 'tipo', width: 110 },
+]
+
+const headersAdvocacia = [
+  { title: 'Unidade', key: 'unidade' },
+  { title: 'Compet.', key: 'competencia', width: 90 },
+  { title: 'Vencimento', key: 'vencimento', width: 120 },
+  { title: 'Advogado', key: 'advogado', width: 120 },
+  { title: 'Taxa Cobrança', key: 'taxa_cobranca', width: 130 },
+  { title: 'Honorários', key: 'honorarios', width: 120 },
+  { title: 'Creditado', key: 'creditado', width: 120 },
+  { title: 'Liquidação', key: 'liquidacao', width: 110 },
+  { title: 'Status', key: 'status', width: 110 },
 ]
 
 const headersCobrancas = [
@@ -561,6 +738,7 @@ const brl = (valor) => {
 
 const tipoDashboardLabel = (tipo) => ({
   cobrancas: 'Cobranças / Vencimentos',
+  advocacia: 'Honorários Advocatícios',
   financeiro: 'Financeiro',
   fluxo_caixa: 'Fluxo de Caixa',
 }[tipo] || tipo)
@@ -603,7 +781,9 @@ const carregarDashboard = async (force = false) => {
     const q = `?aba=${encodeURIComponent(setor.aba)}${force ? '&force=true' : ''}`
     const endpoint = setor.tipo_dashboard === 'cobrancas'
       ? `/api/sheets/dashboard/cobrancas/${setor.spreadsheet_id}${q}`
-      : `/api/sheets/dashboard/rapido/${setor.spreadsheet_id}${q}`
+      : setor.tipo_dashboard === 'advocacia'
+        ? `/api/sheets/dashboard/advocacia/${setor.spreadsheet_id}${q}`
+        : `/api/sheets/dashboard/rapido/${setor.spreadsheet_id}${q}`
 
     const res = await fetch(endpoint, { headers: authHeader() })
     if (res.ok) {
@@ -692,6 +872,7 @@ const destroyCharts = () => {
   if (chartMensalInstance) { chartMensalInstance.destroy(); chartMensalInstance = null }
   if (chartCategoriaInstance) { chartCategoriaInstance.destroy(); chartCategoriaInstance = null }
   if (chartCobrancasInstance) { chartCobrancasInstance.destroy(); chartCobrancasInstance = null }
+  if (chartAdvocaciaInstance) { chartAdvocaciaInstance.destroy(); chartAdvocaciaInstance = null }
 }
 
 const renderizarGraficos = () => {
@@ -745,6 +926,29 @@ const renderizarGraficoCobrancas = () => {
   })
 }
 
+const renderizarGraficoAdvocacia = () => {
+  if (!dashboard.value?.por_advogado?.length || !chartAdvocacia.value) return
+  destroyCharts()
+
+  const pa = dashboard.value.por_advogado
+  chartAdvocaciaInstance = new Chart(chartAdvocacia.value.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: pa.map(p => p.advogado),
+      datasets: [
+        { label: 'Taxa de Cobrança', data: pa.map(p => p.taxa_total), backgroundColor: 'rgba(33,150,243,0.6)', borderColor: '#2196F3', borderWidth: 1 },
+        { label: 'Creditado', data: pa.map(p => p.creditado_total), backgroundColor: 'rgba(76,175,80,0.7)', borderColor: '#4CAF50', borderWidth: 1 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(1)}k` } } },
+    },
+  })
+}
+
 // ── Watchers ──────────────────────────────────────────────────────────────────
 
 watch(setorAtivoId, (id) => {
@@ -753,6 +957,10 @@ watch(setorAtivoId, (id) => {
 
 watch(chartCobrancas, (canvas) => {
   if (canvas && dashboard.value?.tipo === 'cobrancas') renderizarGraficoCobrancas()
+})
+
+watch(chartAdvocacia, (canvas) => {
+  if (canvas && dashboard.value?.tipo === 'advocacia') renderizarGraficoAdvocacia()
 })
 
 watch([chartMensal, chartCategoria], ([mensal]) => {

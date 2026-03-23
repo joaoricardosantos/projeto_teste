@@ -124,6 +124,7 @@ class MensagemEnviada(models.Model):
 class SheetSetor(models.Model):
     TIPO_CHOICES = [
         ('cobrancas', 'Cobranças / Vencimentos'),
+        ('advocacia', 'Honorários Advocatícios'),
         ('financeiro', 'Financeiro'),
         ('fluxo_caixa', 'Fluxo de Caixa'),
     ]

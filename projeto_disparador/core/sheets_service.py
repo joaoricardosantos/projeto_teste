@@ -580,6 +580,107 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
     }
 
 
+def processar_advocacia(dados: List[List[Any]]) -> Dict[str, Any]:
+    """
+    Processa planilha de honorários advocatícios.
+
+    Layout esperado (colunas 0-based):
+      0: vazio | 1: Unidade | 2: Compet. | 3: Vencimento | 4: Liquidação
+      5: Honorários | 6: Advogado | 7: Taxa de cobrança | 8: Cobrança
+      9: Creditado | 10: Extrato
+    """
+    registros: List[Dict[str, Any]] = []
+    titulo = ""
+    header_encontrado = False
+
+    def cell(row, i):
+        return str(row[i]).strip() if i < len(row) else ""
+
+    for raw_row in dados:
+        row = list(raw_row) + [""] * max(0, 11 - len(raw_row))
+
+        c1 = cell(row, 1)
+
+        # Título (primeira linha não vazia)
+        if not titulo and c1:
+            titulo = c1
+            continue
+
+        # Detecta linha de cabeçalho
+        if not header_encontrado and "unidade" in c1.lower():
+            header_encontrado = True
+            continue
+
+        if not header_encontrado:
+            continue
+
+        # Pula linhas sem unidade (totais ou vazias)
+        if not c1:
+            continue
+
+        taxa = _parse_valor(cell(row, 7))
+        honorarios = _parse_valor(cell(row, 5))
+        creditado = _parse_valor(cell(row, 9))
+        liquidacao = cell(row, 4)
+        extrato = cell(row, 10)
+
+        registros.append({
+            "unidade": c1,
+            "competencia": cell(row, 2),
+            "vencimento": cell(row, 3),
+            "liquidacao": liquidacao,
+            "honorarios": float(honorarios),
+            "advogado": cell(row, 6),
+            "taxa_cobranca": float(taxa),
+            "creditado": float(creditado),
+            "extrato": extrato,
+            "status": "liquidado" if liquidacao else "pendente",
+        })
+
+    # Resumo
+    total_taxa = sum(r["taxa_cobranca"] for r in registros)
+    total_creditado = sum(r["creditado"] for r in registros)
+    total_honorarios = sum(r["honorarios"] for r in registros)
+    liquidados = [r for r in registros if r["status"] == "liquidado"]
+    pendentes = [r for r in registros if r["status"] == "pendente"]
+    pct = round(len(liquidados) / len(registros) * 100, 1) if registros else 0.0
+
+    # Por advogado
+    por_adv_map: Dict[str, Any] = {}
+    for r in registros:
+        adv = r["advogado"] or "Sem advogado"
+        if adv not in por_adv_map:
+            por_adv_map[adv] = {"advogado": adv, "taxa_total": 0.0, "creditado_total": 0.0, "liquidados": 0, "pendentes": 0}
+        por_adv_map[adv]["taxa_total"] += r["taxa_cobranca"]
+        por_adv_map[adv]["creditado_total"] += r["creditado"]
+        if r["status"] == "liquidado":
+            por_adv_map[adv]["liquidados"] += 1
+        else:
+            por_adv_map[adv]["pendentes"] += 1
+
+    por_advogado = sorted(por_adv_map.values(), key=lambda x: x["taxa_total"], reverse=True)
+    for pa in por_advogado:
+        pa["taxa_total"] = round(pa["taxa_total"], 2)
+        pa["creditado_total"] = round(pa["creditado_total"], 2)
+
+    return {
+        "tipo": "advocacia",
+        "titulo": titulo,
+        "resumo": {
+            "total_taxa_cobranca": round(total_taxa, 2),
+            "total_creditado": round(total_creditado, 2),
+            "total_honorarios": round(total_honorarios, 2),
+            "percentual_liquidado": pct,
+            "total_unidades": len(registros),
+            "liquidados": len(liquidados),
+            "pendentes": len(pendentes),
+        },
+        "por_advogado": por_advogado,
+        "registros": registros,
+        "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
+    }
+
+
 def adicionar_planilha_config(planilha: Dict[str, str]) -> bool:
     """
     Adiciona planilha à configuração.
