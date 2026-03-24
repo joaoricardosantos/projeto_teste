@@ -193,21 +193,24 @@
           >Excluir jurídico externo</v-btn>
         </div>
 
-        <div class="d-flex" style="gap: 5px;">
-          <v-btn
-            color="success" prepend-icon="mdi-file-excel"
-            :loading="isSemNumeroLoading && semNumeroFormat === 'xlsx'"
-            :disabled="isSemNumeroLoading"
-            @click="exportarSemNumero('xlsx')"
-          >Baixar Excel</v-btn>
-
-          <v-btn
-            color="red-darken-2" prepend-icon="mdi-file-pdf-box"
-            :loading="isSemNumeroLoading && semNumeroFormat === 'pdf'"
-            :disabled="isSemNumeroLoading"
-            @click="exportarSemNumero('pdf')"
-          >Baixar PDF</v-btn>
-        </div>
+        <v-menu :disabled="isSemNumeroLoading">
+          <template #activator="{ props }">
+            <v-btn
+              color="primary"
+              size="large"
+              prepend-icon="mdi-file-export"
+              append-icon="mdi-chevron-down"
+              :loading="isSemNumeroLoading"
+              :disabled="isSemNumeroLoading"
+              v-bind="props"
+            >{{ isSemNumeroLoading ? 'Gerando...' : 'Exportar relatório' }}</v-btn>
+          </template>
+          <v-list elevation="4" rounded="lg" min-width="200">
+            <v-list-item prepend-icon="mdi-microsoft-excel" title="Excel (.xlsx)" subtitle="Planilha com unidades sem número" @click="exportarSemNumero('xlsx')" />
+            <v-divider />
+            <v-list-item prepend-icon="mdi-file-pdf-box" title="PDF" subtitle="Relatório formatado por condomínio" color="red-darken-2" @click="exportarSemNumero('pdf')" />
+          </v-list>
+        </v-menu>
 
         <v-alert v-if="semNumeroError" type="error" class="mt-4" closable @click:close="semNumeroError = ''">
           {{ semNumeroError }}

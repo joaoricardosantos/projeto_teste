@@ -122,10 +122,10 @@
 
               <template #item.role="{ item }">
                 <v-chip
-                  :color="item.is_staff || item.is_superuser ? 'primary' : 'grey'"
+                  :color="item.is_staff || item.is_superuser ? 'primary' : item.is_juridico ? 'deep-purple' : 'grey'"
                   size="x-small"
                   variant="tonal"
-                >{{ item.is_staff || item.is_superuser ? 'Admin' : 'Usuário' }}</v-chip>
+                >{{ item.is_staff || item.is_superuser ? 'Admin' : item.is_juridico ? 'Jurídico' : 'Usuário' }}</v-chip>
               </template>
 
               <template #item.actions="{ item }">
@@ -146,6 +146,12 @@
                     :color="item.is_staff || item.is_superuser ? 'grey' : 'primary'"
                     @click="toggleAdmin(item)"
                   >{{ item.is_staff || item.is_superuser ? 'Remover admin' : 'Tornar admin' }}</v-btn>
+
+                  <v-btn
+                    size="x-small" variant="tonal"
+                    :color="item.is_juridico ? 'grey' : 'deep-purple'"
+                    @click="toggleJuridico(item)"
+                  >{{ item.is_juridico ? 'Remover jurídico' : 'Jurídico' }}</v-btn>
 
                   <v-btn
                     size="x-small" color="error" icon variant="text"
@@ -252,6 +258,22 @@ const toggleAdmin = async (user) => {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data.detail || 'Erro ao atualizar permissão')
+    await fetchUsers()
+  } catch (error) {
+    errorMessage.value = error.message
+  }
+}
+
+const toggleJuridico = async (user) => {
+  errorMessage.value = ''
+  try {
+    const response = await fetch('/api/admin/set-juridico', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ user_id: user.id, is_juridico: !user.is_juridico }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.detail || 'Erro ao atualizar cargo jurídico')
     await fetchUsers()
   } catch (error) {
     errorMessage.value = error.message

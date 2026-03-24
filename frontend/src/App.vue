@@ -137,26 +137,22 @@ watch(() => route.meta.requiresAuth, (authed) => {
 })
 
 const isAdmin = computed(() => localStorage.getItem('is_admin') === 'true')
+const isJuridico = computed(() => localStorage.getItem('is_juridico') === 'true')
 
 const allNavItems = [
-<<<<<<< Updated upstream
-  { to: '/dashboard',  icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false },
-  { to: '/painel',     icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false },
-  { to: '/templates',  icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false },
-  { to: '/sheets',     icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false },  // ← NOVA INTEGRAÇÃO
-  { to: '/relatorios', icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true  },
-  { to: '/admin',      icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true  },
-=======
-  { to: '/dashboard',  icon: 'mdi-view-dashboard-outline', label: 'Dashboard',      adminOnly: false },
-  { to: '/painel',     icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false },
-  { to: '/templates',  icon: 'mdi-message-text-outline',   label: 'Templates',      adminOnly: false },
-  { to: '/relatorios', icon: 'mdi-file-chart-outline',     label: 'Relatórios',     adminOnly: true  },
-  { to: '/admin',      icon: 'mdi-shield-account-outline', label: 'Administração',  adminOnly: true  },
->>>>>>> Stashed changes
+  { to: '/dashboard',  icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false, juridicoAllowed: true  },
+  { to: '/painel',     icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false },
+  { to: '/templates',  icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false },
+  { to: '/sheets',     icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false },
+  { to: '/relatorios', icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true  },
+  { to: '/admin',      icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false },
 ]
 
 const navItems = computed(() =>
-  allNavItems.filter(item => !item.adminOnly || isAdmin.value)
+  allNavItems.filter(item => {
+    if (isJuridico.value) return item.juridicoAllowed
+    return !item.adminOnly || isAdmin.value
+  })
 )
 
 const toggleTheme = () => {
@@ -167,6 +163,7 @@ const toggleTheme = () => {
 const logout = () => {
   localStorage.removeItem('access_token')
   localStorage.removeItem('is_admin')
+  localStorage.removeItem('is_juridico')
   localStorage.removeItem('user_name')
   sidebarOpen.value = false
   router.push('/')
