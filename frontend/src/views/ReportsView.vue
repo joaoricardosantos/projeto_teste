@@ -170,76 +170,113 @@
         Gere um relatório com todas as unidades que não possuem número de telefone cadastrado.
       </p>
 
-      <v-autocomplete
-        v-model="semNumeroCondominio"
-        :items="condominios"
-        item-title="label"
-        item-value="id"
-        label="Condomínio (opcional)"
-        variant="outlined"
-        density="comfortable"
-        clearable
-        multiple
-        chips
-        closable-chips
-        hide-details
-        class="mb-4"
-        :disabled="isSemNumeroLoading || loadingCondominios"
-        no-data-text="Nenhum condomínio encontrado"
-        placeholder="Deixe vazio para todos os condomínios"
-      />
-
       <!-- Filtros sem número -->
-      <div class="d-flex flex-wrap mb-4" style="gap:10px;">
+      <div class="d-flex align-center mb-5 flex-wrap" style="gap: 10px;">
         <v-btn
+          :color="semNumeroUltimos5anos ? 'primary' : 'default'"
+          :variant="semNumeroUltimos5anos ? 'flat' : 'outlined'"
           size="small"
-          rounded="pill"
-          :color="semNumeroUltimos5anos ? 'primary' : 'grey-lighten-1'"
-          :variant="semNumeroUltimos5anos ? 'flat' : 'tonal'"
-          :prepend-icon="semNumeroUltimos5anos ? 'mdi-check-circle' : 'mdi-calendar-clock'"
+          prepend-icon="mdi-calendar-clock"
           :disabled="isSemNumeroLoading"
-          @click.stop="semNumeroUltimos5anos = !semNumeroUltimos5anos"
-        >Últimos 5 anos</v-btn>
+          @click="semNumeroUltimos5anos = !semNumeroUltimos5anos"
+        >
+          Últimos 5 anos
+        </v-btn>
         <v-btn
+          :color="semNumeroMin3 ? 'primary' : 'default'"
+          :variant="semNumeroMin3 ? 'flat' : 'outlined'"
           size="small"
-          rounded="pill"
-          :color="semNumeroMin3 ? 'warning' : 'grey-lighten-1'"
-          :variant="semNumeroMin3 ? 'flat' : 'tonal'"
-          :prepend-icon="semNumeroMin3 ? 'mdi-check-circle' : 'mdi-alert-circle-outline'"
+          prepend-icon="mdi-alert-circle-outline"
           :disabled="isSemNumeroLoading"
-          @click.stop="semNumeroMin3 = !semNumeroMin3"
-        >3+ inadimplências</v-btn>
+          @click="semNumeroMin3 = !semNumeroMin3"
+        >
+          3+ inadimplências
+        </v-btn>
         <v-btn
+          :color="semNumeroExcluirExterno ? 'primary' : 'default'"
+          :variant="semNumeroExcluirExterno ? 'flat' : 'outlined'"
           size="small"
-          rounded="pill"
-          :color="semNumeroExcluirExterno ? 'error' : 'grey-lighten-1'"
-          :variant="semNumeroExcluirExterno ? 'flat' : 'tonal'"
-          :prepend-icon="semNumeroExcluirExterno ? 'mdi-check-circle' : 'mdi-gavel'"
+          prepend-icon="mdi-gavel"
           :disabled="isSemNumeroLoading"
-          @click.stop="semNumeroExcluirExterno = !semNumeroExcluirExterno"
-        >Excluir jurídico externo</v-btn>
+          @click="semNumeroExcluirExterno = !semNumeroExcluirExterno"
+        >
+          Excluir jurídico externo
+        </v-btn>
       </div>
 
-      <div class="d-flex" style="gap:12px;">
-        <v-btn
-          color="success"
-          prepend-icon="mdi-file-excel"
-          :loading="isSemNumeroLoading && semNumeroFormat === 'xlsx'"
-          :disabled="isSemNumeroLoading"
-          @click="exportarSemNumero('xlsx')"
-        >
-          Baixar Excel
-        </v-btn>
-        <v-btn
-          color="red-darken-2"
-          prepend-icon="mdi-file-pdf-box"
-          :loading="isSemNumeroLoading && semNumeroFormat === 'pdf'"
-          :disabled="isSemNumeroLoading"
-          @click="exportarSemNumero('pdf')"
-        >
-          Baixar PDF
-        </v-btn>
-      </div>
+      <v-row align="start">
+        <v-col cols="12" sm="8">
+          <v-autocomplete
+            v-model="semNumeroCondominio"
+            :items="condominios"
+            item-title="label"
+            item-value="id"
+            label="Condomínio (opcional)"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            multiple
+            chips
+            closable-chips
+            hide-details
+            :disabled="isSemNumeroLoading || loadingCondominios"
+            no-data-text="Nenhum condomínio encontrado"
+            placeholder="Buscar por nome ou ID..."
+          />
+          <div style="min-height: 28px; padding-top: 4px;">
+            <v-expand-transition>
+              <div v-if="loadingCondominios" key="loading">
+                <v-progress-linear indeterminate color="primary" height="3" rounded style="border-radius:99px;" />
+                <p style="font-size:11px;color:#006837;margin-top:5px;display:flex;align-items:center;gap:4px;">
+                  <v-icon size="12" color="primary">mdi-office-building-outline</v-icon>
+                  Buscando condomínios na Superlógica...
+                </p>
+              </div>
+              <p v-else-if="condominios.length > 0" key="done"
+                style="font-size:11px;color:#6b7280;margin-top:5px;display:flex;align-items:center;gap:4px;">
+                <v-icon size="12" color="success">mdi-check-circle-outline</v-icon>
+                {{ condominios.length }} condomínios disponíveis · Deixe vazio para todos
+              </p>
+            </v-expand-transition>
+          </div>
+        </v-col>
+
+        <v-col cols="12" sm="4">
+          <v-menu :disabled="isSemNumeroLoading">
+            <template #activator="{ props }">
+              <v-btn
+                color="primary"
+                block
+                size="large"
+                prepend-icon="mdi-file-export"
+                append-icon="mdi-chevron-down"
+                :loading="isSemNumeroLoading"
+                :disabled="isSemNumeroLoading"
+                v-bind="props"
+              >
+                {{ isSemNumeroLoading ? 'Gerando...' : 'Exportar relatório' }}
+              </v-btn>
+            </template>
+
+            <v-list elevation="4" rounded="lg" min-width="200">
+              <v-list-item
+                prepend-icon="mdi-microsoft-excel"
+                title="Excel (.xlsx)"
+                subtitle="Planilha com unidades sem número"
+                @click="exportarSemNumero('xlsx')"
+              />
+              <v-divider />
+              <v-list-item
+                prepend-icon="mdi-file-pdf-box"
+                title="PDF"
+                subtitle="Relatório formatado por condomínio"
+                color="red-darken-2"
+                @click="exportarSemNumero('pdf')"
+              />
+            </v-list>
+          </v-menu>
+        </v-col>
+      </v-row>
 
       <v-alert v-if="semNumeroError" type="error" class="mt-4" closable @click:close="semNumeroError = ''">
         {{ semNumeroError }}
