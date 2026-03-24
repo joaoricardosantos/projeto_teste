@@ -1,361 +1,340 @@
 <template>
-  <v-container>
-    <v-row class="mb-6">
-      <v-col cols="12">
-        <h1 class="text-h5 font-weight-bold mb-1">Relatórios de inadimplência</h1>
-        <p class="text-body-2 text-medium-emphasis">
-          Gere um Excel com abas <strong>Resumo</strong> e <strong>Detalhado</strong> por condomínio.
-          Deixe os filtros em branco para varrer todos os condomínios com a data de hoje.
-        </p>
-      </v-col>
-    </v-row>
+  <div>
 
-    <!-- ── Seção 1: Gerar relatório ── -->
-    <v-card elevation="4" class="pa-6 mb-6">
-      <p class="text-subtitle-2 font-weight-bold text-uppercase text-medium-emphasis mb-4">
-        1. Gerar planilha Excel
-      </p>
+    <!-- ── Cabeçalho ── -->
+    <div class="d-flex align-center gap-4 mb-6">
+      <div class="page-icon">
+        <v-icon size="20" color="white">mdi-file-chart-outline</v-icon>
+      </div>
+      <div>
+        <h1 class="page-title">Relatórios de Inadimplência</h1>
+        <p class="page-subtitle">Gere planilhas e PDFs, identifique unidades sem número e dispare cobranças em lote</p>
+      </div>
+    </div>
 
-      <!-- Filtros de exportação -->
-      <div class="d-flex align-center mb-5 flex-wrap" style="gap: 10px;">
-        <v-btn
-          :color="ultimos5anos ? 'primary' : 'default'"
-          :variant="ultimos5anos ? 'flat' : 'outlined'"
-          size="small"
-          prepend-icon="mdi-calendar-clock"
-          :disabled="isExporting"
-          @click="ultimos5anos = !ultimos5anos"
-        >
-          Últimos 5 anos
-        </v-btn>
-        <v-btn
-          :color="ordenarDesc ? 'primary' : 'default'"
-          :variant="ordenarDesc ? 'flat' : 'outlined'"
-          size="small"
-          prepend-icon="mdi-sort-descending"
-          :disabled="isExporting"
-          @click="ordenarDesc = !ordenarDesc"
-        >
-          Maior valor primeiro
-        </v-btn>
-        <v-expand-transition>
-          <span v-if="ultimos5anos" class="text-caption text-medium-emphasis">
-            <v-icon size="13" color="primary" class="mr-1">mdi-information-outline</v-icon>
-            Filtrando vencimentos a partir de {{ dataInicio5anos }}
-          </span>
-        </v-expand-transition>
+    <!-- ── Seção 1: Exportar relatório ── -->
+    <v-card class="section-card mb-7" elevation="3">
+      <div class="section-header">
+        <div class="section-badge">1</div>
+        <div>
+          <p class="section-title">Gerar Relatório</p>
+          <p class="section-subtitle">Exportar planilha Excel com abas Resumo e Detalhado, ou PDF formatado</p>
+        </div>
       </div>
 
-      <v-row align="start">
-        <v-col cols="12" sm="4">
-          <!-- Campo condomínio com loading visível -->
-          <v-autocomplete
-            v-model="idCondominio"
-            :items="condominios"
-            item-title="label"
-            item-value="id"
-            label="Condomínio (opcional)"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            multiple
-            chips
-            closable-chips
-            hide-details
-            :disabled="isExporting || loadingCondominios"
-            no-data-text="Nenhum condomínio encontrado"
-            placeholder="Buscar por nome ou ID..."
-          />
-          <div style="min-height: 28px; padding-top: 4px;">
-            <v-expand-transition>
-              <div v-if="loadingCondominios" key="loading">
-                <v-progress-linear indeterminate color="primary" height="3" rounded style="border-radius:99px;" />
-                <p style="font-size:11px;color:#006837;margin-top:5px;display:flex;align-items:center;gap:4px;">
-                  <v-icon size="12" color="primary">mdi-office-building-outline</v-icon>
-                  Buscando condomínios na Superlógica...
-                </p>
-              </div>
-              <p v-else-if="condominios.length > 0" key="done"
-                style="font-size:11px;color:#6b7280;margin-top:5px;display:flex;align-items:center;gap:4px;">
-                <v-icon size="12" color="success">mdi-check-circle-outline</v-icon>
-                {{ condominios.length }} condomínios disponíveis · Deixe vazio para todos
-              </p>
-              <p v-else key="hint" style="font-size:11px;color:#9ca3af;margin-top:5px;">
-                Deixe em branco para varrer todos os condomínios
-              </p>
-            </v-expand-transition>
-          </div>
-        </v-col>
-
-        <v-col cols="12" sm="4">
-          <v-text-field
-            v-model="dataPosicao"
-            label="Data de posição (opcional)"
-            type="date"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details="auto"
-            hint="Deixe em branco para hoje"
-            persistent-hint
+      <div class="pa-6">
+        <!-- Filtros toggle -->
+        <div class="d-flex align-center flex-wrap mb-6" style="gap: 5px;">
+          <v-btn
+            :color="ultimos5anos ? 'primary' : 'default'"
+            :variant="ultimos5anos ? 'flat' : 'outlined'"
+            size="small"
+            prepend-icon="mdi-calendar-clock"
             :disabled="isExporting"
-          />
-        </v-col>
+            @click="ultimos5anos = !ultimos5anos"
+          >Últimos 5 anos</v-btn>
 
-        <v-col cols="12" sm="4">
-          <v-menu :disabled="isExporting">
-            <template #activator="{ props }">
-              <v-btn
-                color="primary"
-                block
-                size="large"
-                prepend-icon="mdi-file-export"
-                append-icon="mdi-chevron-down"
-                :loading="isExporting"
-                :disabled="isExporting"
-                v-bind="props"
-              >
-                {{ isExporting ? 'Gerando...' : 'Exportar relatório' }}
-              </v-btn>
-            </template>
+          <v-btn
+            :color="ordenarDesc ? 'primary' : 'default'"
+            :variant="ordenarDesc ? 'flat' : 'outlined'"
+            size="small"
+            prepend-icon="mdi-sort-descending"
+            :disabled="isExporting"
+            @click="ordenarDesc = !ordenarDesc"
+          >Maior valor primeiro</v-btn>
 
-            <v-list elevation="4" rounded="lg" min-width="200">
-              <v-list-item
-                prepend-icon="mdi-microsoft-excel"
-                title="Excel (.xlsx)"
-                subtitle="Planilha com abas Resumo e Detalhado"
-                @click="startExport('xlsx')"
-              />
-              <v-divider />
-              <v-list-item
-                prepend-icon="mdi-file-pdf-box"
-                title="PDF"
-                subtitle="Relatório formatado por condomínio"
-                color="red-darken-2"
-                @click="startExport('pdf')"
-              />
-            </v-list>
-          </v-menu>
-        </v-col>
-      </v-row>
+          <v-expand-transition>
+            <span v-if="ultimos5anos" class="text-caption text-medium-emphasis">
+              <v-icon size="13" color="primary" class="mr-1">mdi-information-outline</v-icon>
+              A partir de {{ dataInicio5anos }}
+            </span>
+          </v-expand-transition>
+        </div>
 
-      <!-- Progresso do job assíncrono -->
-      <v-expand-transition>
-        <div v-if="isExporting" class="mt-5">
-          <div class="d-flex align-center mb-2">
-            <v-icon color="primary" class="mr-2" size="small">mdi-timer-sand</v-icon>
-            <span class="text-body-2 text-medium-emphasis">{{ progressMessage }}</span>
-          </div>
-          <v-progress-linear indeterminate color="primary" rounded height="6" />
-          <p class="text-caption text-medium-emphasis mt-2">
-            Para todos os condomínios esse processo pode levar alguns minutos. Não feche esta página.
+        <v-row align="center">
+          <v-col cols="12" sm="5">
+            <v-autocomplete
+              v-model="idCondominio"
+              :items="condominios"
+              item-title="label"
+              item-value="id"
+              label="Condomínio (opcional)"
+              variant="outlined"
+              density="comfortable"
+              clearable
+              multiple
+              chips
+              closable-chips
+              hide-details
+              :disabled="isExporting || loadingCondominios"
+              no-data-text="Nenhum condomínio encontrado"
+              placeholder="Buscar por nome ou ID..."
+            />
+          </v-col>
+
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model="dataPosicao"
+              label="Data de posição (opcional)"
+              type="date"
+              variant="outlined"
+              density="comfortable"
+              clearable
+              hide-details
+              :disabled="isExporting"
+            />
+          </v-col>
+
+          <v-col cols="12" sm="3">
+            <v-menu :disabled="isExporting">
+              <template #activator="{ props }">
+                <v-btn
+                  color="primary" block size="large"
+                  prepend-icon="mdi-file-export"
+                  append-icon="mdi-chevron-down"
+                  :loading="isExporting"
+                  :disabled="isExporting"
+                  v-bind="props"
+                >{{ isExporting ? 'Gerando...' : 'Exportar' }}</v-btn>
+              </template>
+              <v-list elevation="4" rounded="lg" min-width="200">
+                <v-list-item prepend-icon="mdi-microsoft-excel" title="Excel (.xlsx)" subtitle="Resumo e Detalhado" @click="startExport('xlsx')" />
+                <v-divider />
+                <v-list-item prepend-icon="mdi-file-pdf-box" title="PDF" subtitle="Relatório formatado" color="red-darken-2" @click="startExport('pdf')" />
+              </v-list>
+            </v-menu>
+          </v-col>
+        </v-row>
+
+        <v-expand-transition>
+          <p v-if="loadingCondominios" class="text-caption mt-3" style="color:#006837;">
+            <v-icon size="12" color="primary">mdi-office-building-outline</v-icon>
+            Buscando condomínios...
           </p>
-        </div>
-      </v-expand-transition>
+          <p v-else-if="condominios.length > 0" class="text-caption mt-3" style="color:#6b7280;">
+            <v-icon size="12" color="success">mdi-check-circle-outline</v-icon>
+            {{ condominios.length }} disponíveis · Deixe o campo vazio para exportar todos
+          </p>
+        </v-expand-transition>
 
-      <v-alert v-if="exportError" type="error" class="mt-5" closable @click:close="exportError = ''">
-        {{ exportError }}
-      </v-alert>
-      <v-alert v-if="exportSuccess" type="success" class="mt-5" closable @click:close="exportSuccess = ''">
-        {{ exportSuccess }}
-      </v-alert>
-    </v-card>
-
-    <!-- ── Seção 2: Unidades sem número ── -->
-    <v-card elevation="4" class="pa-6 mb-6">
-      <p class="text-subtitle-2 font-weight-bold text-uppercase text-medium-emphasis mb-4">
-        2. Unidades sem número cadastrado
-      </p>
-      <p class="text-body-2 text-medium-emphasis mb-4">
-        Gere um relatório com todas as unidades que não possuem número de telefone cadastrado.
-      </p>
-
-      <v-autocomplete
-        v-model="semNumeroCondominio"
-        :items="condominios"
-        item-title="label"
-        item-value="id"
-        label="Condomínio (opcional)"
-        variant="outlined"
-        density="comfortable"
-        clearable
-        multiple
-        chips
-        closable-chips
-        hide-details
-        class="mb-4"
-        :disabled="isSemNumeroLoading || loadingCondominios"
-        no-data-text="Nenhum condomínio encontrado"
-        placeholder="Deixe vazio para todos os condomínios"
-      />
-
-      <!-- Filtros sem número -->
-      <div class="d-flex flex-wrap mb-4" style="gap:10px;">
-        <v-btn
-          size="small"
-          rounded="pill"
-          :color="semNumeroUltimos5anos ? 'primary' : 'grey-lighten-1'"
-          :variant="semNumeroUltimos5anos ? 'flat' : 'tonal'"
-          :prepend-icon="semNumeroUltimos5anos ? 'mdi-check-circle' : 'mdi-calendar-clock'"
-          :disabled="isSemNumeroLoading"
-          @click.stop="semNumeroUltimos5anos = !semNumeroUltimos5anos"
-        >Últimos 5 anos</v-btn>
-        <v-btn
-          size="small"
-          rounded="pill"
-          :color="semNumeroMin3 ? 'warning' : 'grey-lighten-1'"
-          :variant="semNumeroMin3 ? 'flat' : 'tonal'"
-          :prepend-icon="semNumeroMin3 ? 'mdi-check-circle' : 'mdi-alert-circle-outline'"
-          :disabled="isSemNumeroLoading"
-          @click.stop="semNumeroMin3 = !semNumeroMin3"
-        >3+ inadimplências</v-btn>
-        <v-btn
-          size="small"
-          rounded="pill"
-          :color="semNumeroExcluirExterno ? 'error' : 'grey-lighten-1'"
-          :variant="semNumeroExcluirExterno ? 'flat' : 'tonal'"
-          :prepend-icon="semNumeroExcluirExterno ? 'mdi-check-circle' : 'mdi-gavel'"
-          :disabled="isSemNumeroLoading"
-          @click.stop="semNumeroExcluirExterno = !semNumeroExcluirExterno"
-        >Excluir jurídico externo</v-btn>
-      </div>
-
-      <div class="d-flex" style="gap:12px;">
-        <v-btn
-          color="success"
-          prepend-icon="mdi-file-excel"
-          :loading="isSemNumeroLoading && semNumeroFormat === 'xlsx'"
-          :disabled="isSemNumeroLoading"
-          @click="exportarSemNumero('xlsx')"
-        >
-          Baixar Excel
-        </v-btn>
-        <v-btn
-          color="red-darken-2"
-          prepend-icon="mdi-file-pdf-box"
-          :loading="isSemNumeroLoading && semNumeroFormat === 'pdf'"
-          :disabled="isSemNumeroLoading"
-          @click="exportarSemNumero('pdf')"
-        >
-          Baixar PDF
-        </v-btn>
-      </div>
-
-      <v-alert v-if="semNumeroError" type="error" class="mt-4" closable @click:close="semNumeroError = ''">
-        {{ semNumeroError }}
-      </v-alert>
-    </v-card>
-
-    <!-- ── Seção 3: Disparar mensagens pelo Excel ── -->
-    <v-card elevation="4" class="pa-6">
-      <p class="text-subtitle-2 font-weight-bold text-uppercase text-medium-emphasis mb-4">
-        3. Disparar WhatsApp pelo Excel
-      </p>
-      <p class="text-body-2 text-medium-emphasis mb-4">
-        Faça upload do Excel gerado acima (aba <strong>Resumo</strong>) para enviar mensagens
-        a todos os números das colunas <strong>Telefone 1</strong> e <strong>Telefone 2</strong>.
-      </p>
-
-      <!-- Seleção de template -->
-      <v-select
-        v-model="dispatchTemplateId"
-        :items="templates"
-        item-title="name"
-        item-value="id"
-        label="Template de mensagem (opcional)"
-        variant="outlined"
-        density="comfortable"
-        clearable
-        prepend-icon="mdi-message-text"
-        class="mb-4"
-        :loading="loadingTemplates"
-        no-data-text="Nenhum template cadastrado"
-        hint="Se não selecionado, será usada a mensagem padrão"
-        persistent-hint
-      />
-
-      <!-- Preview do template -->
-      <v-expand-transition>
-        <v-sheet
-          v-if="selectedTemplate"
-          color="grey-lighten-4"
-          rounded
-          class="pa-3 mb-4"
-          style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word;"
-        >
-          <p class="text-caption text-medium-emphasis mb-1">Pré-visualização:</p>
-          {{ renderPreview(selectedTemplate.body) }}
-        </v-sheet>
-      </v-expand-transition>
-
-      <!-- Upload do Excel -->
-      <v-file-input
-        v-model="dispatchFile"
-        accept=".csv,.xlsx"
-        label="Selecione o arquivo do relatório (.csv ou .xlsx)"
-        variant="outlined"
-        density="comfortable"
-        prepend-icon="mdi-file-excel"
-        show-size
-        class="mb-4"
-      />
-
-      <v-btn
-        color="success"
-        size="large"
-        prepend-icon="mdi-whatsapp"
-        :loading="isDispatching"
-        :disabled="!dispatchFile"
-        @click="dispatchMessages"
-      >
-        Enviar mensagens
-      </v-btn>
-
-      <!-- Resultado do disparo -->
-      <v-alert v-if="dispatchError" type="error" class="mt-5" closable @click:close="dispatchError = ''">
-        {{ dispatchError }}
-      </v-alert>
-
-      <v-alert v-if="dispatchResult" type="success" class="mt-5" closable @click:close="dispatchResult = null">
-        <div class="font-weight-bold mb-2">Disparo concluído!</div>
-        <div>✅ Enviados com sucesso: <strong>{{ dispatchResult.success }}</strong></div>
-        <div>❌ Falhas no envio: <strong>{{ envioFailures(dispatchResult).length }}</strong></div>
-        <div>📵 Sem número cadastrado: <strong>{{ dispatchResult.sem_numero?.length || 0 }}</strong></div>
-
-        <!-- Unidades sem número -->
-        <div v-if="dispatchResult.sem_numero && dispatchResult.sem_numero.length" class="mt-3">
-          <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
-            📵 Unidades sem número cadastrado:
-          </div>
-          <v-sheet color="orange-lighten-5" rounded class="pa-2">
-            <div
-              v-for="(f, i) in dispatchResult.sem_numero"
-              :key="i"
-              class="text-caption py-1"
-              :style="i < dispatchResult.sem_numero.length - 1 ? 'border-bottom: 1px solid rgba(0,0,0,0.08)' : ''"
-            >
-              <strong>{{ f.unidade }}</strong>
-              <span v-if="f.nome"> — {{ f.nome }}</span>
+        <!-- Progresso -->
+        <v-expand-transition>
+          <div v-if="isExporting" class="mt-5">
+            <div class="d-flex align-center mb-2">
+              <v-icon color="primary" class="mr-2" size="small">mdi-timer-sand</v-icon>
+              <span class="text-body-2 text-medium-emphasis">{{ progressMessage }}</span>
             </div>
-          </v-sheet>
+            <v-progress-linear indeterminate color="primary" rounded height="6" />
+            <p class="text-caption text-medium-emphasis mt-2">Para todos os condomínios isso pode levar alguns minutos.</p>
+          </div>
+        </v-expand-transition>
+
+        <v-alert v-if="exportError"   type="error"   class="mt-4" closable @click:close="exportError = ''">{{ exportError }}</v-alert>
+        <v-alert v-if="exportSuccess" type="success" class="mt-4" closable @click:close="exportSuccess = ''">{{ exportSuccess }}</v-alert>
+      </div>
+    </v-card>
+
+    <!-- ── Seção 2: Sem número ── -->
+    <v-card class="section-card mb-7" elevation="3">
+      <div class="section-header">
+        <div class="section-badge">2</div>
+        <div>
+          <p class="section-title">Unidades sem Número Cadastrado</p>
+          <p class="section-subtitle">Identifique quem não pode receber cobranças por WhatsApp</p>
+        </div>
+      </div>
+
+      <div class="pa-6">
+        <v-autocomplete
+          v-model="semNumeroCondominio"
+          :items="condominios"
+          item-title="label"
+          item-value="id"
+          label="Condomínio (opcional)"
+          variant="outlined"
+          density="comfortable"
+          clearable
+          multiple
+          chips
+          closable-chips
+          hide-details
+          class="mb-5"
+          :disabled="isSemNumeroLoading || loadingCondominios"
+          no-data-text="Nenhum condomínio encontrado"
+          placeholder="Deixe vazio para todos os condomínios"
+        />
+
+        <div class="d-flex flex-wrap mb-6" style="gap: 5px;">
+          <v-btn
+            size="small"
+            :color="semNumeroUltimos5anos ? 'primary' : 'default'"
+            :variant="semNumeroUltimos5anos ? 'flat' : 'outlined'"
+            prepend-icon="mdi-calendar-clock"
+            :disabled="isSemNumeroLoading"
+            @click.stop="semNumeroUltimos5anos = !semNumeroUltimos5anos"
+          >Últimos 5 anos</v-btn>
+
+          <v-btn
+            size="small"
+            :color="semNumeroMin3 ? 'warning' : 'default'"
+            :variant="semNumeroMin3 ? 'flat' : 'outlined'"
+            prepend-icon="mdi-alert-circle-outline"
+            :disabled="isSemNumeroLoading"
+            @click.stop="semNumeroMin3 = !semNumeroMin3"
+          >3+ inadimplências</v-btn>
+
+          <v-btn
+            size="small"
+            :color="semNumeroExcluirExterno ? 'error' : 'default'"
+            :variant="semNumeroExcluirExterno ? 'flat' : 'outlined'"
+            prepend-icon="mdi-gavel"
+            :disabled="isSemNumeroLoading"
+            @click.stop="semNumeroExcluirExterno = !semNumeroExcluirExterno"
+          >Excluir jurídico externo</v-btn>
         </div>
 
-        <!-- Falhas de envio -->
-        <div v-if="envioFailures(dispatchResult).length" class="mt-3">
-          <div class="text-caption font-weight-bold text-medium-emphasis mb-1">Falhas no envio:</div>
-          <div v-for="f in envioFailures(dispatchResult)" :key="f.phone" class="text-caption">
-            {{ f.phone }} — {{ f.error }}
-          </div>
+        <div class="d-flex" style="gap: 5px;">
+          <v-btn
+            color="success" prepend-icon="mdi-file-excel"
+            :loading="isSemNumeroLoading && semNumeroFormat === 'xlsx'"
+            :disabled="isSemNumeroLoading"
+            @click="exportarSemNumero('xlsx')"
+          >Baixar Excel</v-btn>
+
+          <v-btn
+            color="red-darken-2" prepend-icon="mdi-file-pdf-box"
+            :loading="isSemNumeroLoading && semNumeroFormat === 'pdf'"
+            :disabled="isSemNumeroLoading"
+            @click="exportarSemNumero('pdf')"
+          >Baixar PDF</v-btn>
         </div>
-      </v-alert>
+
+        <v-alert v-if="semNumeroError" type="error" class="mt-4" closable @click:close="semNumeroError = ''">
+          {{ semNumeroError }}
+        </v-alert>
+      </div>
     </v-card>
-  </v-container>
+
+    <!-- ── Seção 3: Disparar pelo Excel ── -->
+    <v-card class="section-card" elevation="3">
+      <div class="section-header">
+        <div class="section-badge">3</div>
+        <div>
+          <p class="section-title">Disparar WhatsApp pelo Excel</p>
+          <p class="section-subtitle">Faça upload do relatório (aba Resumo) para enviar mensagens em lote</p>
+        </div>
+      </div>
+
+      <div class="pa-6">
+        <v-select
+          v-model="dispatchTemplateId"
+          :items="templates"
+          item-title="name"
+          item-value="id"
+          label="Template de mensagem (opcional)"
+          variant="outlined"
+          density="comfortable"
+          clearable
+          prepend-inner-icon="mdi-message-text"
+          class="mb-4"
+          :loading="loadingTemplates"
+          no-data-text="Nenhum template cadastrado"
+          hint="Se não selecionado, será usada a mensagem padrão"
+          persistent-hint
+        />
+
+        <v-expand-transition>
+          <v-sheet
+            v-if="selectedTemplate"
+            color="grey-lighten-4"
+            rounded="lg"
+            class="pa-4 mb-4"
+            style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; border-left: 3px solid #006837;"
+          >
+            <p class="text-caption text-medium-emphasis mb-2 font-weight-bold text-uppercase" style="letter-spacing:.05em;">
+              <v-icon size="13" class="mr-1" color="primary">mdi-eye-outline</v-icon>Pré-visualização
+            </p>
+            {{ renderPreview(selectedTemplate.body) }}
+          </v-sheet>
+        </v-expand-transition>
+
+        <v-file-input
+          v-model="dispatchFile"
+          accept=".csv,.xlsx"
+          label="Selecione o arquivo (.csv ou .xlsx)"
+          variant="outlined"
+          density="comfortable"
+          prepend-icon=""
+          prepend-inner-icon="mdi-file-excel"
+          show-size
+          class="mb-4"
+        />
+
+        <v-btn
+          color="success" size="large" prepend-icon="mdi-whatsapp"
+          :loading="isDispatching"
+          :disabled="!dispatchFile"
+          @click="dispatchMessages"
+        >Enviar mensagens</v-btn>
+
+        <v-alert v-if="dispatchError" type="error" class="mt-5" closable @click:close="dispatchError = ''">
+          {{ dispatchError }}
+        </v-alert>
+
+        <v-card v-if="dispatchResult" class="result-card mt-5" elevation="2">
+          <div class="result-header">
+            <v-icon color="white" size="18" class="mr-2">mdi-check-circle-outline</v-icon>
+            Disparo concluído!
+          </div>
+          <div class="pa-5">
+            <v-row>
+              <v-col cols="4">
+                <div class="stat-box stat-box--success">
+                  <p class="stat-num">{{ dispatchResult.success }}</p>
+                  <p class="stat-label">Enviados</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--error">
+                  <p class="stat-num">{{ envioFailures(dispatchResult).length }}</p>
+                  <p class="stat-label">Falhas</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--warn">
+                  <p class="stat-num">{{ dispatchResult.sem_numero?.length || 0 }}</p>
+                  <p class="stat-label">Sem número</p>
+                </div>
+              </v-col>
+            </v-row>
+
+            <div v-if="dispatchResult.sem_numero?.length" class="mt-4">
+              <p class="text-caption font-weight-bold text-medium-emphasis mb-2">Unidades sem número:</p>
+              <v-sheet color="orange-lighten-5" rounded="lg" class="pa-3">
+                <div v-for="(f, i) in dispatchResult.sem_numero" :key="i" class="text-caption py-1"
+                  :style="i < dispatchResult.sem_numero.length - 1 ? 'border-bottom: 1px solid rgba(0,0,0,0.07)' : ''">
+                  <strong>{{ f.unidade }}</strong><span v-if="f.nome"> — {{ f.nome }}</span>
+                </div>
+              </v-sheet>
+            </div>
+
+            <div v-if="envioFailures(dispatchResult).length" class="mt-3">
+              <p class="text-caption font-weight-bold text-medium-emphasis mb-2">Falhas no envio:</p>
+              <div v-for="f in envioFailures(dispatchResult)" :key="f.phone" class="text-caption">
+                {{ f.phone }} — {{ f.error }}
+              </div>
+            </div>
+          </div>
+        </v-card>
+      </div>
+    </v-card>
+
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
-// ── Estado exportação ─────────────────────────────────────────────────────────
 const isExporting        = ref(false)
 const exportFormat       = ref('xlsx')
 const exportError        = ref('')
@@ -370,14 +349,12 @@ const loadingCondominios = ref(false)
 let   pollingInterval    = null
 let   pollingSeconds     = 0
 
-// Data de início calculada dinamicamente: hoje - 5 anos
 const dataInicio5anos = computed(() => {
   const d = new Date()
   d.setFullYear(d.getFullYear() - 5)
   return d.toLocaleDateString('pt-BR')
 })
 
-// ── Estado sem número ────────────────────────────────────────────────────────
 const semNumeroCondominio     = ref([])
 const isSemNumeroLoading      = ref(false)
 const semNumeroError          = ref('')
@@ -416,14 +393,12 @@ const exportarSemNumero = async (format) => {
   }
 }
 
-// ── Estado disparo ────────────────────────────────────────────────────────────
 const isDispatching      = ref(false)
 const dispatchError      = ref('')
 const dispatchResult     = ref(null)
 const dispatchFile       = ref(null)
 const dispatchTemplateId = ref(null)
 
-// ── Templates ─────────────────────────────────────────────────────────────────
 const templates        = ref([])
 const loadingTemplates = ref(false)
 
@@ -445,7 +420,6 @@ const renderPreview = (body) =>
     .replace(/\{\{vencimento\}\}/g, '01/11/2025')
     .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
 
-// ── Buscar templates ──────────────────────────────────────────────────────────
 const fetchTemplates = async () => {
   loadingTemplates.value = true
   try {
@@ -455,7 +429,6 @@ const fetchTemplates = async () => {
   finally { loadingTemplates.value = false }
 }
 
-// ── Buscar condomínios ────────────────────────────────────────────────────────
 const carregarCondominios = async () => {
   loadingCondominios.value = true
   try {
@@ -470,7 +443,6 @@ const carregarCondominios = async () => {
   finally { loadingCondominios.value = false }
 }
 
-// ── Exportar Excel ou PDF (assíncrono com polling) ────────────────────────────
 const startExport = async (formato) => {
   exportFormat.value    = formato
   isExporting.value     = true
@@ -479,8 +451,8 @@ const startExport = async (formato) => {
   pollingSeconds        = 0
   progressMessage.value = `Iniciando geração do relatório ${formato.toUpperCase()}...`
 
-  const baseStart    = formato === 'pdf' ? '/api/admin/export-pdf/start'   : '/api/admin/export-defaulters/start'
-  const baseStatus   = formato === 'pdf' ? '/api/admin/export-pdf/status'  : '/api/admin/export-defaulters/status'
+  const baseStart    = formato === 'pdf' ? '/api/admin/export-pdf/start'    : '/api/admin/export-defaulters/start'
+  const baseStatus   = formato === 'pdf' ? '/api/admin/export-pdf/status'   : '/api/admin/export-defaulters/status'
   const baseDownload = formato === 'pdf' ? '/api/admin/export-pdf/download' : '/api/admin/export-defaulters/download'
 
   try {
@@ -494,10 +466,7 @@ const startExport = async (formato) => {
     if (ordenarDesc.value) params.append('ordenar_desc', 'true')
 
     const query    = params.toString() ? `?${params.toString()}` : ''
-    const startRes = await fetch(`${baseStart}${query}`, {
-      method:  'POST',
-      headers: authHeader(),
-    })
+    const startRes = await fetch(`${baseStart}${query}`, { method: 'POST', headers: authHeader() })
     if (!startRes.ok) {
       const d = await startRes.json().catch(() => ({}))
       exportError.value = d.detail || 'Erro ao iniciar exportação.'
@@ -512,30 +481,24 @@ const startExport = async (formato) => {
       const secs  = pollingSeconds % 60
       const tempo = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
       progressMessage.value = `Processando ${formato.toUpperCase()}... (${tempo} aguardando)`
-
       try {
         const statusRes = await fetch(`${baseStatus}/${job_id}`, { headers: authHeader() })
         if (!statusRes.ok) return
         const { status, filename, error } = await statusRes.json()
-
         if (status === 'done') {
-          clearInterval(pollingInterval)
-          pollingInterval = null
+          clearInterval(pollingInterval); pollingInterval = null
           await downloadJob(job_id, filename, baseDownload)
         } else if (status === 'empty') {
-          clearInterval(pollingInterval)
-          pollingInterval = null
+          clearInterval(pollingInterval); pollingInterval = null
           exportError.value = 'Nenhum inadimplente encontrado para os filtros informados.'
           isExporting.value = false
         } else if (status === 'error') {
-          clearInterval(pollingInterval)
-          pollingInterval = null
+          clearInterval(pollingInterval); pollingInterval = null
           exportError.value = error || 'Erro ao gerar relatório.'
           isExporting.value = false
         }
       } catch (_) {}
     }, 3000)
-
   } catch (err) {
     exportError.value = err.message || 'Erro inesperado.'
     isExporting.value = false
@@ -545,25 +508,16 @@ const startExport = async (formato) => {
 const downloadJob = async (jobId, filename, baseDownload) => {
   try {
     const dlRes = await fetch(`${baseDownload}/${jobId}`, { headers: authHeader() })
-    if (!dlRes.ok) {
-      exportError.value = 'Erro ao baixar o arquivo gerado.'
-      isExporting.value = false
-      return
-    }
+    if (!dlRes.ok) { exportError.value = 'Erro ao baixar o arquivo gerado.'; isExporting.value = false; return }
     const disposition = dlRes.headers.get('Content-Disposition') || ''
     const match = disposition.match(/filename="(.+)"/)
     const fname = match ? match[1] : filename || 'inadimplentes'
-
     const blob = await dlRes.blob()
     const url  = window.URL.createObjectURL(blob)
     const a    = document.createElement('a')
-    a.href     = url
-    a.download = fname
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    a.href = url; a.download = fname
+    document.body.appendChild(a); a.click(); a.remove()
     window.URL.revokeObjectURL(url)
-
     exportSuccess.value = `Arquivo "${fname}" baixado com sucesso!`
   } catch (err) {
     exportError.value = err.message || 'Erro ao baixar arquivo.'
@@ -572,33 +526,21 @@ const downloadJob = async (jobId, filename, baseDownload) => {
   }
 }
 
-// ── Disparar mensagens ────────────────────────────────────────────────────────
 const dispatchMessages = async () => {
   if (!dispatchFile.value) return
-
   isDispatching.value  = true
   dispatchError.value  = ''
   dispatchResult.value = null
-
   try {
     const formData = new FormData()
     formData.append('file', dispatchFile.value)
-
     let url = '/api/messages/dispatch-excel'
     if (dispatchTemplateId.value) url += `?template_id=${dispatchTemplateId.value}`
-
-    const response = await fetch(url, {
-      method:  'POST',
-      headers: authHeader(),
-      body:    formData,
-    })
-
+    const response = await fetch(url, { method: 'POST', headers: authHeader(), body: formData })
     const text = await response.text()
     let data = {}
     try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
-
     if (!response.ok) throw new Error(data.detail || 'Erro ao disparar mensagens')
-
     dispatchResult.value = data.details
     dispatchFile.value   = null
   } catch (error) {
@@ -608,15 +550,55 @@ const dispatchMessages = async () => {
   }
 }
 
-// Filtra apenas falhas reais de envio (exclui "sem número")
 const envioFailures = (result) => {
   if (!result?.failures) return []
   return result.failures.filter(f => f.phone !== '—')
 }
 
-onMounted(() => {
-  fetchTemplates()
-  carregarCondominios()
-})
+onMounted(() => { fetchTemplates(); carregarCondominios() })
 onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 </script>
+
+<style scoped>
+.page-icon {
+  width: 42px; height: 42px; border-radius: 11px;
+  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,168,81,0.3); flex-shrink: 0;
+  margin-right: 8px;
+}
+.page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
+.page-subtitle { font-size: 0.82rem; opacity: .55; margin: 2px 0 0; }
+
+.section-card { border-radius: 14px !important; overflow: hidden; }
+.section-header {
+  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  padding: 14px 20px;
+  display: flex; align-items: center; gap: 14px;
+}
+.section-badge {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 0.85rem; flex-shrink: 0;
+}
+.section-title    { color: white; font-weight: 600; font-size: 0.92rem; margin: 0; }
+.section-subtitle { color: rgba(255,255,255,0.7); font-size: 0.78rem; margin: 2px 0 0; }
+
+.result-card { border-radius: 14px !important; overflow: hidden; }
+.result-header {
+  background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+  padding: 14px 20px;
+  display: flex; align-items: center;
+  color: white; font-weight: 600; font-size: 0.92rem;
+}
+.stat-box { text-align: center; padding: 12px; border-radius: 10px; }
+.stat-box--success { background: rgba(46,125,50,0.08); }
+.stat-box--error   { background: rgba(198,40,40,0.08); }
+.stat-box--warn    { background: rgba(245,127,23,0.08); }
+.stat-num   { font-size: 1.6rem; font-weight: 800; margin: 0; line-height: 1; }
+.stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; opacity: .6; margin: 4px 0 0; }
+.stat-box--success .stat-num { color: #2e7d32; }
+.stat-box--error   .stat-num { color: #c62828; }
+.stat-box--warn    .stat-num { color: #e65100; }
+</style>
