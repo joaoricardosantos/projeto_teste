@@ -18,7 +18,7 @@
 
         <!-- ── Cabeçalho ── -->
         <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-7">
-          <div class="d-flex align-center gap-4">
+          <div class="d-flex align-center gap-2">
             <div class="page-icon">
               <v-icon size="20" color="white">mdi-view-dashboard-outline</v-icon>
             </div>
@@ -36,30 +36,34 @@
             </div>
           </div>
 
-          <div class="d-flex align-center flex-wrap gap-2">
+          <div class="d-flex align-center flex-wrap" style="gap: 7px;">
             <v-btn
               :color="ultimos5anos ? 'primary' : 'default'"
               :variant="ultimos5anos ? 'flat' : 'outlined'"
-              size="small"
+              size="default"
               prepend-icon="mdi-calendar-clock"
               @click="toggleFiltro"
             >Últimos 5 anos</v-btn>
 
-            <v-text-field
+            <v-btn
+              variant="outlined"
+              size="default"
+              prepend-icon="mdi-calendar-today"
+              @click="$refs.dateInput.showPicker()"
+            >
+              {{ dataPosicao ? dataPosicao.split('-').reverse().join('/') : 'Data de posição' }}
+            </v-btn>
+            <input
+              ref="dateInput"
               v-model="dataPosicao"
               type="date"
-              label="Data de posição"
-              variant="outlined"
-              density="compact"
-              hide-details
-              clearable
-              style="max-width:160px;"
+              style="position:absolute;visibility:hidden;width:0;height:0;"
             />
 
-            <v-btn size="small" color="primary" :loading="loading" prepend-icon="mdi-refresh" @click="carregar(false)">
+            <v-btn size="default" color="primary" :loading="loading" prepend-icon="mdi-refresh" @click="carregar(false)">
               Atualizar
             </v-btn>
-            <v-btn size="small" variant="outlined" :loading="loading" prepend-icon="mdi-refresh-circle" @click="carregar(true)">
+            <v-btn size="default" variant="outlined" :loading="loading" prepend-icon="mdi-refresh-circle" @click="carregar(true)">
               Forçar
             </v-btn>
           </div>

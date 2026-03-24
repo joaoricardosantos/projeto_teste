@@ -145,26 +145,7 @@
       </div>
 
       <div class="pa-6">
-        <v-autocomplete
-          v-model="semNumeroCondominio"
-          :items="condominios"
-          item-title="label"
-          item-value="id"
-          label="Condomínio (opcional)"
-          variant="outlined"
-          density="comfortable"
-          clearable
-          multiple
-          chips
-          closable-chips
-          hide-details
-          class="mb-5"
-          :disabled="isSemNumeroLoading || loadingCondominios"
-          no-data-text="Nenhum condomínio encontrado"
-          placeholder="Deixe vazio para todos os condomínios"
-        />
-
-        <div class="d-flex flex-wrap mb-6" style="gap: 5px;">
+        <div class="d-flex align-center flex-wrap mb-6" style="gap: 5px;">
           <v-btn
             size="small"
             :color="semNumeroUltimos5anos ? 'primary' : 'default'"
@@ -193,24 +174,47 @@
           >Excluir jurídico externo</v-btn>
         </div>
 
-        <v-menu :disabled="isSemNumeroLoading">
-          <template #activator="{ props }">
-            <v-btn
-              color="primary"
-              size="large"
-              prepend-icon="mdi-file-export"
-              append-icon="mdi-chevron-down"
-              :loading="isSemNumeroLoading"
-              :disabled="isSemNumeroLoading"
-              v-bind="props"
-            >{{ isSemNumeroLoading ? 'Gerando...' : 'Exportar relatório' }}</v-btn>
-          </template>
-          <v-list elevation="4" rounded="lg" min-width="200">
-            <v-list-item prepend-icon="mdi-microsoft-excel" title="Excel (.xlsx)" subtitle="Planilha com unidades sem número" @click="exportarSemNumero('xlsx')" />
-            <v-divider />
-            <v-list-item prepend-icon="mdi-file-pdf-box" title="PDF" subtitle="Relatório formatado por condomínio" color="red-darken-2" @click="exportarSemNumero('pdf')" />
-          </v-list>
-        </v-menu>
+        <v-row align="center">
+          <v-col cols="12" sm="9">
+            <v-autocomplete
+              v-model="semNumeroCondominio"
+              :items="condominios"
+              item-title="label"
+              item-value="id"
+              label="Condomínio (opcional)"
+              variant="outlined"
+              density="comfortable"
+              clearable
+              multiple
+              chips
+              closable-chips
+              hide-details
+              :disabled="isSemNumeroLoading || loadingCondominios"
+              no-data-text="Nenhum condomínio encontrado"
+              placeholder="Deixe vazio para todos os condomínios"
+            />
+          </v-col>
+
+          <v-col cols="12" sm="3">
+            <v-menu :disabled="isSemNumeroLoading">
+              <template #activator="{ props }">
+                <v-btn
+                  color="primary" block size="large"
+                  prepend-icon="mdi-file-export"
+                  append-icon="mdi-chevron-down"
+                  :loading="isSemNumeroLoading"
+                  :disabled="isSemNumeroLoading"
+                  v-bind="props"
+                >{{ isSemNumeroLoading ? 'Gerando...' : 'Exportar' }}</v-btn>
+              </template>
+              <v-list elevation="4" rounded="lg" min-width="200">
+                <v-list-item prepend-icon="mdi-microsoft-excel" title="Excel (.xlsx)" subtitle="Planilha com unidades sem número" @click="exportarSemNumero('xlsx')" />
+                <v-divider />
+                <v-list-item prepend-icon="mdi-file-pdf-box" title="PDF" subtitle="Relatório formatado por condomínio" color="red-darken-2" @click="exportarSemNumero('pdf')" />
+              </v-list>
+            </v-menu>
+          </v-col>
+        </v-row>
 
         <v-alert v-if="semNumeroError" type="error" class="mt-4" closable @click:close="semNumeroError = ''">
           {{ semNumeroError }}
