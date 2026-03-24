@@ -29,14 +29,23 @@ def evolution_webhook(request):
         if event != "messages.upsert":
             return {"status": "ignored"}
 
-        # Evolution API v1.x pode enviar data como lista ou dict
+        # v2: data é sempre objeto; v1 legacy: podia ser lista
         raw_data = body.get("data", {})
         if isinstance(raw_data, list):
             if not raw_data:
                 return {"status": "ignored"}
             data = raw_data[0]
+        elif isinstance(raw_data, dict):
+            # v2 encapsula em {"messages": [...]} ou diretamente no objeto
+            if "messages" in raw_data:
+                msgs_list = raw_data["messages"]
+                if not msgs_list:
+                    return {"status": "ignored"}
+                data = msgs_list[0]
+            else:
+                data = raw_data
         else:
-            data = raw_data
+            return {"status": "ignored"}
 
         key = data.get("key", {})
 
