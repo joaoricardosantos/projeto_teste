@@ -51,8 +51,8 @@
               </v-chip>
             </td>
             <td class="text-center">
-              <v-chip :color="user.is_staff || user.is_superuser ? 'primary' : 'grey'" text-color="white" size="small">
-                {{ user.is_staff || user.is_superuser ? 'Admin' : 'Usuário' }}
+              <v-chip :color="user.is_staff || user.is_superuser ? 'primary' : user.is_juridico ? 'deep-purple' : 'grey'" text-color="white" size="small">
+                {{ user.is_staff || user.is_superuser ? 'Admin' : user.is_juridico ? 'Jurídico' : 'Usuário' }}
               </v-chip>
             </td>
             <td class="text-center">
@@ -60,6 +60,9 @@
               <v-btn v-else color="warning" size="small" class="mr-1" @click="updateUserStatus(user.id, false)">Revogar</v-btn>
               <v-btn size="small" class="mr-1" :color="user.is_staff || user.is_superuser ? 'secondary' : 'primary'" @click="toggleAdmin(user)">
                 {{ user.is_staff || user.is_superuser ? 'Remover admin' : 'Tornar admin' }}
+              </v-btn>
+              <v-btn size="small" class="mr-1" :color="user.is_juridico ? 'secondary' : 'deep-purple'" @click="toggleJuridico(user)">
+                {{ user.is_juridico ? 'Remover jurídico' : 'Jurídico' }}
               </v-btn>
               <v-btn size="small" color="error" icon @click="confirmDelete(user)">
                 <v-icon>mdi-delete</v-icon>
@@ -149,6 +152,22 @@ const toggleAdmin = async (user) => {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data.detail || 'Erro ao atualizar permissão')
+    await fetchUsers()
+  } catch (error) {
+    errorMessage.value = error.message
+  }
+}
+
+const toggleJuridico = async (user) => {
+  errorMessage.value = ''
+  try {
+    const response = await fetch('/api/admin/set-juridico', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ user_id: user.id, is_juridico: !user.is_juridico }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.detail || 'Erro ao atualizar cargo jurídico')
     await fetchUsers()
   } catch (error) {
     errorMessage.value = error.message

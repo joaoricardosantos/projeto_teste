@@ -28,6 +28,7 @@ def login(request, payload: LoginIn):
             "access_token": token,
             "token_type":   "bearer",
             "is_admin":     user.is_staff or user.is_superuser,
+            "is_juridico":  user.is_juridico,
             "name":         user.name,
         }
     except HttpError:

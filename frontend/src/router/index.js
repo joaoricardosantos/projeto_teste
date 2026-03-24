@@ -14,7 +14,7 @@ const routes = [
     { path: '/dashboard', name: 'Dashboard', component: DashboardView, meta: { requiresAuth: true } },
     { path: '/painel', name: 'Painel', component: PainelView, meta: { requiresAuth: true } },
     { path: '/admin', name: 'Admin', component: AdminView, meta: { requiresAuth: true } },
-    { path: '/relatorios', name: 'Reports', component: ReportsView, meta: { requiresAuth: true, requiresAdmin: true } },
+    { path: '/relatorios', name: 'Reports', component: ReportsView, meta: { requiresAuth: true, requiresAdminOrJuridico: true } },
     { path: '/templates', name: 'Templates', component: TemplatesView, meta: { requiresAuth: true } },
     { path: '/sheets', name: 'Sheets', component: SheetsView, meta: { requiresAuth: true } },  // ← NOVA INTEGRAÇÃO
 ]
@@ -24,9 +24,13 @@ const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach((to, from, next) => {
     const isAuthenticated = !!localStorage.getItem('access_token')
     const isAdmin = localStorage.getItem('is_admin') === 'true'
+    const isJuridico = localStorage.getItem('is_juridico') === 'true'
 
     if (to.meta.requiresAuth && !isAuthenticated) return next('/')
     if (to.meta.requiresAdmin && !isAdmin) return next('/dashboard')
+    if (to.meta.requiresAdminOrJuridico && !isAdmin && !isJuridico) return next('/dashboard')
+    // Bloqueia jurídico de acessar rotas não permitidas
+    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios'].includes(to.path)) return next('/dashboard')
     next()
 })
 
