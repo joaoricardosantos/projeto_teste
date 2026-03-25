@@ -42,6 +42,7 @@ class User(AbstractUser):
     name = models.CharField(max_length=255)
     is_approved = models.BooleanField(default=False)
     is_juridico = models.BooleanField(default=False)
+    is_financeiro = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

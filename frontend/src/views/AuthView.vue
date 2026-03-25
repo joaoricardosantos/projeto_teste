@@ -281,6 +281,7 @@ const handleLogin = async () => {
     localStorage.setItem('access_token', data.access_token)
     localStorage.setItem('is_admin', data.is_admin === true ? 'true' : 'false')
     localStorage.setItem('is_juridico', data.is_juridico === true ? 'true' : 'false')
+    localStorage.setItem('is_financeiro', data.is_financeiro === true ? 'true' : 'false')
     localStorage.setItem('user_name', data.name || data.email || '')
     // Notifica o App.vue para mostrar a sidebar imediatamente (sem esperar reload)
     window.location.href = '/dashboard'
