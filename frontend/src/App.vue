@@ -144,6 +144,7 @@ const allNavItems = [
   { to: '/painel',     icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false },
   { to: '/templates',  icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false },
   { to: '/sheets',     icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false },
+  { to: '/levantamento', icon: 'mdi-magnify-scan',          label: 'Levantamento',     adminOnly: true,  juridicoAllowed: false },
   { to: '/relatorios', icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true  },
   { to: '/admin',      icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false },
 ]
