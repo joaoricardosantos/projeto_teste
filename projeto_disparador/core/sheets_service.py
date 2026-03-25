@@ -464,6 +464,23 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
 
         c1, c2, c7, c8 = cell(row, 1), cell(row, 2), cell(row, 7), cell(row, 8)
 
+        # Boletos antecipados (col 12 = M, col 13 = N) — processado ANTES dos continue
+        _ignorar_antec = {"BOLETOS ANTECIPADOS", "TOTAL", "SUBTOTAL"}
+        c12 = str(row[12]).strip()
+        c13 = str(row[13]).strip()
+        if c12 and c12.upper() not in _ignorar_antec and not c12.upper().startswith("R$"):
+            valor = _parse_valor(c13)
+            if valor > 0:
+                registros.append({
+                    "condominio": c12,
+                    "vencimento": "Antecipado",
+                    "valor_previsto": None,
+                    "data_pagamento": "",
+                    "valor_pago": float(valor),
+                    "status": "antecipado",
+                    "diferenca": None,
+                })
+
         # Título (primeira célula não-vazia na col 1)
         if not titulo and c1 and not re.search(r"VENCIMENTO", c1.upper()):
             titulo = c1
@@ -485,8 +502,10 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
             secao_dir = f"Vencimento {m.group(1)}"
             continue
 
+        _ignorar = {"VENCIMENTO", "TOTAL", "SUBTOTAL"}
+
         # Bloco esquerdo — ignora linhas sem nome ou com totais
-        if secao_esq and c1 and not re.search(r"VENCIMENTO", c1.upper()):
+        if secao_esq and c1 and not any(w in c1.upper() for w in _ignorar):
             valor = _parse_valor(c2)
             if valor > 0:
                 valor_pago = _parse_valor(cell(row, 4))
@@ -501,7 +520,7 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
                 })
 
         # Bloco direito
-        if secao_dir and c7 and not re.search(r"VENCIMENTO", c7.upper()):
+        if secao_dir and c7 and not any(w in c7.upper() for w in _ignorar):
             valor = _parse_valor(c8)
             if valor > 0:
                 valor_pago = _parse_valor(cell(row, 10))
@@ -515,20 +534,6 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
                     "diferenca": round(float(valor_pago - valor), 2),
                 })
 
-        # Boletos antecipados (col 12)
-        c12 = cell(row, 12)
-        if c12 and c12.upper() not in ("BOLETOS ANTECIPADOS",) and not c12.startswith("R$"):
-            valor = _parse_valor(cell(row, 13))
-            if valor > 0:
-                registros.append({
-                    "condominio": c12,
-                    "vencimento": "Antecipado",
-                    "valor_previsto": None,
-                    "data_pagamento": cell(row, 14),
-                    "valor_pago": float(valor),
-                    "status": "antecipado",
-                    "diferenca": None,
-                })
 
     # Resumo
     regulares = [r for r in registros if r["status"] != "antecipado"]

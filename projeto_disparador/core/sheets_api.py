@@ -36,6 +36,7 @@ class SetorOut(Schema):
     spreadsheet_id: str
     aba: str
     tipo_dashboard: str
+    grupo: str = ""
     ativo: bool
 
 
@@ -44,6 +45,7 @@ class SetorIn(Schema):
     spreadsheet_id: str
     aba: str = "Sheet1"
     tipo_dashboard: str = "cobrancas"
+    grupo: str = ""
     ativo: bool = True
 
 
