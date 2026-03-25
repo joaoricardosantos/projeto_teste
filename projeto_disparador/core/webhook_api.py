@@ -2,50 +2,64 @@
 Webhook da Evolution API — recebe notificações de mensagens recebidas
 e marca as mensagens como respondidas no banco.
 """
+import re
+import json
 import logging
+import requests as _requests
 from ninja import Router
-from django.http import HttpResponse
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
 webhook_router = Router()
 
 
-@webhook_router.post("/evolution", auth=None)
+def _resolve_lid_to_phone(lid: str, instance: str, base_url: str, api_key: str) -> str | None:
+    """Resolve um @lid para número de telefone via Evolution API."""
+    try:
+        lid_id = lid.replace("@lid", "")
+        url = f"{base_url}/chat/findContacts/{instance}"
+        resp = _requests.post(
+            url,
+            json={"where": {"id": lid}},
+            headers={"apikey": api_key},
+            timeout=10,
+        )
+        if resp.ok:
+            data = resp.json()
+            contacts = data if isinstance(data, list) else data.get("contacts", [])
+            for c in contacts:
+                phone = c.get("pushName") and (c.get("id", "").replace("@s.whatsapp.net", ""))
+                # tenta pegar o número do campo 'id' em formato @s.whatsapp.net
+                jid = c.get("id", "")
+                if "@s.whatsapp.net" in jid:
+                    return jid.replace("@s.whatsapp.net", "")
+    except Exception as e:
+        logger.warning(f"_resolve_lid_to_phone erro: {e}")
+    return None
+
+
+@webhook_router.post("/evolution", auth=None, response={200: dict})
 def evolution_webhook(request):
     """
     Recebe eventos da Evolution API.
     Eventos tratados: messages.upsert (mensagem recebida)
     """
     try:
-        import json
-        body = json.loads(request.body)
+        raw = request.body
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="replace")
+        body = json.loads(raw.strip())
         event = body.get("event", "")
-
-        # Log completo para debug
-        logger.warning(f"WEBHOOK recebido | event={event} | body={json.dumps(body)[:800]}")
 
         if event != "messages.upsert":
             return {"status": "ignored"}
 
-        # v2: data é sempre objeto; v1 legacy: podia ser lista
-        raw_data = body.get("data", {})
-        if isinstance(raw_data, list):
-            if not raw_data:
-                return {"status": "ignored"}
-            data = raw_data[0]
-        elif isinstance(raw_data, dict):
-            # v2 encapsula em {"messages": [...]} ou diretamente no objeto
-            if "messages" in raw_data:
-                msgs_list = raw_data["messages"]
-                if not msgs_list:
-                    return {"status": "ignored"}
-                data = msgs_list[0]
-            else:
-                data = raw_data
-        else:
-            return {"status": "ignored"}
+        data = body.get("data", {})
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        elif isinstance(data, dict) and "messages" in data:
+            msgs_list = data["messages"]
+            data = msgs_list[0] if msgs_list else {}
 
         key = data.get("key", {})
 
@@ -53,9 +67,21 @@ def evolution_webhook(request):
         if key.get("fromMe"):
             return {"status": "ignored"}
 
-        # Extrai o número que respondeu
         remote_jid = key.get("remoteJid", "")
-        phone = remote_jid.replace("@s.whatsapp.net", "").replace("@c.us", "")
+
+        # Resolve @lid para número real via Evolution API
+        if "@lid" in remote_jid:
+            from django.conf import settings
+            instance  = body.get("instance", getattr(settings, "EVOLUTION_INSTANCE", ""))
+            base_url  = getattr(settings, "EVOLUTION_BASE_URL", "").rstrip("/")
+            api_key   = getattr(settings, "EVOLUTION_API_KEY", "")
+            phone = _resolve_lid_to_phone(remote_jid, instance, base_url, api_key)
+            if not phone:
+                logger.warning(f"Webhook: não foi possível resolver @lid {remote_jid}")
+                return {"status": "ignored"}
+        else:
+            phone = remote_jid.replace("@s.whatsapp.net", "").replace("@c.us", "")
+
         if not phone:
             return {"status": "ignored"}
 
@@ -67,19 +93,14 @@ def evolution_webhook(request):
             or "[mídia]"
         )
 
-        # Normaliza: remove tudo que não é dígito
-        import re
+        # Normaliza e gera variações para busca
         phone_digits = re.sub(r"\D", "", phone)
-
-        # Gera variações para busca
-        numeros_busca = set()
-        numeros_busca.add(phone_digits)
+        numeros_busca = {phone_digits}
         if phone_digits.startswith("55") and len(phone_digits) > 11:
-            numeros_busca.add(phone_digits[2:])   # sem DDI
+            numeros_busca.add(phone_digits[2:])
         if not phone_digits.startswith("55"):
-            numeros_busca.add("55" + phone_digits) # com DDI
+            numeros_busca.add("55" + phone_digits)
 
-        # Marca mensagens mais recentes desse número como respondida
         from core.models import MensagemEnviada
         msgs = MensagemEnviada.objects.filter(
             telefone__in=list(numeros_busca),
@@ -88,11 +109,13 @@ def evolution_webhook(request):
 
         if msgs:
             for msg in msgs:
-                msg.status = MensagemEnviada.STATUS_RESPONDIDO
+                msg.status       = MensagemEnviada.STATUS_RESPONDIDO
                 msg.respondida_em = timezone.now()
-                msg.resposta = resposta
+                msg.resposta     = resposta
                 msg.save()
             logger.info(f"Webhook: {phone} respondeu — {len(msgs)} mensagem(ns) marcada(s)")
+        else:
+            logger.warning(f"Webhook: {phone} respondeu mas nenhuma mensagem encontrada no banco")
 
         return {"status": "ok"}
 

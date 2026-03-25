@@ -100,6 +100,7 @@ class UserOut(Schema):
     is_staff: bool
     is_superuser: bool
     is_juridico: bool
+    is_financeiro: bool
 
 class AdminRoleIn(Schema):
     user_id: UUID4
@@ -111,6 +112,10 @@ class UserDeleteIn(Schema):
 class UserJuridicoIn(Schema):
     user_id: UUID4
     is_juridico: bool
+
+class UserFinanceiroIn(Schema):
+    user_id: UUID4
+    is_financeiro: bool
 
 
 # ── Endpoints de usuários ─────────────────────────────────────────────────────
@@ -168,6 +173,18 @@ def set_juridico_role(request, payload: UserJuridicoIn):
     user.is_juridico = payload.is_juridico
     user.save()
     return 200, {"message": "User_juridico_role_updated"}
+
+
+@admin_router.post("/set-financeiro", response={200: dict})
+def set_financeiro_role(request, payload: UserFinanceiroIn):
+    _require_admin(request.auth)
+    try:
+        user = User.objects.get(id=payload.user_id)
+    except User.DoesNotExist:
+        raise HttpError(404, "User_not_found")
+    user.is_financeiro = payload.is_financeiro
+    user.save()
+    return 200, {"message": "User_financeiro_role_updated"}
 
 
 @admin_router.delete("/delete-user", response={200: dict})
@@ -590,6 +607,175 @@ def listar_condominios(request):
 
     condominios.sort(key=lambda x: x["nome"])
     return 200, condominios
+
+
+# ── Endpoint: unidades sem CPF ────────────────────────────────────────────────
+@admin_router.get("/sem-cpf", response={200: list})
+def listar_sem_cpf(request, id_condominio: Optional[str] = None):
+    """
+    Retorna unidades sem CPF/CNPJ cadastrado.
+    id_condominio: um ou vários IDs separados por vírgula. Obrigatório.
+    """
+    _require_approved(request.auth)
+
+    if not id_condominio:
+        raise HttpError(400, "id_condominio_required")
+
+    from core.superlogica import buscar_unidades_sem_cpf
+
+    ids = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+    resultado = []
+    for cid in ids:
+        resultado.extend(buscar_unidades_sem_cpf(cid))
+
+    return 200, resultado
+
+
+@admin_router.get("/sem-cpf/xlsx")
+def exportar_sem_cpf_xlsx(request, id_condominio: Optional[str] = None):
+    """Gera Excel com unidades sem CPF/CNPJ cadastrado."""
+    _require_approved(request.auth)
+    if not id_condominio:
+        raise HttpError(400, "id_condominio_required")
+    try:
+        from core.superlogica import buscar_unidades_sem_cpf, verificar_condominio
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from io import BytesIO
+
+        ids = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+        dados = []
+        for cid in ids:
+            dados.extend(buscar_unidades_sem_cpf(cid))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Sem CPF"
+
+        header_fill = PatternFill(start_color="006837", end_color="006837", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        cols = ["Condomínio", "Bloco", "Unidade", "Responsável"]
+        for col, h in enumerate(cols, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+
+        for row_idx, item in enumerate(dados, 2):
+            for col, val in enumerate([
+                item.get("condominio", ""),
+                item.get("bloco", ""),
+                item.get("unidade", ""),
+                item.get("sacado", ""),
+            ], 1):
+                cell = ws.cell(row=row_idx, column=col, value=val)
+                cell.alignment = Alignment(wrap_text=True, vertical="center")
+
+        ws.column_dimensions["A"].width = 60
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 15
+        ws.column_dimensions["D"].width = 45
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        response = HttpResponse(buffer.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = 'attachment; filename="sem_cpf.xlsx"'
+        return response
+    except Exception as e:
+        raise HttpError(500, str(e))
+
+
+@admin_router.get("/sem-cpf/pdf")
+def exportar_sem_cpf_pdf(request, id_condominio: Optional[str] = None):
+    """Gera PDF com unidades sem CPF/CNPJ cadastrado."""
+    _require_approved(request.auth)
+    if not id_condominio:
+        raise HttpError(400, "id_condominio_required")
+    try:
+        from core.superlogica import buscar_unidades_sem_cpf
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+        from reportlab.lib.enums import TA_CENTER
+        from io import BytesIO
+        import os
+
+        COR_VERDE  = colors.HexColor("#006837")
+        COR_BRANCO = colors.white
+        COR_ZEBRA  = colors.HexColor("#F2F2F2")
+        COR_TEXTO  = colors.HexColor("#1A1A1A")
+        COR_CINZA  = colors.HexColor("#666666")
+
+        style_cell      = ParagraphStyle("cell",    fontSize=8,  textColor=COR_TEXTO,  fontName="Helvetica",      leading=10)
+        style_cell_bold = ParagraphStyle("bold",    fontSize=8,  textColor=COR_BRANCO, fontName="Helvetica-Bold", leading=10, alignment=TA_CENTER)
+        style_title     = ParagraphStyle("titulo",  fontSize=16, textColor=COR_VERDE,  fontName="Helvetica-Bold", spaceAfter=4)
+        style_sub       = ParagraphStyle("sub",     fontSize=9,  textColor=COR_CINZA,  fontName="Helvetica",      spaceAfter=2)
+        style_section   = ParagraphStyle("section", fontSize=10, textColor=COR_VERDE,  fontName="Helvetica-Bold", spaceAfter=4, spaceBefore=10)
+
+        def p(txt, style=None):
+            return Paragraph(str(txt) if txt else "", style or style_cell)
+
+        ids = [int(p.strip()) for p in id_condominio.split(",") if p.strip()]
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=1.5*cm, rightMargin=1.5*cm, topMargin=2*cm, bottomMargin=2*cm)
+        story = []
+
+        _logo_path = os.path.join(os.path.dirname(__file__), "logo_pratika.png")
+        if os.path.exists(_logo_path):
+            from reportlab.platypus import Image as RLImage
+            logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+        else:
+            logo_img = Paragraph("", style_sub)
+
+        header_table = Table([[logo_img, Paragraph("Unidades sem CPF/CNPJ", style_title)]], colWidths=[4*cm, None])
+        header_table.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("LEFTPADDING", (0,0), (-1,-1), 0)]))
+        story.append(header_table)
+        story.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", style_sub))
+        story.append(HRFlowable(width="100%", thickness=2, color=COR_VERDE, spaceAfter=10))
+
+        for cid in ids:
+            linhas = buscar_unidades_sem_cpf(cid)
+            if not linhas:
+                continue
+            nome_cond = linhas[0].get("condominio", f"Condomínio {cid}")
+            story.append(Paragraph(nome_cond, style_section))
+
+            cab = [p("Bloco", style_cell_bold), p("Unidade", style_cell_bold), p("Responsável", style_cell_bold)]
+            dados_tab = [cab]
+            for item in sorted(linhas, key=lambda x: (x.get("bloco",""), x.get("unidade",""))):
+                dados_tab.append([p(item.get("bloco","")), p(item.get("unidade","")), p(item.get("sacado",""))])
+
+            n_rows = len(dados_tab) - 1
+            zebra = [("BACKGROUND", (0, idx+1), (-1, idx+1), COR_BRANCO if idx%2==0 else COR_ZEBRA) for idx in range(n_rows)]
+            t = Table(dados_tab, colWidths=[3*cm, 3*cm, 12.5*cm])
+            t.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (-1,0), COR_VERDE),
+                ("FONTSIZE",      (0,0), (-1,-1), 8),
+                ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+                ("GRID",          (0,0), (-1,-1), 0.4, colors.HexColor("#CCCCCC")),
+                ("TOPPADDING",    (0,0), (-1,-1), 4),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ] + zebra))
+            story.append(t)
+            story.append(Spacer(1, 0.3*cm))
+
+        doc.build(story)
+        buffer.seek(0)
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="sem_cpf.pdf"'
+        return response
+    except Exception as e:
+        raise HttpError(500, str(e))
+
+    doc.build(story)
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="sem_cpf.pdf"'
+    return response
 
 
 # Condomínios cujo jurídico não é da equipe Pratika

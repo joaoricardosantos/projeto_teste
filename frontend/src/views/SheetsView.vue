@@ -67,10 +67,32 @@
       </div>
 
       <div v-else>
+        <!-- Seletor de Grupo -->
+        <div v-if="grupos.length > 1" class="mb-3">
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" variant="outlined" append-icon="mdi-chevron-down">
+                <v-icon start>mdi-folder-outline</v-icon>
+                {{ grupoAtivo || 'Sem grupo' }}
+              </v-btn>
+            </template>
+            <v-list>
+              <v-list-item
+                v-for="g in grupos"
+                :key="g"
+                :title="g || 'Sem grupo'"
+                :active="grupoAtivo === g"
+                active-color="primary"
+                @click="selecionarGrupo(g)"
+              />
+            </v-list>
+          </v-menu>
+        </div>
+
         <!-- Tabs de Setores -->
         <v-tabs v-model="setorAtivoId" color="primary" class="mb-4" show-arrows>
           <v-tab
-            v-for="setor in setores"
+            v-for="setor in setoresFiltrados"
             :key="setor.id"
             :value="setor.id"
           >
@@ -721,6 +743,18 @@
             label="Tipo de Dashboard"
             variant="outlined"
             density="compact"
+            class="mb-3"
+          />
+          <v-combobox
+            v-model="formSetor.grupo"
+            :items="grupos.filter(g => g)"
+            label="Grupo (opcional)"
+            variant="outlined"
+            density="compact"
+            placeholder="Ex: Financeiro, Jurídico, Pratika"
+            hint="Agrupa setores relacionados em uma categoria"
+            persistent-hint
+            clearable
           />
         </v-card-text>
 
@@ -777,6 +811,7 @@ const erro = ref('')
 
 const setores = ref([])
 const setorAtivoId = ref(null)
+const grupoAtivo = ref(null)
 const dashboard = ref(null)
 
 const buscaTransacao = ref('')
@@ -791,7 +826,7 @@ const dialogDeletar = ref(false)
 const salvandoSetor = ref(false)
 const setorParaDeletar = ref(null)
 
-const formSetor = ref({ id: null, nome: '', spreadsheet_id: '', aba: '', tipo_dashboard: 'cobrancas' })
+const formSetor = ref({ id: null, nome: '', spreadsheet_id: '', aba: '', tipo_dashboard: 'cobrancas', grupo: '' })
 const abasDisponiveis = ref([])
 const carregandoAbas = ref(false)
 
@@ -811,6 +846,16 @@ let chartDespesasFornecedorInstance = null
 // ── Computed ────────────────────────────────────────────────────────────────
 
 const setorAtivo = computed(() => setores.value.find(s => s.id === setorAtivoId.value))
+
+const grupos = computed(() => {
+  const set = new Set(setores.value.map(s => s.grupo || ''))
+  return [...set].sort()
+})
+
+const setoresFiltrados = computed(() => {
+  if (grupoAtivo.value === null || grupos.value.length <= 1) return setores.value
+  return setores.value.filter(s => (s.grupo || '') === grupoAtivo.value)
+})
 
 const transacoesFiltradas = computed(() => {
   if (!dashboard.value?.ultimas_transacoes) return []
@@ -919,12 +964,19 @@ const verificarStatus = async () => {
   }
 }
 
+const selecionarGrupo = (g) => {
+  grupoAtivo.value = g
+  const primeiro = setores.value.find(s => (s.grupo || '') === g)
+  if (primeiro) setorAtivoId.value = primeiro.id
+}
+
 const carregarSetores = async () => {
   try {
     const res = await fetch('/api/sheets/setores', { headers: authHeader() })
     if (res.ok) {
       setores.value = await res.json()
       if (setores.value.length && !setorAtivoId.value) {
+        grupoAtivo.value = setores.value[0].grupo || ''
         setorAtivoId.value = setores.value[0].id
       }
     }
@@ -988,12 +1040,12 @@ const salvarSetor = async () => {
 }
 
 const editarSetor = (s) => {
-  formSetor.value = { id: s.id, nome: s.nome, spreadsheet_id: s.spreadsheet_id, aba: s.aba, tipo_dashboard: s.tipo_dashboard }
+  formSetor.value = { id: s.id, nome: s.nome, spreadsheet_id: s.spreadsheet_id, aba: s.aba, tipo_dashboard: s.tipo_dashboard, grupo: s.grupo || '' }
   abasDisponiveis.value = []
 }
 
 const resetarForm = () => {
-  formSetor.value = { id: null, nome: '', spreadsheet_id: '', aba: '', tipo_dashboard: 'cobrancas' }
+  formSetor.value = { id: null, nome: '', spreadsheet_id: '', aba: '', tipo_dashboard: 'cobrancas', grupo: '' }
   abasDisponiveis.value = []
 }
 

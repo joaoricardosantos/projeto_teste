@@ -42,6 +42,7 @@ class User(AbstractUser):
     name = models.CharField(max_length=255)
     is_approved = models.BooleanField(default=False)
     is_juridico = models.BooleanField(default=False)
+    is_financeiro = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -135,11 +136,12 @@ class SheetSetor(models.Model):
     spreadsheet_id = models.CharField(max_length=200)
     aba = models.CharField(max_length=100, default='Sheet1')
     tipo_dashboard = models.CharField(max_length=20, choices=TIPO_CHOICES, default='cobrancas')
+    grupo = models.CharField(max_length=100, blank=True, default='', help_text='Grupo/categoria para agrupar setores (ex: Financeiro, Jurídico)')
     ativo = models.BooleanField(default=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['nome']
+        ordering = ['criado_em']
         verbose_name = 'Setor Planilha'
         verbose_name_plural = 'Setores Planilha'
 

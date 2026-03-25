@@ -122,10 +122,10 @@
 
               <template #item.role="{ item }">
                 <v-chip
-                  :color="item.is_staff || item.is_superuser ? 'primary' : item.is_juridico ? 'deep-purple' : 'grey'"
+                  :color="item.is_staff || item.is_superuser ? 'primary' : item.is_juridico ? 'deep-purple' : item.is_financeiro ? 'teal' : 'grey'"
                   size="x-small"
                   variant="tonal"
-                >{{ item.is_staff || item.is_superuser ? 'Admin' : item.is_juridico ? 'Jurídico' : 'Usuário' }}</v-chip>
+                >{{ item.is_staff || item.is_superuser ? 'Admin' : item.is_juridico ? 'Jurídico' : item.is_financeiro ? 'Financeiro' : 'Usuário' }}</v-chip>
               </template>
 
               <template #item.actions="{ item }">
@@ -152,6 +152,12 @@
                     :color="item.is_juridico ? 'grey' : 'deep-purple'"
                     @click="toggleJuridico(item)"
                   >{{ item.is_juridico ? 'Remover jurídico' : 'Jurídico' }}</v-btn>
+
+                  <v-btn
+                    size="x-small" variant="tonal"
+                    :color="item.is_financeiro ? 'grey' : 'teal'"
+                    @click="toggleFinanceiro(item)"
+                  >{{ item.is_financeiro ? 'Remover financeiro' : 'Financeiro' }}</v-btn>
 
                   <v-btn
                     size="x-small" color="error" icon variant="text"
@@ -274,6 +280,22 @@ const toggleJuridico = async (user) => {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data.detail || 'Erro ao atualizar cargo jurídico')
+    await fetchUsers()
+  } catch (error) {
+    errorMessage.value = error.message
+  }
+}
+
+const toggleFinanceiro = async (user) => {
+  errorMessage.value = ''
+  try {
+    const response = await fetch('/api/admin/set-financeiro', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ user_id: user.id, is_financeiro: !user.is_financeiro }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.detail || 'Erro ao atualizar cargo financeiro')
     await fetchUsers()
   } catch (error) {
     errorMessage.value = error.message

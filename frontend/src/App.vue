@@ -138,19 +138,22 @@ watch(() => route.meta.requiresAuth, (authed) => {
 
 const isAdmin = computed(() => localStorage.getItem('is_admin') === 'true')
 const isJuridico = computed(() => localStorage.getItem('is_juridico') === 'true')
+const isFinanceiro = computed(() => localStorage.getItem('is_financeiro') === 'true')
 
 const allNavItems = [
-  { to: '/dashboard',  icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false, juridicoAllowed: true  },
-  { to: '/painel',     icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false },
-  { to: '/templates',  icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false },
-  { to: '/sheets',     icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false },
-  { to: '/relatorios', icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true  },
-  { to: '/admin',      icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false },
+  { to: '/dashboard',    icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true  },
+  { to: '/painel',       icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false, financeiroAllowed: false },
+  { to: '/templates',    icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false, financeiroAllowed: false },
+  { to: '/sheets',       icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false, financeiroAllowed: true  },
+  { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
+  { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
+  { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
 ]
 
 const navItems = computed(() =>
   allNavItems.filter(item => {
     if (isJuridico.value) return item.juridicoAllowed
+    if (isFinanceiro.value) return item.financeiroAllowed
     return !item.adminOnly || isAdmin.value
   })
 )
@@ -164,6 +167,7 @@ const logout = () => {
   localStorage.removeItem('access_token')
   localStorage.removeItem('is_admin')
   localStorage.removeItem('is_juridico')
+  localStorage.removeItem('is_financeiro')
   localStorage.removeItem('user_name')
   sidebarOpen.value = false
   router.push('/')
