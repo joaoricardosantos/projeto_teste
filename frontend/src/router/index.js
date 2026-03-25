@@ -27,12 +27,15 @@ router.beforeEach((to, from, next) => {
     const isAuthenticated = !!localStorage.getItem('access_token')
     const isAdmin = localStorage.getItem('is_admin') === 'true'
     const isJuridico = localStorage.getItem('is_juridico') === 'true'
+    const isFinanceiro = localStorage.getItem('is_financeiro') === 'true'
 
     if (to.meta.requiresAuth && !isAuthenticated) return next('/')
     if (to.meta.requiresAdmin && !isAdmin) return next('/dashboard')
     if (to.meta.requiresAdminOrJuridico && !isAdmin && !isJuridico) return next('/dashboard')
     // Bloqueia jurídico de acessar rotas não permitidas
     if (isJuridico && !isAdmin && !['/dashboard', '/relatorios'].includes(to.path)) return next('/dashboard')
+    // Bloqueia financeiro de acessar rotas não permitidas
+    if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets'].includes(to.path)) return next('/dashboard')
     next()
 })
 
