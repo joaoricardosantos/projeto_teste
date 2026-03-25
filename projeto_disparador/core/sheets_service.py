@@ -459,53 +459,32 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
     def cell(row, i):
         return str(row[i]).strip() if i < len(row) else ""
 
+    _ignorar = {"TOTAL", "SUBTOTAL"}
+    _ignorar_antec = {"BOLETOS ANTECIPADOS", "TOTAL", "SUBTOTAL"}
+
     for raw_row in dados:
         row = list(raw_row) + [""] * max(0, 15 - len(raw_row))
 
         c1, c2, c7, c8 = cell(row, 1), cell(row, 2), cell(row, 7), cell(row, 8)
+        c12, c13 = str(row[12]).strip(), str(row[13]).strip()
 
-        # Boletos antecipados (col 12 = M, col 13 = N) — processado ANTES dos continue
-        _ignorar_antec = {"BOLETOS ANTECIPADOS", "TOTAL", "SUBTOTAL"}
-        c12 = str(row[12]).strip()
-        c13 = str(row[13]).strip()
-        if c12 and c12.upper() not in _ignorar_antec and not c12.upper().startswith("R$"):
-            valor = _parse_valor(c13)
-            if valor > 0:
-                registros.append({
-                    "condominio": c12,
-                    "vencimento": "Antecipado",
-                    "valor_previsto": None,
-                    "data_pagamento": "",
-                    "valor_pago": float(valor),
-                    "status": "antecipado",
-                    "diferenca": None,
-                })
-
-        # Título (primeira célula não-vazia na col 1)
+        # Título (primeira linha não-vazia antes de qualquer vencimento)
         if not titulo and c1 and not re.search(r"VENCIMENTO", c1.upper()):
             titulo = c1
-            continue
 
-        # Cabeçalho de seção esquerda
+        # Cabeçalho de seção esquerda — atualiza secao_esq
         if re.search(r"VENCIMENTO\s+\d+", c1.upper()) and c2.upper() in ("VALOR", "TOTAL"):
             m = re.search(r"VENCIMENTO\s+(\d+)", c1.upper())
             secao_esq = f"Vencimento {m.group(1)}"
-            # Cabeçalho direito na mesma linha
-            if re.search(r"VENCIMENTO\s+\d+", c7.upper()) and c8.upper() in ("VALOR", "TOTAL"):
-                m2 = re.search(r"VENCIMENTO\s+(\d+)", c7.upper())
-                secao_dir = f"Vencimento {m2.group(1)}"
-            continue
 
-        # Cabeçalho de seção direita em linha separada
+        # Cabeçalho de seção direita — atualiza secao_dir (pode estar na mesma linha ou separada)
         if re.search(r"VENCIMENTO\s+\d+", c7.upper()) and c8.upper() in ("VALOR", "TOTAL"):
             m = re.search(r"VENCIMENTO\s+(\d+)", c7.upper())
             secao_dir = f"Vencimento {m.group(1)}"
-            continue
 
-        _ignorar = {"VENCIMENTO", "TOTAL", "SUBTOTAL"}
-
-        # Bloco esquerdo — ignora linhas sem nome ou com totais
-        if secao_esq and c1 and not any(w in c1.upper() for w in _ignorar):
+        # Bloco esquerdo — dados de condomínio (ignora cabeçalhos e totais)
+        esq_e_cabecalho = re.search(r"VENCIMENTO\s+\d+", c1.upper()) and c2.upper() in ("VALOR", "TOTAL")
+        if secao_esq and c1 and not esq_e_cabecalho and not any(w in c1.upper() for w in _ignorar):
             valor = _parse_valor(c2)
             if valor > 0:
                 valor_pago = _parse_valor(cell(row, 4))
@@ -519,8 +498,9 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
                     "diferenca": round(float(valor_pago - valor), 2),
                 })
 
-        # Bloco direito
-        if secao_dir and c7 and not any(w in c7.upper() for w in _ignorar):
+        # Bloco direito — dados de condomínio (ignora cabeçalhos e totais)
+        dir_e_cabecalho = re.search(r"VENCIMENTO\s+\d+", c7.upper()) and c8.upper() in ("VALOR", "TOTAL")
+        if secao_dir and c7 and not dir_e_cabecalho and not any(w in c7.upper() for w in _ignorar):
             valor = _parse_valor(c8)
             if valor > 0:
                 valor_pago = _parse_valor(cell(row, 10))
@@ -532,6 +512,20 @@ def processar_cobrancas_pratika(dados: List[List[Any]]) -> Dict[str, Any]:
                     "valor_pago": float(valor_pago),
                     "status": "pago" if valor_pago > 0 else "pendente",
                     "diferenca": round(float(valor_pago - valor), 2),
+                })
+
+        # Boletos antecipados (col 12 = M, col 13 = N)
+        if c12 and c12.upper() not in _ignorar_antec and not c12.upper().startswith("R$"):
+            valor = _parse_valor(c13)
+            if valor > 0:
+                registros.append({
+                    "condominio": c12,
+                    "vencimento": "Antecipado",
+                    "valor_previsto": None,
+                    "data_pagamento": "",
+                    "valor_pago": float(valor),
+                    "status": "antecipado",
+                    "diferenca": None,
                 })
 
 
