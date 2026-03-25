@@ -74,6 +74,49 @@ def buscar_unidades(id_condominio: int):
     return mapa
 
 
+def buscar_unidades_sem_cpf(id_condominio: int) -> list:
+    """
+    Retorna lista de unidades do condomínio que não possuem CPF/CNPJ cadastrado.
+    Cada item: {condominio, bloco, unidade, sacado}
+    """
+    pagina = 1
+    nome_cond = ""
+    sem_cpf = []
+
+    while True:
+        response = requests.get(
+            f"{settings.SUPERLOGICA_BASE_URL}/unidades",
+            headers=_get_headers(),
+            params={"idCondominio": id_condominio, "pagina": pagina, "itensPorPagina": 50},
+            timeout=30,
+        )
+        if response.status_code != 200:
+            break
+        dados = response.json()
+        if not dados:
+            break
+        if not nome_cond and isinstance(dados, list) and dados:
+            nome_cond = (dados[0].get("st_nome_cond") or "").strip()
+        for unidade in dados:
+            cpf = (
+                unidade.get("cpf_proprietario")
+                or unidade.get("st_cpf_sacado")
+                or unidade.get("cpf_sacado")
+                or unidade.get("nr_cpf_cgc_pes")
+                or ""
+            )
+            if not str(cpf).strip():
+                sem_cpf.append({
+                    "condominio": nome_cond,
+                    "bloco":    (unidade.get("st_bloco_uni") or "").strip(),
+                    "unidade":  (unidade.get("st_unidade_uni") or "").strip(),
+                    "sacado":   (unidade.get("st_sacado_uni") or unidade.get("nome_proprietario") or "").strip(),
+                })
+        pagina += 1
+
+    return sem_cpf
+
+
 def _formatar_data(valor) -> str:
     if not valor:
         return ""
