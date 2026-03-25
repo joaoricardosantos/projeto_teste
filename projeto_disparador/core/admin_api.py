@@ -99,6 +99,7 @@ class UserOut(Schema):
     is_active: bool
     is_staff: bool
     is_superuser: bool
+    is_juridico: bool
 
 class AdminRoleIn(Schema):
     user_id: UUID4
@@ -106,6 +107,10 @@ class AdminRoleIn(Schema):
 
 class UserDeleteIn(Schema):
     user_id: UUID4
+
+class UserJuridicoIn(Schema):
+    user_id: UUID4
+    is_juridico: bool
 
 
 # ── Endpoints de usuários ─────────────────────────────────────────────────────
@@ -151,6 +156,18 @@ def set_admin_role(request, payload: AdminRoleIn):
     user.is_superuser = payload.make_admin
     user.save()
     return 200, {"message": "User_admin_role_updated"}
+
+
+@admin_router.post("/set-juridico", response={200: dict})
+def set_juridico_role(request, payload: UserJuridicoIn):
+    _require_admin(request.auth)
+    try:
+        user = User.objects.get(id=payload.user_id)
+    except User.DoesNotExist:
+        raise HttpError(404, "User_not_found")
+    user.is_juridico = payload.is_juridico
+    user.save()
+    return 200, {"message": "User_juridico_role_updated"}
 
 
 @admin_router.delete("/delete-user", response={200: dict})

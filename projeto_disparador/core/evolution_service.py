@@ -61,14 +61,17 @@ def send_whatsapp_message(phone: str, message: str, sleep_seconds: float = None)
         "apikey": api_key,
     }
     payload = {
-        "number":      _format_phone(phone),
-        "delay":       _typing_delay_ms(),
-        "textMessage": {"text": message},
+        "number": _format_phone(phone),
+        "options": {
+            "delay":    _typing_delay_ms(),
+            "presence": "composing",
+        },
+        "text": message,
     }
-    response = requests.post(url, json=payload, headers=headers, timeout=30)
+    response = requests.post(url, json=payload, headers=headers, timeout=90)
     if not response.ok:
         print(f"[EVOLUTION ERROR] status={response.status_code} body={response.text}")
-    response.raise_for_status()
+        raise Exception(f"Evolution API {response.status_code}: {response.text}")
 
 
 def send_whatsapp_bulk(contacts: list, delay_between: float = None) -> list:

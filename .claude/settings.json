@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import paramiko; print\\(''paramiko ok''\\)\")",
+      "Bash(\"$SSHPASS\" -p 'BF!7cP4ne6XJ' ssh -o StrictHostKeyChecking=no root@186.202.209.150 \"docker logs evolution_api --tail 50 2>&1\")",
+      "Bash(\"/c/Users/prati/AppData/Local/Microsoft/WinGet/Packages/xhcoding.sshpass-win32_Microsoft.Winget.Source_8wekyb3d8bbwe/sshpass.exe\" -p 'BF!7cP4ne6XJ' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@186.202.209.150 \"echo conectado\")"
+    ]
+  }
+}

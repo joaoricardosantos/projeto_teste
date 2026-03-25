@@ -7,8 +7,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     networks:
       - app_network
 
@@ -17,9 +15,9 @@ services:
     working_dir: /app/projeto_disparador
     command: >
       sh -c "python manage.py makemigrations core &&
-         python manage.py migrate &&
-         python manage.py shell -c \"from core.models import User; User.objects.filter(email='admin@admin.com').exists() or User.objects.create_superuser('admin@admin.com', 'admin123', name='Administrador')\" &&
-         gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 1 --worker-class gthread --threads 8 --timeout 600"
+           python manage.py migrate &&
+           python manage.py shell -c \"from core.models import User; User.objects.filter(email='admin@admin.com').exists() or User.objects.create_superuser('admin@admin.com', 'admin123', name='Administrador')\" &&
+           gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 1 --worker-class gthread --threads 8 --timeout 600"
     volumes:
       - .:/app
       - ./credentials/google-sheets.json:/app/credentials/google-sheets.json:ro
@@ -52,36 +50,43 @@ services:
       - app_network
 
   evolution_api:
-    image: atendai/evolution-api:v1.8.2
+    image: atendai/evolution-api:v2.2.3
     container_name: evolution_api
     ports:
       - "8080:8080"
     volumes:
       - evolution_store:/evolution/store
+      - ./evolution.env:/evolution/.env
     environment:
-      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
-      - AUTHENTICATION_TYPE=apikey
-      - AUTHENTICATION_INSTANCE_MODE=server
-      - AUTHENTICATION_JWT_SECRET=L=0YWt]b2w[WF>#>:&E`
-      - TZ=America/Sao_Paulo
-      - DOCKER_ENV=true
+      # Servidor
       - SERVER_TYPE=http
       - SERVER_PORT=8080
-      - SERVER_URL=http://localhost:8080
+      - SERVER_URL=http://186.202.209.150:8080
+      - TZ=America/Sao_Paulo
+      - DOCKER_ENV=true
+      # Autenticação (v2 usa apenas apikey, JWT removido)
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      # CORS
       - CORS_ORIGIN=*
       - CORS_METHODS=POST,GET,PUT,DELETE
       - CORS_CREDENTIALS=true
+      # Logs
       - LOG_LEVEL=ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS
       - LOG_COLOR=true
       - LOG_BAILEYS=error
+      # Instâncias
       - DEL_INSTANCE=false
-      - STORE_MESSAGES=true
-      - STORE_MESSAGE_UP=true
-      - STORE_CONTACTS=true
-      - STORE_CHATS=true
-      - DATABASE_ENABLED=false
-      - WEBHOOK_GLOBAL_ENABLED=false
       - QRCODE_LIMIT=30
+      # Banco de dados
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://postgres:postgres@db:5432/evolution?schema=public
+      # Telemetria desativada
+      - TELEMETRY=false
+      - CONFIG_SESSION_PHONE_VERSION=2.3000.1035194821
+    depends_on:
+      - db
     networks:
       - app_network
 
