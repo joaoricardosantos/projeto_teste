@@ -31,7 +31,7 @@
               :items="condominios"
               item-title="nome"
               item-value="id"
-              label="Condomínio"
+              label="Loja"
               variant="outlined"
               density="comfortable"
               clearable
@@ -87,40 +87,7 @@
             />
           </v-col>
 
-          <v-col cols="12" sm="6" md="2">
-            <v-select
-              v-model="filtrarPor"
-              :items="[
-                { title: 'Vencimento', value: 'vencimento' },
-                { title: 'Liquidação', value: 'liquidacao' },
-                { title: 'Competência', value: 'competencia' },
-                { title: 'Criação', value: 'criacao' },
-              ]"
-              item-title="title"
-              item-value="value"
-              label="Filtrar por"
-              variant="outlined"
-              density="comfortable"
-              hide-details
-              :disabled="loading"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="mt-2">
-          <v-col cols="12" md="8">
-            <v-text-field
-              v-model="contas"
-              label="Contas (opcional)"
-              variant="outlined"
-              density="comfortable"
-              placeholder="Ex: 2.1.1, 2.3.2"
-              hint="Separe múltiplas contas por vírgula"
-              persistent-hint
-              :disabled="loading"
-            />
-          </v-col>
-          <v-col cols="12" md="4" class="d-flex align-start">
+          <v-col cols="12" sm="6" md="2" class="d-flex align-start">
             <v-btn
               color="primary"
               block
@@ -383,8 +350,6 @@ const ultimoDia = `${String(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
 const dtInicio = ref(primeiroDia)
 const dtFim = ref(ultimoDia)
 const comStatus = ref('todas')
-const filtrarPor = ref('vencimento')
-const contas = ref('')
 
 const headers = [
   { title: 'Descrição', key: 'descricao', sortable: true },
@@ -495,9 +460,7 @@ const buscar = async () => {
       dt_inicio: dtInicio.value,
       dt_fim: dtFim.value,
       com_status: comStatus.value,
-      filtrar_por: filtrarPor.value,
     })
-    if (contas.value.trim()) params.append('contas', contas.value.trim())
 
     const respostas = await Promise.all(
       condominioSelecionado.value.map(id =>
