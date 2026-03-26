@@ -391,7 +391,11 @@ const confirmDelete = (template) => { deleteDialog.template = template; deleteDi
 const submitDelete = async () => {
   deleteDialog.loading = true
   try {
-    const res = await fetch(`/api/templates/delete?tid=${deleteDialog.template.id}`, { method: 'DELETE', headers: authHeader() })
+    const res = await fetch(`/api/templates/remove`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({ tid: deleteDialog.template.id }),
+    })
     if (!res.ok) throw new Error('Erro ao excluir template')
     templates.value = templates.value.filter((t) => t.id !== deleteDialog.template.id)
     deleteDialog.open = false

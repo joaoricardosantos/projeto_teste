@@ -105,14 +105,18 @@ def update_template(request, tid: str, payload: TemplateIn):
     return 200, serialize_template(template)
 
 
-@template_router.delete("/delete", response={200: dict}, url_name="template_delete")
-def delete_template(request, tid: str):
+class DeleteIn(Schema):
+    tid: str
+
+
+@template_router.post("/remove", response={200: dict})
+def delete_template(request, payload: DeleteIn):
     """Exclui um template. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
     try:
-        template = MessageTemplate.objects.get(id=tid)
+        template = MessageTemplate.objects.get(id=payload.tid)
     except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
 
