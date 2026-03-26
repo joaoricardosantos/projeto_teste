@@ -246,6 +246,7 @@ const errorMessage = ref('')
 
 const availableVariables = [
   { label: 'Condomínio',         value: '{{condominio}}' },
+  { label: 'Bloco',              value: '{{bloco}}'      },
   { label: 'Unidade',            value: '{{unidade}}'    },
   { label: 'Nome',               value: '{{nome}}'       },
   { label: 'Qtd Inadimplências', value: '{{qtd}}'        },

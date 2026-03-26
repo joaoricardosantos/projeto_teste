@@ -14,9 +14,10 @@ from core.superlogica import (
 from core.evolution_service import send_whatsapp_bulk
 
 
-def _render_template(body, condo_name="", unidade="", nome="", qtd_inadimpl="", competencia="", vencimento="", valor=""):
+def _render_template(body, condo_name="", unidade="", bloco="", nome="", qtd_inadimpl="", competencia="", vencimento="", valor=""):
     subs = {
         "condominio":  condo_name,
+        "bloco":       bloco,
         "unidade":     unidade,
         "nome":        nome,
         "qtd":         str(qtd_inadimpl),
@@ -226,6 +227,7 @@ def send_messages_by_condominio(
         dados_uni  = mapa_unidades.get(id_unidade, {})
         unidade    = dados_uni.get("unidade", "") or resumo.get("nome_pdf", "").split(" - ")[0].strip()
         nome       = dados_uni.get("sacado", "") or resumo.get("nome_pdf", "").split(" - ")[-1].strip()
+        bloco      = dados_uni.get("bloco", "")
         condo_name = nome_condominio or str(id_condominio)
 
         total = resumo.get("total", 0)
@@ -243,6 +245,7 @@ def send_messages_by_condominio(
                 template_body,
                 condo_name=condo_name,
                 unidade=unidade,
+                bloco=bloco,
                 nome=nome,
                 qtd_inadimpl=qtd,
                 competencia=competencia,
