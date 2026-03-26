@@ -17,7 +17,7 @@ class TemplateIn(Schema):
 
 
 class TemplateOut(Schema):
-    id: int
+    id: str
     name: str
     body: str
     created_at: str
@@ -26,7 +26,7 @@ class TemplateOut(Schema):
 
 def serialize_template(obj: MessageTemplate) -> dict:
     return {
-        "id": obj.id,
+        "id": str(obj.id),
         "name": obj.name,
         "body": obj.body,
         "created_at": obj.created_at.strftime("%d/%m/%Y %H:%M"),
@@ -66,7 +66,7 @@ def create_template(request, payload: TemplateIn):
 
 
 @template_router.get("/{template_id}", response=TemplateOut)
-def get_template(request, template_id: int):
+def get_template(request, template_id: str):
     """Retorna um template pelo ID."""
     try:
         template = MessageTemplate.objects.get(id=template_id)
@@ -76,7 +76,7 @@ def get_template(request, template_id: int):
 
 
 @template_router.put("/{template_id}", response=TemplateOut)
-def update_template(request, template_id: int, payload: TemplateIn):
+def update_template(request, template_id: str, payload: TemplateIn):
     """Atualiza um template existente. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
@@ -107,7 +107,7 @@ def update_template(request, template_id: int, payload: TemplateIn):
 
 
 @template_router.delete("/{template_id}", response={200: dict})
-def delete_template(request, template_id: int):
+def delete_template(request, template_id: str):
     """Exclui um template. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
