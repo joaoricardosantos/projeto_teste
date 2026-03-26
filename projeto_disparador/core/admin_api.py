@@ -589,9 +589,23 @@ def listar_condominios(request):
             if r.status_code != 200:
                 return None
             dados = r.json()
-            if not dados:
-                return None
-            nome = dados[0].get("st_nome_cond", "").strip()
+            nome = ""
+            if dados and isinstance(dados, list):
+                nome = dados[0].get("st_nome_cond", "").strip()
+
+            # Condomínio existe mas sem unidades — tenta via inadimplência avançada
+            if not nome:
+                r2 = req.get(
+                    f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
+                    headers=headers,
+                    params={"idCondominio": cid, "pagina": 1, "itensPorPagina": 1},
+                    timeout=15,
+                )
+                if r2.status_code == 200:
+                    d2 = r2.json()
+                    if isinstance(d2, list) and d2:
+                        nome = (d2[0].get("st_nome_cond") or "").strip()
+
             if nome:
                 return {"id": cid, "nome": nome}
         except Exception:
