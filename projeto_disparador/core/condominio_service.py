@@ -248,21 +248,22 @@ def send_messages_by_condominio(
                 condo_name, unidade, nome, vencimento, competencia, valor_fmt, qtd
             )
 
-        telefone = next((t for t in telefones if t and t.strip()), None)
+        telefones_validos = [t for t in telefones if t and t.strip()]
 
-        if not telefone:
+        if not telefones_validos:
             failures_no_phone.append({
                 "unidade": unidade, "nome": nome, "motivo": "Sem número cadastrado",
             })
             continue
 
-        contacts.append({
-            "phone":      telefone,
-            "message":    mensagem,
-            "condominio": condo_name,
-            "unidade":    unidade,
-            "nome":       nome,
-        })
+        for telefone in telefones_validos:
+            contacts.append({
+                "phone":      telefone,
+                "message":    mensagem,
+                "condominio": condo_name,
+                "unidade":    unidade,
+                "nome":       nome,
+            })
 
     raw    = send_whatsapp_bulk(contacts)
     result = _agregar_resultado(raw, extra_errors=0, failures_no_phone=failures_no_phone, contacts=contacts)
