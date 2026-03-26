@@ -36,14 +36,14 @@ def serialize_template(obj: MessageTemplate) -> dict:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@template_router.get("", response=List[TemplateOut])
+@template_router.get("", response={200: list})
 def list_templates(request):
     """Lista todos os templates disponíveis."""
     templates = MessageTemplate.objects.all()
-    return [serialize_template(t) for t in templates]
+    return 200, [serialize_template(t) for t in templates]
 
 
-@template_router.post("", response={201: TemplateOut})
+@template_router.post("", response={201: dict})
 def create_template(request, payload: TemplateIn):
     """Cria um novo template. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
@@ -65,17 +65,17 @@ def create_template(request, payload: TemplateIn):
     return 201, serialize_template(template)
 
 
-@template_router.get("/{template_id}", response=TemplateOut)
+@template_router.get("/{template_id}", response={200: dict})
 def get_template(request, template_id: str):
     """Retorna um template pelo ID."""
     try:
         template = MessageTemplate.objects.get(id=template_id)
     except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
-    return serialize_template(template)
+    return 200, serialize_template(template)
 
 
-@template_router.put("/{template_id}", response=TemplateOut)
+@template_router.put("/{template_id}", response={200: dict})
 def update_template(request, template_id: str, payload: TemplateIn):
     """Atualiza um template existente. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
@@ -102,7 +102,7 @@ def update_template(request, template_id: str, payload: TemplateIn):
     template.name = payload.name.strip()
     template.body = payload.body.strip()
     template.save()
-    return serialize_template(template)
+    return 200, serialize_template(template)
 
 
 @template_router.delete("/{template_id}", response={200: dict})
