@@ -17,7 +17,7 @@ class TemplateIn(Schema):
 
 
 class TemplateOut(Schema):
-    id: int
+    id: str
     name: str
     body: str
     created_at: str
@@ -26,7 +26,7 @@ class TemplateOut(Schema):
 
 def serialize_template(obj: MessageTemplate) -> dict:
     return {
-        "id": obj.id,
+        "id": str(obj.id),
         "name": obj.name,
         "body": obj.body,
         "created_at": obj.created_at.strftime("%d/%m/%Y %H:%M"),

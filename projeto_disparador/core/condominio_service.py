@@ -86,7 +86,7 @@ def _registrar_campanha(contacts, result, failures_no_phone):
         )
         result["campanha_id"]   = str(campanha.id)
         result["campanha_nome"] = campanha_nome
-        def _norm(p): return _re.sub(r"\D", "", p)
+        def _norm(p): return _re.sub(r"\D", "", p.split(";")[0].split(",")[0].strip())
         objs = [
             MensagemEnviada(
                 campanha=campanha,
