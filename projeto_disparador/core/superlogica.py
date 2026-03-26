@@ -33,7 +33,7 @@ def verificar_condominio(id_condominio: int):
     if dados and isinstance(dados, list):
         nome_condominio = dados[0].get("st_nome_cond")
 
-    # Condomínio existe (200) mas sem unidades — tenta pegar nome via inadimplência avançada
+    # Fallback 1: sem unidades — tenta via inadimplência avançada
     if not nome_condominio:
         try:
             r2 = requests.get(
@@ -46,6 +46,29 @@ def verificar_condominio(id_condominio: int):
                 d2 = r2.json()
                 if isinstance(d2, list) and d2:
                     nome_condominio = d2[0].get("st_nome_cond")
+        except Exception:
+            pass
+
+    # Fallback 2: sem inadimplência — tenta via despesas (ex: óticas, comercial)
+    if not nome_condominio:
+        try:
+            from datetime import date
+            r3 = requests.get(
+                f"{settings.SUPERLOGICA_BASE_URL}/despesas",
+                headers=_get_headers(),
+                params={
+                    "idCondominio": id_condominio,
+                    "dtInicio": "1/1/2020",
+                    "dtFim": f"12/31/{date.today().year + 1}",
+                    "pagina": 1,
+                    "itensPorPagina": 1,
+                },
+                timeout=20,
+            )
+            if r3.status_code == 200:
+                d3 = r3.json()
+                if isinstance(d3, list) and d3:
+                    nome_condominio = d3[0].get("st_fantasia_cond") or d3[0].get("st_nome_cond")
         except Exception:
             pass
 

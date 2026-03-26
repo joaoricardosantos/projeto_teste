@@ -595,7 +595,7 @@ def listar_condominios(request):
             if dados and isinstance(dados, list):
                 nome = dados[0].get("st_nome_cond", "").strip()
 
-            # Condomínio existe mas sem unidades — tenta via inadimplência avançada
+            # Fallback 1: sem unidades — tenta via inadimplência avançada
             if not nome:
                 r2 = req.get(
                     f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
@@ -607,6 +607,26 @@ def listar_condominios(request):
                     d2 = r2.json()
                     if isinstance(d2, list) and d2:
                         nome = (d2[0].get("st_nome_cond") or "").strip()
+
+            # Fallback 2: sem inadimplência — tenta via despesas (ex: óticas, comercial)
+            if not nome:
+                from datetime import date
+                r3 = req.get(
+                    f"{settings.SUPERLOGICA_BASE_URL}/despesas",
+                    headers=headers,
+                    params={
+                        "idCondominio": cid,
+                        "dtInicio": "1/1/2020",
+                        "dtFim": f"12/31/{date.today().year + 1}",
+                        "pagina": 1,
+                        "itensPorPagina": 1,
+                    },
+                    timeout=15,
+                )
+                if r3.status_code == 200:
+                    d3 = r3.json()
+                    if isinstance(d3, list) and d3:
+                        nome = (d3[0].get("st_fantasia_cond") or d3[0].get("st_nome_cond") or "").strip()
 
             if nome:
                 return {"id": cid, "nome": nome}
