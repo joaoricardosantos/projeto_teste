@@ -66,24 +66,24 @@ def create_template(request, payload: TemplateIn):
 
 
 @template_router.get("/{template_id}", response=TemplateOut)
-def get_template(request, template_id: UUID4):
+def get_template(request, template_id: str):
     """Retorna um template pelo ID."""
     try:
         template = MessageTemplate.objects.get(id=template_id)
-    except MessageTemplate.DoesNotExist:
+    except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
     return serialize_template(template)
 
 
 @template_router.put("/{template_id}", response=TemplateOut)
-def update_template(request, template_id: UUID4, payload: TemplateIn):
+def update_template(request, template_id: str, payload: TemplateIn):
     """Atualiza um template existente. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
     try:
         template = MessageTemplate.objects.get(id=template_id)
-    except MessageTemplate.DoesNotExist:
+    except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
 
     if not payload.name.strip():
@@ -92,7 +92,6 @@ def update_template(request, template_id: UUID4, payload: TemplateIn):
     if not payload.body.strip():
         raise HttpError(400, "Template_body_cannot_be_empty")
 
-    # Verifica duplicidade de nome (excluindo o próprio registro)
     if (
         MessageTemplate.objects.filter(name=payload.name)
         .exclude(id=template_id)
@@ -107,14 +106,14 @@ def update_template(request, template_id: UUID4, payload: TemplateIn):
 
 
 @template_router.delete("/{template_id}", response={200: dict})
-def delete_template(request, template_id: UUID4):
+def delete_template(request, template_id: str):
     """Exclui um template. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
     try:
         template = MessageTemplate.objects.get(id=template_id)
-    except MessageTemplate.DoesNotExist:
+    except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
 
     template.delete()
