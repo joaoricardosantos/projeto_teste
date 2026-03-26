@@ -147,6 +147,7 @@ def get_unidades_inadimplentes(id_condominio: int) -> list:
         telefone_principal = next((t for t in telefones if t and t.strip()), "")
         unidades.append({
             "id_unidade":         id_unidade,
+            "bloco":              dados_uni.get("bloco", ""),
             "unidade":            unidade,
             "nome":               nome,
             "valor":              valor_fmt,

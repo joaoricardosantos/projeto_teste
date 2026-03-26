@@ -141,7 +141,7 @@
 
                   <div class="unit-info">
                     <span class="unit-name">
-                      <strong>{{ u.unidade }}</strong>
+                      <strong>{{ u.bloco ? u.bloco + ' ' + u.unidade : u.unidade }}</strong>
                       <span class="text-medium-emphasis ml-1">— {{ u.nome }}</span>
                     </span>
                     <v-chip
