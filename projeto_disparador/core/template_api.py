@@ -65,9 +65,9 @@ def create_template(request, payload: TemplateIn):
     return 201, serialize_template(template)
 
 
-@template_router.get("/{template_id}", response={200: dict})
+@template_router.get("/detail", response={200: dict})
 def get_template(request, template_id: str):
-    """Retorna um template pelo ID."""
+    """Retorna um template pelo ID (query param)."""
     try:
         template = MessageTemplate.objects.get(id=template_id)
     except (MessageTemplate.DoesNotExist, Exception):
@@ -75,7 +75,7 @@ def get_template(request, template_id: str):
     return 200, serialize_template(template)
 
 
-@template_router.put("/{template_id}", response={200: dict})
+@template_router.put("/update", response={200: dict})
 def update_template(request, template_id: str, payload: TemplateIn):
     """Atualiza um template existente. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
@@ -105,7 +105,7 @@ def update_template(request, template_id: str, payload: TemplateIn):
     return 200, serialize_template(template)
 
 
-@template_router.delete("/{template_id}", response={200: dict})
+@template_router.delete("/delete", response={200: dict})
 def delete_template(request, template_id: str):
     """Exclui um template. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
