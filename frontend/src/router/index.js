@@ -8,6 +8,7 @@ import TemplatesView from '../views/TemplatesView.vue'
 import ResetPasswordView from '../views/ResetPasswordView.vue'
 import SheetsView from '../views/SheetsView.vue'  // ← NOVA INTEGRAÇÃO
 import LevantamentoView from '../views/LevantamentoView.vue'
+import FinanceiroView from '../views/FinanceiroView.vue'
 
 const routes = [
     { path: '/', name: 'Auth', component: AuthView },
@@ -19,6 +20,7 @@ const routes = [
     { path: '/templates', name: 'Templates', component: TemplatesView, meta: { requiresAuth: true } },
     { path: '/sheets',       name: 'Sheets',       component: SheetsView,       meta: { requiresAuth: true } },  // ← NOVA INTEGRAÇÃO
     { path: '/levantamento', name: 'Levantamento', component: LevantamentoView, meta: { requiresAuth: true } },
+    { path: '/financeiro',   name: 'Financeiro',   component: FinanceiroView,   meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })
@@ -35,7 +37,7 @@ router.beforeEach((to, from, next) => {
     // Bloqueia jurídico de acessar rotas não permitidas
     if (isJuridico && !isAdmin && !['/dashboard', '/relatorios'].includes(to.path)) return next('/dashboard')
     // Bloqueia financeiro de acessar rotas não permitidas
-    if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets'].includes(to.path)) return next('/dashboard')
+    if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets', '/financeiro'].includes(to.path)) return next('/dashboard')
     next()
 })
 

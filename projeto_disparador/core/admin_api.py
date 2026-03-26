@@ -573,12 +573,14 @@ def listar_condominios(request):
         "access_token": settings.SUPERLOGICA_ACCESS_TOKEN,
     }
 
-    max_id     = getattr(settings, "SUPERLOGICA_MAX_ID", 100)
     condominios = []
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    max_id = getattr(settings, "SUPERLOGICA_MAX_ID", 150)
+
     def _checar(cid):
+        # Tenta /unidades primeiro
         try:
             r = req.get(
                 f"{settings.SUPERLOGICA_BASE_URL}/unidades",
@@ -586,16 +588,39 @@ def listar_condominios(request):
                 params={"idCondominio": cid, "pagina": 1, "itensPorPagina": 1},
                 timeout=15,
             )
-            if r.status_code != 200:
-                return None
-            dados = r.json()
-            if not dados:
-                return None
-            nome = dados[0].get("st_nome_cond", "").strip()
-            if nome:
-                return {"id": cid, "nome": nome}
+            if r.status_code == 200:
+                dados = r.json()
+                if dados:
+                    nome = dados[0].get("st_nome_cond", "").strip()
+                    if nome:
+                        return {"id": cid, "nome": nome}
         except Exception:
             pass
+
+        # Fallback: /despesas (cobre condomínios sem unidades)
+        try:
+            r = req.get(
+                f"{settings.SUPERLOGICA_BASE_URL}/despesas",
+                headers=headers,
+                params={
+                    "idCondominio": cid,
+                    "dtInicio": "1/1/2020",
+                    "dtFim": "12/31/2030",
+                    "pagina": 1,
+                    "itensPorPagina": 1,
+                },
+                timeout=15,
+            )
+            if r.status_code == 200:
+                dados = r.json()
+                itens = dados if isinstance(dados, list) else dados.get("data", [])
+                if itens:
+                    nome = itens[0].get("st_fantasia_cond", "").strip()
+                    if nome:
+                        return {"id": cid, "nome": nome}
+        except Exception:
+            pass
+
         return None
 
     with ThreadPoolExecutor(max_workers=10) as executor:

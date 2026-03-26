@@ -7,7 +7,8 @@ from core.template_api import template_router
 from core.webhook_api import webhook_router
 from core.campanha_api import campanha_router
 from core.password_reset_api import password_router
-from core.sheets_api import sheets_router  # ← NOVA INTEGRAÇÃO
+from core.sheets_api import sheets_router
+from core.financeiro_api import financeiro_router
 
 api = NinjaAPI(title="Condominium Messaging API", version="1.0.0")
 
@@ -18,7 +19,8 @@ api.add_router("/messages",  message_router)
 api.add_router("/templates", template_router)
 api.add_router("/webhook",   webhook_router)
 api.add_router("/campanhas", campanha_router)
-api.add_router("/sheets",    sheets_router)  # ← NOVA INTEGRAÇÃO
+api.add_router("/sheets",     sheets_router)
+api.add_router("/financeiro", financeiro_router)
 
 urlpatterns = [
     path("api/", api.urls),
