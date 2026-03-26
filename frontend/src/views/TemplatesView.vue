@@ -367,7 +367,7 @@ const submitEdit = async () => {
   if (!validate()) return
   dialog.loading = true; dialog.error = ''
   try {
-    const res = await fetch(`/api/templates/update?template_id=${dialog.editingId}`, {
+    const res = await fetch(`/api/templates/update?tid=${dialog.editingId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify(dialog.form),
@@ -391,7 +391,7 @@ const confirmDelete = (template) => { deleteDialog.template = template; deleteDi
 const submitDelete = async () => {
   deleteDialog.loading = true
   try {
-    const res = await fetch(`/api/templates/delete?template_id=${deleteDialog.template.id}`, { method: 'DELETE', headers: authHeader() })
+    const res = await fetch(`/api/templates/delete?tid=${deleteDialog.template.id}`, { method: 'DELETE', headers: authHeader() })
     if (!res.ok) throw new Error('Erro ao excluir template')
     templates.value = templates.value.filter((t) => t.id !== deleteDialog.template.id)
     deleteDialog.open = false

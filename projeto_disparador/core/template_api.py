@@ -65,24 +65,24 @@ def create_template(request, payload: TemplateIn):
     return 201, serialize_template(template)
 
 
-@template_router.get("/detail", response={200: dict})
-def get_template(request, template_id: str):
-    """Retorna um template pelo ID (query param)."""
+@template_router.get("/detail", response={200: dict}, url_name="template_detail")
+def get_template(request, tid: str):
+    """Retorna um template pelo ID (query param tid)."""
     try:
-        template = MessageTemplate.objects.get(id=template_id)
+        template = MessageTemplate.objects.get(id=tid)
     except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
     return 200, serialize_template(template)
 
 
-@template_router.put("/update", response={200: dict})
-def update_template(request, template_id: str, payload: TemplateIn):
+@template_router.put("/update", response={200: dict}, url_name="template_update")
+def update_template(request, tid: str, payload: TemplateIn):
     """Atualiza um template existente. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
     try:
-        template = MessageTemplate.objects.get(id=template_id)
+        template = MessageTemplate.objects.get(id=tid)
     except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
 
@@ -94,7 +94,7 @@ def update_template(request, template_id: str, payload: TemplateIn):
 
     if (
         MessageTemplate.objects.filter(name=payload.name)
-        .exclude(id=template_id)
+        .exclude(id=tid)
         .exists()
     ):
         raise HttpError(400, "Template_name_already_exists")
@@ -105,14 +105,14 @@ def update_template(request, template_id: str, payload: TemplateIn):
     return 200, serialize_template(template)
 
 
-@template_router.delete("/delete", response={200: dict})
-def delete_template(request, template_id: str):
+@template_router.delete("/delete", response={200: dict}, url_name="template_delete")
+def delete_template(request, tid: str):
     """Exclui um template. Restrito a administradores."""
     if not request.auth.is_staff and not request.auth.is_superuser:
         raise HttpError(403, "Admin_privileges_required")
 
     try:
-        template = MessageTemplate.objects.get(id=template_id)
+        template = MessageTemplate.objects.get(id=tid)
     except (MessageTemplate.DoesNotExist, Exception):
         raise HttpError(404, "Template_not_found")
 
