@@ -6,13 +6,8 @@ from django.conf import settings
 
 
 def _format_phone(phone: str) -> str:
-    """
-    Normaliza o número para o formato da Evolution API.
-    Pega apenas o primeiro número se houver múltiplos separados por ; ou ,
-    """
-    # Pega apenas o primeiro número se houver múltiplos
-    phone = phone.split(";")[0].split(",")[0].strip()
-    digits = re.sub(r"\D", "", phone)
+    """Normaliza um único número para o formato da Evolution API."""
+    digits = re.sub(r"\D", "", phone.strip())
     # Remove DDI duplicado (5555...)
     while digits.startswith("55") and len(digits) > 13:
         digits = digits[2:]
@@ -87,15 +82,18 @@ def send_whatsapp_bulk(contacts: list, delay_between: float = None) -> list:
 
     results = []
     for i, contact in enumerate(contacts):
-        phone   = contact.get("phone", "")
-        message = contact.get("message", "")
-        try:
-            send_whatsapp_message(phone, message, sleep_seconds=delay_between)
-            results.append({"phone": phone, "status": "success"})
-            print(f"[ENVIO] {i+1}/{total} ✓ {phone}")
-        except Exception as e:
-            results.append({"phone": phone, "status": "error", "error": str(e)})
-            print(f"[ENVIO] {i+1}/{total} ✗ {phone} — {e}")
+        phone_raw = contact.get("phone", "")
+        message   = contact.get("message", "")
+        # Suporta múltiplos números separados por ; ou ,
+        numeros = [n.strip() for n in re.split(r"[;,]", phone_raw) if n.strip()]
+        for phone in numeros:
+            try:
+                send_whatsapp_message(phone, message, sleep_seconds=delay_between)
+                results.append({"phone": phone, "status": "success"})
+                print(f"[ENVIO] {i+1}/{total} ✓ {phone}")
+            except Exception as e:
+                results.append({"phone": phone, "status": "error", "error": str(e)})
+                print(f"[ENVIO] {i+1}/{total} ✗ {phone} — {e}")
 
         # Pausa longa entre lotes (nunca após o último)
         if (i + 1) % batch_size == 0 and (i + 1) < total:
