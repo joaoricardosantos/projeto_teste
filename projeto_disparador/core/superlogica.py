@@ -32,6 +32,23 @@ def verificar_condominio(id_condominio: int):
     nome_condominio = None
     if dados and isinstance(dados, list):
         nome_condominio = dados[0].get("st_nome_cond")
+
+    # Condomínio existe (200) mas sem unidades — tenta pegar nome via inadimplência avançada
+    if not nome_condominio:
+        try:
+            r2 = requests.get(
+                f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
+                headers=_get_headers(),
+                params={"idCondominio": id_condominio, "pagina": 1, "itensPorPagina": 1},
+                timeout=20,
+            )
+            if r2.status_code == 200:
+                d2 = r2.json()
+                if isinstance(d2, list) and d2:
+                    nome_condominio = d2[0].get("st_nome_cond")
+        except Exception:
+            pass
+
     return True, nome_condominio
 
 
