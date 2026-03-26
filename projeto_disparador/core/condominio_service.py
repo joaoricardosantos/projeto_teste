@@ -15,16 +15,21 @@ from core.evolution_service import send_whatsapp_bulk
 
 
 def _render_template(body, condo_name="", unidade="", nome="", qtd_inadimpl="", competencia="", vencimento="", valor=""):
-    return (
-        body
-        .replace("{{condominio}}",  condo_name)
-        .replace("{{unidade}}",     unidade)
-        .replace("{{nome}}",        nome)
-        .replace("{{qtd}}",         str(qtd_inadimpl))
-        .replace("{{competencia}}", competencia)
-        .replace("{{vencimento}}",  vencimento)
-        .replace("{{valor}}",       valor)
-    )
+    subs = {
+        "condominio":  condo_name,
+        "unidade":     unidade,
+        "nome":        nome,
+        "qtd":         str(qtd_inadimpl),
+        "competencia": competencia,
+        "vencimento":  vencimento,
+        "valor":       valor,
+        "data_atraso": vencimento,
+    }
+    result = body
+    for key, val in subs.items():
+        result = result.replace(f"{{{{{key}}}}}", val)  # {{chave}}
+        result = result.replace(f"{{{key}}}", val)      # {chave}
+    return result
 
 
 def _build_default_message(condo_name, unidade, nome, vencimento, competencia, valor, qtd):
