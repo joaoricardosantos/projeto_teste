@@ -83,7 +83,12 @@ def _registrar_campanha(contacts, result, failures_no_phone):
     try:
         from core.models import Campanha, MensagemEnviada
         import re as _re
-        campanha_nome = "Novo disparo"
+        from django.utils import timezone as tz
+        from collections import Counter
+        condominios = [c.get("condominio", "") for c in contacts if c.get("condominio")]
+        condo_principal = Counter(condominios).most_common(1)[0][0] if condominios else "Disparo"
+        data_hoje = tz.localtime(tz.now()).strftime("%d/%m/%Y")
+        campanha_nome = f"{condo_principal} — {data_hoje}"
         campanha = Campanha.objects.create(
             nome=campanha_nome,
             total_enviados=result.get("success", 0),
@@ -104,6 +109,19 @@ def _registrar_campanha(contacts, result, failures_no_phone):
                 status=MensagemEnviada.STATUS_ENVIADO,
             )
             for c in contacts
+        ]
+        # Registra sem-número como erro
+        objs += [
+            MensagemEnviada(
+                campanha=campanha,
+                condominio=f.get("condominio", ""),
+                unidade=f.get("unidade", ""),
+                nome=f.get("nome", ""),
+                telefone="",
+                mensagem=f.get("motivo", "Sem número cadastrado"),
+                status=MensagemEnviada.STATUS_ERRO,
+            )
+            for f in failures_no_phone
         ]
         MensagemEnviada.objects.bulk_create(objs)
     except Exception as e:
@@ -261,7 +279,7 @@ def send_messages_by_condominio(
 
         if not telefone:
             failures_no_phone.append({
-                "unidade": unidade, "nome": nome, "motivo": "Sem número cadastrado",
+                "condominio": condo_name, "unidade": unidade, "nome": nome, "motivo": "Sem número cadastrado",
             })
             continue
 

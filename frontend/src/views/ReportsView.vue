@@ -134,10 +134,91 @@
       </div>
     </v-card>
 
-    <!-- ── Seção 2: Sem número ── -->
+    <!-- ── Seção 2: Relatório de disparo ── -->
     <v-card class="section-card mb-7" elevation="3">
       <div class="section-header">
         <div class="section-badge">2</div>
+        <div>
+          <p class="section-title">Relatório de Disparo</p>
+          <p class="section-subtitle">Exporte quem respondeu, quem está aguardando e quem estava sem número</p>
+        </div>
+      </div>
+
+      <div class="pa-6">
+        <v-row align="center">
+          <v-col cols="12" sm="9">
+            <v-autocomplete
+              v-model="relatorioCampanhaId"
+              :items="campanhasRelatorio"
+              item-title="label"
+              item-value="id"
+              label="Selecione a campanha"
+              variant="outlined"
+              density="comfortable"
+              clearable
+              hide-details
+              :loading="loadingCampanhas"
+              no-data-text="Nenhuma campanha encontrada"
+              placeholder="Buscar campanha..."
+            />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-menu :disabled="isRelatorioLoading || !relatorioCampanhaId">
+              <template #activator="{ props }">
+                <v-btn
+                  color="primary" block size="large"
+                  prepend-icon="mdi-file-export"
+                  append-icon="mdi-chevron-down"
+                  :loading="isRelatorioLoading"
+                  :disabled="!relatorioCampanhaId || isRelatorioLoading"
+                  v-bind="props"
+                >{{ isRelatorioLoading ? 'Gerando...' : 'Exportar' }}</v-btn>
+              </template>
+              <v-list elevation="4" rounded="lg" min-width="200">
+                <v-list-item prepend-icon="mdi-microsoft-excel" title="Excel (.xlsx)" subtitle="Respondidos, Aguardando e Sem número" @click="exportarRelatorioDisparo('excel')" />
+                <v-divider />
+                <v-list-item prepend-icon="mdi-file-pdf-box" title="PDF" subtitle="Relatório formatado" color="red-darken-2" @click="exportarRelatorioDisparo('pdf')" />
+              </v-list>
+            </v-menu>
+          </v-col>
+        </v-row>
+
+        <!-- Preview dos totais -->
+        <v-expand-transition>
+          <div v-if="relatorioCampanha" class="mt-5">
+            <v-row>
+              <v-col cols="4">
+                <div class="stat-box stat-box--success">
+                  <p class="stat-num">{{ relatorioCampanha.respondidos }}</p>
+                  <p class="stat-label">Responderam</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--warn">
+                  <p class="stat-num">{{ relatorioCampanha.aguardando }}</p>
+                  <p class="stat-label">Aguardando</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--error">
+                  <p class="stat-num">{{ relatorioCampanha.total_sem_numero }}</p>
+                  <p class="stat-label">Sem número</p>
+                </div>
+              </v-col>
+            </v-row>
+          </div>
+        </v-expand-transition>
+
+        <v-alert v-if="relatorioError" type="error" class="mt-4" closable @click:close="relatorioError = ''">
+          {{ relatorioError }}
+        </v-alert>
+      </div>
+    </v-card>
+
+    <!-- ── Seção 3: Sem número ── -->
+    <v-card class="section-card mb-7" elevation="3">
+      <div class="section-header">
+        <div class="section-badge">3</div>
         <div>
           <p class="section-title">Unidades sem Número Cadastrado</p>
           <p class="section-subtitle">Identifique quem não pode receber cobranças por WhatsApp</p>
@@ -222,10 +303,10 @@
       </div>
     </v-card>
 
-    <!-- ── Seção 3: Disparar pelo Excel ── -->
+    <!-- ── Seção 4: Disparar pelo Excel ── -->
     <v-card class="section-card" elevation="3">
       <div class="section-header">
-        <div class="section-badge">3</div>
+        <div class="section-badge">4</div>
         <div>
           <p class="section-title">Disparar WhatsApp pelo Excel</p>
           <p class="section-subtitle">Faça upload do relatório (aba Resumo) para enviar mensagens em lote</p>
@@ -562,7 +643,60 @@ const envioFailures = (result) => {
   return result.failures.filter(f => f.phone !== '—')
 }
 
-onMounted(() => { fetchTemplates(); carregarCondominios() })
+// ── Relatório de disparo ──────────────────────────────────────────────────────
+const campanhasRelatorio  = ref([])
+const loadingCampanhas    = ref(false)
+const relatorioCampanhaId = ref(null)
+const isRelatorioLoading  = ref(false)
+const relatorioError      = ref('')
+
+const relatorioCampanha = computed(() =>
+  campanhasRelatorio.value.find(c => c.id === relatorioCampanhaId.value) || null
+)
+
+const carregarCampanhas = async () => {
+  loadingCampanhas.value = true
+  try {
+    const res = await fetch('/api/campanhas/', { headers: authHeader() })
+    if (res.ok) {
+      const lista = await res.json()
+      campanhasRelatorio.value = lista.map(c => ({
+        ...c,
+        label: `${c.nome} (${c.criada_em}) — ${c.respondidos} resp. / ${c.aguardando} ag.`,
+      }))
+    }
+  } catch (_) {}
+  finally { loadingCampanhas.value = false }
+}
+
+const exportarRelatorioDisparo = async (formato) => {
+  if (!relatorioCampanhaId.value) return
+  isRelatorioLoading.value = true
+  relatorioError.value     = ''
+  const endpoint = formato === 'pdf' ? 'relatorio-pdf' : 'relatorio-excel'
+  const ext      = formato === 'pdf' ? 'pdf' : 'xlsx'
+  try {
+    const res = await fetch(`/api/campanhas/${relatorioCampanhaId.value}/${endpoint}`, {
+      headers: authHeader(),
+    })
+    if (!res.ok) throw new Error('Erro ao gerar relatório')
+    const blob = await res.blob()
+    const a    = document.createElement('a')
+    a.href     = URL.createObjectURL(blob)
+    const disp = res.headers.get('Content-Disposition') || ''
+    const match = disp.match(/filename="(.+)"/)
+    a.download = match ? match[1] : `relatorio.${ext}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } catch (e) {
+    relatorioError.value = e.message
+  } finally {
+    isRelatorioLoading.value = false
+  }
+}
+
+onMounted(() => { fetchTemplates(); carregarCondominios(); carregarCampanhas() })
 onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 </script>
 
