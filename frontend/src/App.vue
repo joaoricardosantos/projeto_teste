@@ -148,6 +148,7 @@ const allNavItems = [
   { to: '/financeiro',   icon: 'mdi-currency-usd',           label: 'Financeiro',       adminOnly: true,  juridicoAllowed: false, financeiroAllowed: true  },
   { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
   { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
+  { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
 ]
 
