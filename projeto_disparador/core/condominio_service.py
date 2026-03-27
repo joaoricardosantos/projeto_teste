@@ -190,7 +190,7 @@ def send_messages_by_condominio(
     if template_id:
         from core.models import MessageTemplate
         try:
-            tmpl = MessageTemplate.objects.get(id=int(template_id), is_active=True)
+            tmpl = MessageTemplate.objects.get(id=template_id, is_active=True)
             template_body = tmpl.body
         except MessageTemplate.DoesNotExist:
             raise ValueError(f"Template {template_id} não encontrado ou inativo.")
