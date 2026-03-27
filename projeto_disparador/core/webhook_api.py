@@ -68,16 +68,41 @@ def evolution_webhook(request):
             return {"status": "ignored"}
 
         remote_jid = key.get("remoteJid", "")
+        push_name  = data.get("pushName", "")
 
-        # Resolve @lid para número real via Evolution API
         if "@lid" in remote_jid:
             from django.conf import settings
             instance  = body.get("instance", getattr(settings, "EVOLUTION_INSTANCE", ""))
             base_url  = getattr(settings, "EVOLUTION_BASE_URL", "").rstrip("/")
             api_key   = getattr(settings, "EVOLUTION_API_KEY", "")
+
+            # Tenta resolver via API
             phone = _resolve_lid_to_phone(remote_jid, instance, base_url, api_key)
+
+            # Fallback 1: busca pelo sufixo numérico do @lid nos telefones cadastrados
             if not phone:
-                logger.warning(f"Webhook: não foi possível resolver @lid {remote_jid}")
+                lid_digits = re.sub(r"\D", "", remote_jid)
+                if lid_digits:
+                    from core.models import MensagemEnviada
+                    msg_by_lid = MensagemEnviada.objects.filter(
+                        telefone__endswith=lid_digits[-8:],
+                    ).order_by("-enviada_em").first()
+                    if msg_by_lid:
+                        phone = msg_by_lid.telefone
+                        logger.info(f"Webhook: @lid resolvido via sufixo numérico '{lid_digits[-8:]}' → {phone}")
+
+            # Fallback 2: busca pelo pushName na tabela MensagemEnviada
+            if not phone and push_name:
+                from core.models import MensagemEnviada
+                msg_by_name = MensagemEnviada.objects.filter(
+                    nome__icontains=push_name,
+                ).order_by("-enviada_em").first()
+                if msg_by_name:
+                    phone = msg_by_name.telefone
+                    logger.info(f"Webhook: @lid resolvido via pushName '{push_name}' → {phone}")
+
+            if not phone:
+                logger.warning(f"Webhook: não foi possível resolver @lid {remote_jid} (pushName={push_name})")
                 return {"status": "ignored"}
         else:
             phone = remote_jid.replace("@s.whatsapp.net", "").replace("@c.us", "")
@@ -104,7 +129,8 @@ def evolution_webhook(request):
         from core.models import MensagemEnviada
         msgs = MensagemEnviada.objects.filter(
             telefone__in=list(numeros_busca),
-            status=MensagemEnviada.STATUS_ENVIADO,
+        ).exclude(
+            status=MensagemEnviada.STATUS_RESPONDIDO,
         ).order_by("-enviada_em")[:5]
 
         if msgs:
