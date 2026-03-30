@@ -525,7 +525,12 @@ def get_dashboard(
                     sem_numero.extend(sem_c)
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).error(f"Dashboard _processar erro: {e}", exc_info=True)
+                _log = logging.getLogger(__name__)
+                msg = str(e).lower()
+                if 'timeout' in msg or 'timed out' in msg:
+                    _log.warning(f"Dashboard: timeout no condomínio {futures[future]} — ignorado")
+                else:
+                    _log.error(f"Dashboard _processar erro: {e}", exc_info=True)
 
     maior_condo = max(condo_valores, key=condo_valores.get) if condo_valores else None
     maior_valor = condo_valores.get(maior_condo, 0) if maior_condo else 0
@@ -588,36 +593,48 @@ def listar_condominios(request):
                 params={"idCondominio": cid, "pagina": 1, "itensPorPagina": 1},
                 timeout=15,
             )
-            if r.status_code == 200:
-                dados = r.json()
-                if dados:
-                    nome = dados[0].get("st_nome_cond", "").strip()
-                    if nome:
-                        return {"id": cid, "nome": nome}
-        except Exception:
-            pass
+            if r.status_code != 200:
+                return None
+            dados = r.json()
+            nome = ""
+            if dados and isinstance(dados, list):
+                nome = dados[0].get("st_nome_cond", "").strip()
 
-        # Fallback: /despesas (cobre condomínios sem unidades)
-        try:
-            r = req.get(
-                f"{settings.SUPERLOGICA_BASE_URL}/despesas",
-                headers=headers,
-                params={
-                    "idCondominio": cid,
-                    "dtInicio": "1/1/2020",
-                    "dtFim": "12/31/2030",
-                    "pagina": 1,
-                    "itensPorPagina": 1,
-                },
-                timeout=15,
-            )
-            if r.status_code == 200:
-                dados = r.json()
-                itens = dados if isinstance(dados, list) else dados.get("data", [])
-                if itens:
-                    nome = itens[0].get("st_fantasia_cond", "").strip()
-                    if nome:
-                        return {"id": cid, "nome": nome}
+            # Fallback 1: sem unidades — tenta via inadimplência avançada
+            if not nome:
+                r2 = req.get(
+                    f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
+                    headers=headers,
+                    params={"idCondominio": cid, "pagina": 1, "itensPorPagina": 1},
+                    timeout=15,
+                )
+                if r2.status_code == 200:
+                    d2 = r2.json()
+                    if isinstance(d2, list) and d2:
+                        nome = (d2[0].get("st_nome_cond") or "").strip()
+
+            # Fallback 2: sem inadimplência — tenta via despesas (ex: óticas, comercial)
+            if not nome:
+                from datetime import date
+                r3 = req.get(
+                    f"{settings.SUPERLOGICA_BASE_URL}/despesas",
+                    headers=headers,
+                    params={
+                        "idCondominio": cid,
+                        "dtInicio": "1/1/2020",
+                        "dtFim": f"12/31/{date.today().year + 1}",
+                        "pagina": 1,
+                        "itensPorPagina": 1,
+                    },
+                    timeout=15,
+                )
+                if r3.status_code == 200:
+                    d3 = r3.json()
+                    if isinstance(d3, list) and d3:
+                        nome = (d3[0].get("st_fantasia_cond") or d3[0].get("st_nome_cond") or "").strip()
+
+            if nome:
+                return {"id": cid, "nome": nome}
         except Exception:
             pass
 

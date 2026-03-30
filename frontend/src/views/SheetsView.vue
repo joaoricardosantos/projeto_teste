@@ -1,32 +1,32 @@
 <template>
   <v-container>
     <!-- Cabeçalho -->
-    <v-row class="mb-4" align="center">
-      <v-col cols="12" sm="8">
-        <h1 class="text-h5 font-weight-bold">
-          <v-icon class="mr-2" color="green">mdi-google-spreadsheet</v-icon>
-          Dashboards Google Sheets
-        </h1>
-        <p class="text-body-2 text-medium-emphasis mt-1">
-          Visualize dados das planilhas configuradas em tempo real.
-        </p>
-      </v-col>
-      <v-col cols="12" sm="4" class="text-sm-right d-flex justify-end gap-2">
+    <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-6">
+      <div class="d-flex align-center gap-4">
+        <div class="page-icon">
+          <v-icon size="20" color="white">mdi-google-spreadsheet</v-icon>
+        </div>
+        <div>
+          <h1 class="page-title">Google Sheets</h1>
+          <p class="page-subtitle">Visualize dados das planilhas configuradas em tempo real</p>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
         <v-btn variant="outlined" prepend-icon="mdi-cog" @click="dialogSetores = true">
           Gerenciar Setores
         </v-btn>
         <v-btn
           v-if="setorAtivo"
-          color="secondary"
-          variant="outlined"
+          color="primary"
+          variant="tonal"
           :loading="loadingDashboard"
+          icon
           @click="carregarDashboard(true)"
-          title="Recarregar"
         >
           <v-icon>mdi-refresh</v-icon>
         </v-btn>
-      </v-col>
-    </v-row>
+      </div>
+    </div>
 
     <!-- Status da conexão -->
     <v-alert

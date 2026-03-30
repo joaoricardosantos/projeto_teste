@@ -107,7 +107,7 @@
         </v-row>
 
         <v-expand-transition>
-          <p v-if="loadingCondominios" class="text-caption mt-3" style="color:#006837;">
+          <p v-if="loadingCondominios" class="text-caption mt-3" style="color:#059669;">
             <v-icon size="12" color="primary">mdi-office-building-outline</v-icon>
             Buscando condomínios...
           </p>
@@ -134,10 +134,91 @@
       </div>
     </v-card>
 
-    <!-- ── Seção 2: Sem número ── -->
+    <!-- ── Seção 2: Relatório de disparo ── -->
     <v-card class="section-card mb-7" elevation="3">
       <div class="section-header">
         <div class="section-badge">2</div>
+        <div>
+          <p class="section-title">Relatório de Disparo</p>
+          <p class="section-subtitle">Exporte quem respondeu, quem está aguardando e quem estava sem número</p>
+        </div>
+      </div>
+
+      <div class="pa-6">
+        <v-row align="center">
+          <v-col cols="12" sm="9">
+            <v-autocomplete
+              v-model="relatorioCampanhaId"
+              :items="campanhasRelatorio"
+              item-title="label"
+              item-value="id"
+              label="Selecione a campanha"
+              variant="outlined"
+              density="comfortable"
+              clearable
+              hide-details
+              :loading="loadingCampanhas"
+              no-data-text="Nenhuma campanha encontrada"
+              placeholder="Buscar campanha..."
+            />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-menu :disabled="isRelatorioLoading || !relatorioCampanhaId">
+              <template #activator="{ props }">
+                <v-btn
+                  color="primary" block size="large"
+                  prepend-icon="mdi-file-export"
+                  append-icon="mdi-chevron-down"
+                  :loading="isRelatorioLoading"
+                  :disabled="!relatorioCampanhaId || isRelatorioLoading"
+                  v-bind="props"
+                >{{ isRelatorioLoading ? 'Gerando...' : 'Exportar' }}</v-btn>
+              </template>
+              <v-list elevation="4" rounded="lg" min-width="200">
+                <v-list-item prepend-icon="mdi-microsoft-excel" title="Excel (.xlsx)" subtitle="Respondidos, Aguardando e Sem número" @click="exportarRelatorioDisparo('excel')" />
+                <v-divider />
+                <v-list-item prepend-icon="mdi-file-pdf-box" title="PDF" subtitle="Relatório formatado" color="red-darken-2" @click="exportarRelatorioDisparo('pdf')" />
+              </v-list>
+            </v-menu>
+          </v-col>
+        </v-row>
+
+        <!-- Preview dos totais -->
+        <v-expand-transition>
+          <div v-if="relatorioCampanha" class="mt-5">
+            <v-row>
+              <v-col cols="4">
+                <div class="stat-box stat-box--success">
+                  <p class="stat-num">{{ relatorioCampanha.respondidos }}</p>
+                  <p class="stat-label">Responderam</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--warn">
+                  <p class="stat-num">{{ relatorioCampanha.aguardando }}</p>
+                  <p class="stat-label">Aguardando</p>
+                </div>
+              </v-col>
+              <v-col cols="4">
+                <div class="stat-box stat-box--error">
+                  <p class="stat-num">{{ relatorioCampanha.total_sem_numero }}</p>
+                  <p class="stat-label">Sem número</p>
+                </div>
+              </v-col>
+            </v-row>
+          </div>
+        </v-expand-transition>
+
+        <v-alert v-if="relatorioError" type="error" class="mt-4" closable @click:close="relatorioError = ''">
+          {{ relatorioError }}
+        </v-alert>
+      </div>
+    </v-card>
+
+    <!-- ── Seção 3: Sem número ── -->
+    <v-card class="section-card mb-7" elevation="3">
+      <div class="section-header">
+        <div class="section-badge">3</div>
         <div>
           <p class="section-title">Unidades sem Número Cadastrado</p>
           <p class="section-subtitle">Identifique quem não pode receber cobranças por WhatsApp</p>
@@ -222,10 +303,10 @@
       </div>
     </v-card>
 
-    <!-- ── Seção 3: Disparar pelo Excel ── -->
+    <!-- ── Seção 4: Disparar pelo Excel ── -->
     <v-card class="section-card" elevation="3">
       <div class="section-header">
-        <div class="section-badge">3</div>
+        <div class="section-badge">4</div>
         <div>
           <p class="section-title">Disparar WhatsApp pelo Excel</p>
           <p class="section-subtitle">Faça upload do relatório (aba Resumo) para enviar mensagens em lote</p>
@@ -256,7 +337,7 @@
             color="grey-lighten-4"
             rounded="lg"
             class="pa-4 mb-4"
-            style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; border-left: 3px solid #006837;"
+            style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; border-left: 3px solid #34d399;"
           >
             <p class="text-caption text-medium-emphasis mb-2 font-weight-bold text-uppercase" style="letter-spacing:.05em;">
               <v-icon size="13" class="mr-1" color="primary">mdi-eye-outline</v-icon>Pré-visualização
@@ -562,16 +643,69 @@ const envioFailures = (result) => {
   return result.failures.filter(f => f.phone !== '—')
 }
 
-onMounted(() => { fetchTemplates(); carregarCondominios() })
+// ── Relatório de disparo ──────────────────────────────────────────────────────
+const campanhasRelatorio  = ref([])
+const loadingCampanhas    = ref(false)
+const relatorioCampanhaId = ref(null)
+const isRelatorioLoading  = ref(false)
+const relatorioError      = ref('')
+
+const relatorioCampanha = computed(() =>
+  campanhasRelatorio.value.find(c => c.id === relatorioCampanhaId.value) || null
+)
+
+const carregarCampanhas = async () => {
+  loadingCampanhas.value = true
+  try {
+    const res = await fetch('/api/campanhas/', { headers: authHeader() })
+    if (res.ok) {
+      const lista = await res.json()
+      campanhasRelatorio.value = lista.map(c => ({
+        ...c,
+        label: `${c.nome} (${c.criada_em}) — ${c.respondidos} resp. / ${c.aguardando} ag.`,
+      }))
+    }
+  } catch (_) {}
+  finally { loadingCampanhas.value = false }
+}
+
+const exportarRelatorioDisparo = async (formato) => {
+  if (!relatorioCampanhaId.value) return
+  isRelatorioLoading.value = true
+  relatorioError.value     = ''
+  const endpoint = formato === 'pdf' ? 'relatorio-pdf' : 'relatorio-excel'
+  const ext      = formato === 'pdf' ? 'pdf' : 'xlsx'
+  try {
+    const res = await fetch(`/api/campanhas/${relatorioCampanhaId.value}/${endpoint}`, {
+      headers: authHeader(),
+    })
+    if (!res.ok) throw new Error('Erro ao gerar relatório')
+    const blob = await res.blob()
+    const a    = document.createElement('a')
+    a.href     = URL.createObjectURL(blob)
+    const disp = res.headers.get('Content-Disposition') || ''
+    const match = disp.match(/filename="(.+)"/)
+    a.download = match ? match[1] : `relatorio.${ext}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } catch (e) {
+    relatorioError.value = e.message
+  } finally {
+    isRelatorioLoading.value = false
+  }
+}
+
+onMounted(() => { fetchTemplates(); carregarCondominios(); carregarCampanhas() })
 onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 </script>
 
 <style scoped>
 .page-icon {
   width: 42px; height: 42px; border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3); flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28); flex-shrink: 0;
   margin-right: 8px;
 }
 .page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
@@ -579,7 +713,7 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 
 .section-card { border-radius: 14px !important; overflow: hidden; }
 .section-header {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center; gap: 14px;
 }
@@ -594,18 +728,18 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 
 .result-card { border-radius: 14px !important; overflow: hidden; }
 .result-header {
-  background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center;
   color: white; font-weight: 600; font-size: 0.92rem;
 }
 .stat-box { text-align: center; padding: 12px; border-radius: 10px; }
-.stat-box--success { background: rgba(46,125,50,0.08); }
+.stat-box--success { background: rgba(5,150,105,0.08); }
 .stat-box--error   { background: rgba(198,40,40,0.08); }
 .stat-box--warn    { background: rgba(245,127,23,0.08); }
 .stat-num   { font-size: 1.6rem; font-weight: 800; margin: 0; line-height: 1; }
 .stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; opacity: .6; margin: 4px 0 0; }
-.stat-box--success .stat-num { color: #2e7d32; }
+.stat-box--success .stat-num { color: #059669; }
 .stat-box--error   .stat-num { color: #c62828; }
 .stat-box--warn    .stat-num { color: #e65100; }
 </style>

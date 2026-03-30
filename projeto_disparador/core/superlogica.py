@@ -32,6 +32,46 @@ def verificar_condominio(id_condominio: int):
     nome_condominio = None
     if dados and isinstance(dados, list):
         nome_condominio = dados[0].get("st_nome_cond")
+
+    # Fallback 1: sem unidades — tenta via inadimplência avançada
+    if not nome_condominio:
+        try:
+            r2 = requests.get(
+                f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
+                headers=_get_headers(),
+                params={"idCondominio": id_condominio, "pagina": 1, "itensPorPagina": 1},
+                timeout=20,
+            )
+            if r2.status_code == 200:
+                d2 = r2.json()
+                if isinstance(d2, list) and d2:
+                    nome_condominio = d2[0].get("st_nome_cond")
+        except Exception:
+            pass
+
+    # Fallback 2: sem inadimplência — tenta via despesas (ex: óticas, comercial)
+    if not nome_condominio:
+        try:
+            from datetime import date
+            r3 = requests.get(
+                f"{settings.SUPERLOGICA_BASE_URL}/despesas",
+                headers=_get_headers(),
+                params={
+                    "idCondominio": id_condominio,
+                    "dtInicio": "1/1/2020",
+                    "dtFim": f"12/31/{date.today().year + 1}",
+                    "pagina": 1,
+                    "itensPorPagina": 1,
+                },
+                timeout=20,
+            )
+            if r3.status_code == 200:
+                d3 = r3.json()
+                if isinstance(d3, list) and d3:
+                    nome_condominio = d3[0].get("st_fantasia_cond") or d3[0].get("st_nome_cond")
+        except Exception:
+            pass
+
     return True, nome_condominio
 
 
@@ -43,7 +83,7 @@ def buscar_unidades(id_condominio: int):
             f"{settings.SUPERLOGICA_BASE_URL}/unidades",
             headers=_get_headers(),
             params={"idCondominio": id_condominio, "pagina": pagina, "itensPorPagina": 50},
-            timeout=30,
+            timeout=15,
         )
         if response.status_code != 200:
             return None

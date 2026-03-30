@@ -53,8 +53,9 @@ class User(AbstractUser):
 
 
 class MessageTemplate(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120)
-    body = models.TextField(help_text='Use {nome}, {condominio}, {valor}, {data_atraso} como variáveis.')
+    body = models.TextField(help_text='Use {nome}, {unidade}, {condominio}, {valor}, {vencimento}, {data_atraso}, {qtd} como variáveis.')
     is_active = models.BooleanField(default=True) 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

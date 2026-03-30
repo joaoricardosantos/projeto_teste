@@ -3,6 +3,7 @@ Serviço de integração com Google Sheets API.
 Busca dados de planilhas configuradas e formata para dashboards.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -73,7 +74,8 @@ def buscar_dados_planilha(
     Returns:
         Lista de linhas, cada linha é uma lista de valores
     """
-    cache_key = f"sheets:{spreadsheet_id}:{range_name}"
+    _h = hashlib.md5(f"{spreadsheet_id}:{range_name}".encode()).hexdigest()
+    cache_key = f"sheets:{_h}"
     
     if use_cache:
         cached = cache.get(cache_key)
@@ -116,7 +118,8 @@ def buscar_multiplas_abas(
     Returns:
         Dicionário com range como chave e dados como valor
     """
-    cache_key = f"sheets:multi:{spreadsheet_id}:{'-'.join(ranges)}"
+    _h = hashlib.md5(f"{spreadsheet_id}:{','.join(ranges)}".encode()).hexdigest()
+    cache_key = f"sheets:multi:{_h}"
     
     if use_cache:
         cached = cache.get(cache_key)

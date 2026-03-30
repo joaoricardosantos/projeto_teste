@@ -72,10 +72,9 @@
             <v-expand-transition>
               <v-sheet
                 v-if="selectedTemplate"
-                color="grey-lighten-4"
                 rounded="lg"
-                class="pa-4 mt-4"
-                style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; border-left: 3px solid #006837;"
+                class="pa-4 mt-4 template-preview"
+                style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; border-left: 3px solid #34d399;"
               >
                 <p class="text-caption text-medium-emphasis mb-2 font-weight-bold text-uppercase" style="letter-spacing:.05em;">
                   <v-icon size="13" class="mr-1" color="primary">mdi-eye-outline</v-icon>
@@ -141,7 +140,7 @@
 
                   <div class="unit-info">
                     <span class="unit-name">
-                      <strong>{{ u.unidade }}</strong>
+                      <strong>{{ u.bloco ? u.bloco + ' ' + u.unidade : u.unidade }}</strong>
                       <span class="text-medium-emphasis ml-1">— {{ u.nome }}</span>
                     </span>
                     <v-chip
@@ -490,9 +489,9 @@ onMounted(() => {
 .page-icon {
   width: 42px; height: 42px;
   border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3);
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28);
   flex-shrink: 0; margin-right: 8px;
 }
 .page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
@@ -502,7 +501,7 @@ onMounted(() => {
 .section-card { border-radius: 14px !important; overflow: hidden; }
 
 .section-header {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center; gap: 14px;
 }
@@ -523,7 +522,7 @@ onMounted(() => {
   transition: background 0.1s;
 }
 .unit-row--even { background: rgba(0,0,0,0.025); }
-.unit-row:hover { background: rgba(0,104,55,0.05); }
+.unit-row:hover { background: rgba(5,150,105,0.05); }
 .unit-info { flex: 1; min-width: 0; }
 .unit-name { font-size: 0.875rem; }
 .unit-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -532,18 +531,18 @@ onMounted(() => {
 /* ── Result card ── */
 .result-card { border-radius: 14px !important; overflow: hidden; }
 .result-header {
-  background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center;
   color: white; font-weight: 600; font-size: 0.92rem;
 }
 .stat-box { text-align: center; padding: 12px; border-radius: 10px; }
-.stat-box--success { background: rgba(46,125,50,0.08); }
+.stat-box--success { background: rgba(5,150,105,0.08); }
 .stat-box--error   { background: rgba(198,40,40,0.08); }
 .stat-box--warn    { background: rgba(245,127,23,0.08); }
 .stat-num   { font-size: 1.6rem; font-weight: 800; margin: 0; line-height: 1; }
 .stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; opacity: .6; margin: 4px 0 0; }
-.stat-box--success .stat-num { color: #2e7d32; }
+.stat-box--success .stat-num { color: #059669; }
 .stat-box--error   .stat-num { color: #c62828; }
 .stat-box--warn    .stat-num { color: #e65100; }
 </style>

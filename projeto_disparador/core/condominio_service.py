@@ -14,17 +14,23 @@ from core.superlogica import (
 from core.evolution_service import send_whatsapp_bulk
 
 
-def _render_template(body, condo_name="", unidade="", nome="", qtd_inadimpl="", competencia="", vencimento="", valor=""):
-    return (
-        body
-        .replace("{{condominio}}",  condo_name)
-        .replace("{{unidade}}",     unidade)
-        .replace("{{nome}}",        nome)
-        .replace("{{qtd}}",         str(qtd_inadimpl))
-        .replace("{{competencia}}", competencia)
-        .replace("{{vencimento}}",  vencimento)
-        .replace("{{valor}}",       valor)
-    )
+def _render_template(body, condo_name="", unidade="", bloco="", nome="", qtd_inadimpl="", competencia="", vencimento="", valor=""):
+    subs = {
+        "condominio":  condo_name,
+        "bloco":       bloco,
+        "unidade":     unidade,
+        "nome":        nome,
+        "qtd":         str(qtd_inadimpl),
+        "competencia": competencia,
+        "vencimento":  vencimento,
+        "valor":       valor,
+        "data_atraso": vencimento,
+    }
+    result = body
+    for key, val in subs.items():
+        result = result.replace(f"{{{{{key}}}}}", val)  # {{chave}}
+        result = result.replace(f"{{{key}}}", val)      # {chave}
+    return result
 
 
 def _build_default_message(condo_name, unidade, nome, vencimento, competencia, valor, qtd):
@@ -77,7 +83,12 @@ def _registrar_campanha(contacts, result, failures_no_phone):
     try:
         from core.models import Campanha, MensagemEnviada
         import re as _re
-        campanha_nome = "Novo disparo"
+        from django.utils import timezone as tz
+        from collections import Counter
+        condominios = [c.get("condominio", "") for c in contacts if c.get("condominio")]
+        condo_principal = Counter(condominios).most_common(1)[0][0] if condominios else "Disparo"
+        data_hoje = tz.localtime(tz.now()).strftime("%d/%m/%Y")
+        campanha_nome = f"{condo_principal} — {data_hoje}"
         campanha = Campanha.objects.create(
             nome=campanha_nome,
             total_enviados=result.get("success", 0),
@@ -86,7 +97,7 @@ def _registrar_campanha(contacts, result, failures_no_phone):
         )
         result["campanha_id"]   = str(campanha.id)
         result["campanha_nome"] = campanha_nome
-        def _norm(p): return _re.sub(r"\D", "", p)
+        def _norm(p): return _re.sub(r"\D", "", p.split(";")[0].split(",")[0].strip())
         objs = [
             MensagemEnviada(
                 campanha=campanha,
@@ -98,6 +109,19 @@ def _registrar_campanha(contacts, result, failures_no_phone):
                 status=MensagemEnviada.STATUS_ENVIADO,
             )
             for c in contacts
+        ]
+        # Registra sem-número como erro
+        objs += [
+            MensagemEnviada(
+                campanha=campanha,
+                condominio=f.get("condominio", ""),
+                unidade=f.get("unidade", ""),
+                nome=f.get("nome", ""),
+                telefone="",
+                mensagem=f.get("motivo", "Sem número cadastrado"),
+                status=MensagemEnviada.STATUS_ERRO,
+            )
+            for f in failures_no_phone
         ]
         MensagemEnviada.objects.bulk_create(objs)
     except Exception as e:
@@ -147,6 +171,7 @@ def get_unidades_inadimplentes(id_condominio: int) -> list:
         telefone_principal = next((t for t in telefones if t and t.strip()), "")
         unidades.append({
             "id_unidade":         id_unidade,
+            "bloco":              dados_uni.get("bloco", ""),
             "unidade":            unidade,
             "nome":               nome,
             "valor":              valor_fmt,
@@ -183,7 +208,7 @@ def send_messages_by_condominio(
     if template_id:
         from core.models import MessageTemplate
         try:
-            tmpl = MessageTemplate.objects.get(id=int(template_id), is_active=True)
+            tmpl = MessageTemplate.objects.get(id=template_id, is_active=True)
             template_body = tmpl.body
         except MessageTemplate.DoesNotExist:
             raise ValueError(f"Template {template_id} não encontrado ou inativo.")
@@ -220,6 +245,7 @@ def send_messages_by_condominio(
         dados_uni  = mapa_unidades.get(id_unidade, {})
         unidade    = dados_uni.get("unidade", "") or resumo.get("nome_pdf", "").split(" - ")[0].strip()
         nome       = dados_uni.get("sacado", "") or resumo.get("nome_pdf", "").split(" - ")[-1].strip()
+        bloco      = dados_uni.get("bloco", "")
         condo_name = nome_condominio or str(id_condominio)
 
         total = resumo.get("total", 0)
@@ -237,6 +263,7 @@ def send_messages_by_condominio(
                 template_body,
                 condo_name=condo_name,
                 unidade=unidade,
+                bloco=bloco,
                 nome=nome,
                 qtd_inadimpl=qtd,
                 competencia=competencia,
@@ -252,7 +279,7 @@ def send_messages_by_condominio(
 
         if not telefone:
             failures_no_phone.append({
-                "unidade": unidade, "nome": nome, "motivo": "Sem número cadastrado",
+                "condominio": condo_name, "unidade": unidade, "nome": nome, "motivo": "Sem número cadastrado",
             })
             continue
 

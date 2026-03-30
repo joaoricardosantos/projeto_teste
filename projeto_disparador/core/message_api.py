@@ -105,7 +105,7 @@ def get_unidades_inadimplentes(request, id_condominio: str):
 def send_selected(
     request,
     id_condominio: int,
-    template_id: Optional[int] = None,
+    template_id: Optional[str] = None,
     unidades_ids: str = "",
 ):
     """
