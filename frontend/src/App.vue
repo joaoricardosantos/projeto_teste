@@ -1,12 +1,36 @@
 <template>
   <v-app :theme="theme">
 
-    <!-- ── Sidebar desktop (só renderiza quando autenticado) ── -->
+    <!-- ── App bar mobile ── -->
+    <v-app-bar
+      v-if="isAuthenticated && isMobile"
+      color="sidebar"
+      elevation="0"
+      height="56"
+    >
+      <v-btn icon variant="text" @click="sidebarOpen = !sidebarOpen">
+        <v-icon color="rgba(148,163,184,0.9)">mdi-menu</v-icon>
+      </v-btn>
+      <div class="d-flex align-center" style="gap:8px; margin-left:4px;">
+        <div class="logo-icon" style="width:28px;height:28px;border-radius:7px;">
+          <span class="logo-letter" style="font-size:12px;">P</span>
+        </div>
+        <span class="brand-name">Pratika</span>
+      </div>
+      <template #append>
+        <v-btn icon variant="text" @click="toggleTheme">
+          <v-icon size="18" color="rgba(148,163,184,0.7)">{{ theme === 'pratikaDark' ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
+        </v-btn>
+      </template>
+    </v-app-bar>
+
+    <!-- ── Sidebar (desktop: permanent rail; mobile: temporary overlay) ── -->
     <v-navigation-drawer
       v-if="isAuthenticated"
       v-model="sidebarOpen"
-      :rail="rail"
-      permanent
+      :rail="rail && !isMobile"
+      :permanent="!isMobile"
+      :temporary="isMobile"
       color="sidebar"
       width="240"
       rail-width="68"
@@ -126,9 +150,11 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useDisplay } from 'vuetify'
 
 const router = useRouter()
 const route  = useRoute()
+const { mobile: isMobile } = useDisplay()
 
 const rail         = ref(false)
 const theme        = ref(
@@ -145,6 +171,16 @@ const isAuthenticated = computed(() => !!route.meta.requiresAuth)
 // Logout em outra aba redireciona para login
 window.addEventListener('storage', (e) => {
   if (e.key === 'access_token' && !e.newValue) router.push('/')
+})
+
+// Fecha drawer no mobile ao navegar
+watch(() => route.path, () => {
+  if (isMobile.value) sidebarOpen.value = false
+})
+
+// Sincroniza drawer com breakpoint
+watch(isMobile, (mobile) => {
+  sidebarOpen.value = !mobile
 })
 
 // Atualiza tema ao mudar de rota (login sempre claro, resto salvo)
@@ -178,7 +214,7 @@ const allNavItems = [
   { to: '/templates',    icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false, financeiroAllowed: false },
   { to: '/sheets',       icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false, financeiroAllowed: true  },
   { to: '/financeiro',   icon: 'mdi-currency-usd',           label: 'Financeiro',       adminOnly: true,  juridicoAllowed: false, financeiroAllowed: true  },
-  { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
+  { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
@@ -395,6 +431,11 @@ const logout = () => {
 
 /* ── Login page — sem padding do v-main ── */
 .v-main:has(.auth-page) { padding: 0 !important; }
+
+/* ── Mobile ── */
+@media (max-width: 959px) {
+  .page-wrapper { padding: 16px; }
+}
 
 /* ── Global ── */
 .v-card { border-radius: 14px !important; }

@@ -240,7 +240,7 @@
             size="large"
             :loading="loading"
             :disabled="!selectedCondominioIds.length || loadingCondominios || loadingUnidades || selectedUnidades.length === 0"
-            @click="handleEnvio"
+            @click="dialogConfirmar = true"
           >
             <v-icon start>mdi-whatsapp</v-icon>
             Enviar para {{ selectedUnidades.length }} unidade{{ selectedUnidades.length !== 1 ? 's' : '' }}
@@ -249,6 +249,90 @@
 
       </v-col>
     </v-row>
+
+    <!-- ── Modal de confirmação ── -->
+    <v-dialog v-model="dialogConfirmar" max-width="440" persistent>
+      <v-card rounded="xl" elevation="12" class="confirm-card">
+
+        <!-- Header no padrão dialog-header global -->
+        <div class="dialog-header d-flex align-center gap-3">
+          <div class="page-icon" style="width:36px;height:36px;border-radius:9px;flex-shrink:0;">
+            <v-icon size="18" color="white">mdi-whatsapp</v-icon>
+          </div>
+          <div>
+            <p class="confirm-title">Confirmar disparo</p>
+            <p class="confirm-subtitle">Revise os dados antes de enviar</p>
+          </div>
+        </div>
+
+        <v-divider class="confirm-divider" />
+
+        <div class="pa-5">
+
+          <!-- Itens de resumo -->
+          <div class="confirm-items">
+            <div class="confirm-item">
+              <div class="confirm-item__left">
+                <v-icon size="15" color="primary" class="mr-2">mdi-office-building</v-icon>
+                <span>Condomínio{{ selectedCondominioIds.length > 1 ? 's' : '' }}</span>
+              </div>
+              <span class="confirm-item__val">
+                {{ selectedCondominioIds.length }} selecionado{{ selectedCondominioIds.length !== 1 ? 's' : '' }}
+              </span>
+            </div>
+
+            <div class="confirm-item">
+              <div class="confirm-item__left">
+                <v-icon size="15" color="primary" class="mr-2">mdi-home-group</v-icon>
+                <span>Unidades a receber</span>
+              </div>
+              <span class="confirm-item__val confirm-item__val--green">{{ selectedUnidades.length }}</span>
+            </div>
+
+            <div class="confirm-item">
+              <div class="confirm-item__left">
+                <v-icon size="15" color="primary" class="mr-2">mdi-message-text-outline</v-icon>
+                <span>Template</span>
+              </div>
+              <span class="confirm-item__val">{{ selectedTemplate ? selectedTemplate.name : 'Padrão' }}</span>
+            </div>
+
+            <div v-if="unidadesSemNumero.length" class="confirm-item">
+              <div class="confirm-item__left">
+                <v-icon size="15" color="error" class="mr-2">mdi-phone-off</v-icon>
+                <span>Sem número</span>
+              </div>
+              <span class="confirm-item__val confirm-item__val--red">
+                {{ unidadesSemNumero.length }} unidade{{ unidadesSemNumero.length !== 1 ? 's' : '' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Avisos inline -->
+          <div v-if="unidadesSemNumero.length" class="confirm-notice confirm-notice--warn mt-3">
+            <v-icon size="14" color="#d97706" class="mr-2 flex-shrink-0">mdi-phone-off</v-icon>
+            <span>{{ unidadesSemNumero.length }} unidade{{ unidadesSemNumero.length !== 1 ? 's' : '' }} sem número não receberão mensagem.</span>
+          </div>
+
+          <div class="confirm-notice mt-2">
+            <v-icon size="14" color="primary" class="mr-2 flex-shrink-0">mdi-information-outline</v-icon>
+            <span>Esta ação envia mensagens reais via WhatsApp e não pode ser desfeita.</span>
+          </div>
+        </div>
+
+        <v-divider class="confirm-divider" />
+
+        <div class="d-flex justify-end gap-2 pa-4">
+          <v-btn variant="text" color="grey" size="small" @click="dialogConfirmar = false">
+            Cancelar
+          </v-btn>
+          <v-btn color="primary" size="small" :loading="loading" @click="confirmarEnvio">
+            <v-icon start size="16">mdi-send</v-icon>
+            Confirmar envio
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
 
   </div>
 </template>
@@ -261,6 +345,7 @@ const errorMessage         = ref('')
 const successMessage       = ref('')
 const resultDetails        = ref(null)
 const lastEnvioData        = ref(null)
+const dialogConfirmar      = ref(false)
 
 const condominios           = ref([])
 const loadingCondominios    = ref(false)
@@ -417,6 +502,11 @@ const baixarRelatorio = async () => {
   }
 }
 
+const confirmarEnvio = () => {
+  dialogConfirmar.value = false
+  handleEnvio()
+}
+
 const handleEnvio = async () => {
   if (!selectedCondominioIds.value.length || selectedUnidades.value.length === 0) return
   loading.value = true
@@ -545,4 +635,48 @@ onMounted(() => {
 .stat-box--success .stat-num { color: #059669; }
 .stat-box--error   .stat-num { color: #c62828; }
 .stat-box--warn    .stat-num { color: #e65100; }
+
+/* ── Confirmation dialog ── */
+.confirm-card { overflow: hidden; }
+
+.dialog-header {
+  padding: 16px 20px;
+  background: rgb(var(--v-theme-surface));
+  border-left: 3px solid #34d399;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.confirm-title    { font-weight: 700; font-size: 0.95rem; margin: 0; color: rgb(var(--v-theme-on-surface)); }
+.confirm-subtitle { font-size: 0.75rem; opacity: .5; margin: 2px 0 0; }
+.confirm-divider  { opacity: 0.08; }
+
+/* Itens de resumo */
+.confirm-items { display: flex; flex-direction: column; gap: 2px; }
+.confirm-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-radius: 8px;
+  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(var(--v-border-color), 0.06);
+}
+.confirm-item + .confirm-item { margin-top: 4px; }
+.confirm-item__left {
+  display: flex; align-items: center;
+  font-size: 0.82rem; opacity: .65;
+}
+.confirm-item__val {
+  font-size: 0.83rem; font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+}
+.confirm-item__val--green { color: #059669; font-size: 0.95rem; }
+.confirm-item__val--red   { color: #dc2626; }
+
+/* Avisos inline */
+.confirm-notice {
+  display: flex; align-items: flex-start;
+  padding: 9px 12px; border-radius: 8px;
+  font-size: 0.78rem; line-height: 1.45;
+  background: rgba(var(--v-theme-primary), 0.06);
+  color: rgb(var(--v-theme-on-surface));
+  opacity: .85;
+}
+.confirm-notice--warn { background: rgba(217, 119, 6, 0.08); }
 </style>
