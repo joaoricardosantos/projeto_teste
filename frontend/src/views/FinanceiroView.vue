@@ -242,7 +242,7 @@
                   color="indigo"
                   height="6"
                   rounded
-                  bg-color="indigo-lighten-5"
+                  bg-color="rgba(92,107,192,0.15)"
                 />
               </div>
             </div>
@@ -279,7 +279,7 @@
                   color="teal"
                   height="6"
                   rounded
-                  bg-color="teal-lighten-5"
+                  bg-color="rgba(0,150,136,0.15)"
                 />
               </div>
             </div>
