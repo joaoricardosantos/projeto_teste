@@ -390,6 +390,7 @@ const carregarMovimentos = async () => {
 
 // ---- Funções: OAB ----
 const consultarOab = async (pagina = 1) => {
+  pagina = parseInt(pagina) || 1
   if (!oabNumero.value || !oabUf.value) return
   loadingOab.value  = true
   erroOab.value     = ''
@@ -404,7 +405,15 @@ const consultarOab = async (pagina = 1) => {
     })
     const res  = await fetch(`/api/pje/oab?${params}`, { headers: authHeader() })
     const data = await res.json()
-    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail) || 'Erro ao consultar OAB')
+    if (!res.ok) {
+      const detail = data.detail
+      const msg = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+          : (detail?.message || detail?.msg || JSON.stringify(detail) || 'Erro ao consultar OAB')
+      throw new Error(msg || 'Erro ao consultar OAB')
+    }
     comunicacoes.value    = data.comunicacoes
     oabTotal.value        = data.total
     oabPagina.value       = data.pagina
@@ -417,15 +426,15 @@ const consultarOab = async (pagina = 1) => {
   }
 }
 
-const mudarPagina = (p) => consultarOab(p)
+const mudarPagina = (p) => consultarOab(parseInt(p))
 </script>
 
 <style scoped>
 .page-icon {
   width: 42px; height: 42px; border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3); flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28); flex-shrink: 0;
   margin-right: 8px;
 }
 .page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
@@ -433,7 +442,7 @@ const mudarPagina = (p) => consultarOab(p)
 
 .section-card   { border-radius: 14px !important; overflow: hidden; }
 .section-header {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center;
 }

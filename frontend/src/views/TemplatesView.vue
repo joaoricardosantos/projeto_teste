@@ -54,10 +54,10 @@
             </div>
             <span class="template-name">{{ template.name }}</span>
             <v-spacer />
-            <v-btn icon size="small" variant="text" color="white" style="opacity:.8" @click="openEditDialog(template)">
+            <v-btn icon size="small" variant="text" color="grey-darken-1" @click="openEditDialog(template)">
               <v-icon size="17">mdi-pencil</v-icon>
             </v-btn>
-            <v-btn icon size="small" variant="text" color="white" style="opacity:.8" @click="confirmDelete(template)">
+            <v-btn icon size="small" variant="text" color="error" @click="confirmDelete(template)">
               <v-icon size="17">mdi-delete</v-icon>
             </v-btn>
           </div>
@@ -409,9 +409,9 @@ onMounted(fetchTemplates)
 <style scoped>
 .page-icon {
   width: 42px; height: 42px; border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3); flex-shrink: 0; margin-right: 8px;
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28); flex-shrink: 0; margin-right: 8px;
 }
 .page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
 .page-subtitle { font-size: 0.82rem; opacity: .55; margin: 2px 0 0; }
@@ -420,31 +420,36 @@ onMounted(fetchTemplates)
 .empty-card { border-radius: 14px !important; }
 .empty-icon {
   width: 72px; height: 72px; border-radius: 18px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 8px 24px rgba(0,168,81,0.25);
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.2), 0 8px 24px rgba(5,150,105,0.28);
 }
 
 /* Template card */
 .template-card { border-radius: 14px !important; overflow: hidden; }
 .template-card-header {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  border-left: 3px solid #34d399;
   padding: 12px 14px;
   display: flex; align-items: center; gap: 10px;
 }
 .template-icon {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: rgba(255,255,255,0.2);
+  width: 30px; height: 30px; border-radius: 8px;
+  background: linear-gradient(135deg, #34d399, #059669);
+  box-shadow: 0 2px 8px rgba(5,150,105,0.3);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.template-name { color: white; font-weight: 600; font-size: 0.88rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.template-name { color: #0f172a; font-weight: 600; font-size: 0.88rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Dialog header */
 .dialog-header {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
-  padding: 16px 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  border-left: 3px solid #34d399;
+  padding: 14px 20px;
   display: flex; align-items: center;
-  color: white; font-size: 1rem; font-weight: 600;
+  color: #0f172a; font-size: 0.95rem; font-weight: 600;
 }
 </style>

@@ -368,9 +368,9 @@ onMounted(fetchUsers)
 <style scoped>
 .page-icon {
   width: 42px; height: 42px; border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3); flex-shrink: 0; margin-right: 8px;
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28); flex-shrink: 0; margin-right: 8px;
 }
 .page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
 .page-subtitle { font-size: 0.82rem; opacity: .55; margin: 2px 0 0; }
@@ -378,7 +378,7 @@ onMounted(fetchUsers)
 .section-card { border-radius: 14px !important; overflow: hidden; }
 
 .section-header {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 18px;
   display: flex; align-items: center; gap: 12px;
 }

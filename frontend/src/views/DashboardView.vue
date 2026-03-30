@@ -86,7 +86,7 @@
             <v-row class="mb-6" align="stretch">
               <v-col cols="12" sm="6" md="3">
                 <v-card class="kpi-card" elevation="3">
-                  <div class="kpi-icon-wrap" style="background: linear-gradient(135deg, #00c853 0%, #006837 100%);">
+                  <div class="kpi-icon-wrap" style="background: linear-gradient(135deg, #34d399 0%, #059669 100%);">
                     <v-icon color="white" size="22">mdi-currency-brl</v-icon>
                   </div>
                   <p class="kpi-label">Total Inadimplência</p>
@@ -384,9 +384,9 @@ onMounted(carregar)
 .page-icon {
   width: 42px; height: 42px;
   border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3);
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28);
   flex-shrink: 0; margin-right: 8px;
 }
 .page-title   { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
@@ -419,7 +419,7 @@ onMounted(carregar)
 
 /* ── Card header bar ── */
 .card-header-bar {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center; justify-content: space-between;
 }
@@ -428,7 +428,7 @@ onMounted(carregar)
 /* ── Percentual bar ── */
 .pct-cell { display: flex; align-items: center; gap: 10px; width: 100%; padding-right: 4px; }
 .pct-bar-bg { flex: 1; height: 8px; background: rgba(0,104,55,.1); border-radius: 99px; overflow: hidden; min-width: 80px; }
-.pct-bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #006837, #00a651); transition: width 0.4s ease; }
+.pct-bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #059669, #34d399); transition: width 0.4s ease; }
 .pct-label { font-size: 12px; font-weight: 600; color: rgb(var(--v-theme-primary)); min-width: 38px; text-align: right; flex-shrink: 0; }
 
 /* ── Transições ── */

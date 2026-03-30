@@ -83,7 +83,7 @@ def buscar_unidades(id_condominio: int):
             f"{settings.SUPERLOGICA_BASE_URL}/unidades",
             headers=_get_headers(),
             params={"idCondominio": id_condominio, "pagina": pagina, "itensPorPagina": 50},
-            timeout=30,
+            timeout=15,
         )
         if response.status_code != 200:
             return None

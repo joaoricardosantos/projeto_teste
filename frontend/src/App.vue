@@ -15,7 +15,7 @@
       <div class="sidebar-header" :class="{ 'rail-mode': rail }">
         <div class="logo-area" @click="rail = !rail">
           <div class="logo-icon">
-            <v-icon size="22" color="white">mdi-home-city</v-icon>
+            <span class="logo-letter">P</span>
           </div>
           <Transition name="fade-slide">
             <div v-if="!rail" class="logo-text">
@@ -30,7 +30,7 @@
           class="toggle-btn"
           @click.stop="rail = true"
         >
-          <v-icon size="18" color="rgba(255,255,255,0.5)">mdi-chevron-left</v-icon>
+          <v-icon size="18" color="rgba(148,163,184,0.6)">mdi-chevron-left</v-icon>
         </v-btn>
       </div>
 
@@ -57,33 +57,53 @@
       </v-list>
 
       <template #append>
-        <v-divider style="border-color: rgba(255,255,255,0.08)" />
-        <div class="sidebar-footer">
-          <v-tooltip :text="theme === 'pratikaDark' ? 'Modo claro' : 'Modo escuro'" location="right">
-            <template #activator="{ props }">
-              <v-btn v-bind="props" icon variant="text" size="small" class="footer-btn" @click="toggleTheme">
-                <v-icon size="18" color="rgba(255,255,255,0.6)">
-                  {{ theme === 'pratikaDark' ? 'mdi-weather-sunny' : 'mdi-weather-night' }}
-                </v-icon>
-              </v-btn>
-            </template>
-          </v-tooltip>
+        <v-divider style="border-color: rgba(255,255,255,0.06)" />
 
-          <template v-if="isAuthenticated">
-            <v-tooltip v-if="rail" text="Sair" location="right">
+        <!-- Usuário + ações -->
+        <div class="sidebar-footer" :class="{ 'rail-mode': rail }">
+          <template v-if="!rail">
+            <div class="user-info">
+              <div class="user-avatar">
+                <span>{{ userInitials }}</span>
+              </div>
+              <div class="user-details">
+                <span class="user-name">{{ userName }}</span>
+                <span class="user-role">{{ userRole }}</span>
+              </div>
+            </div>
+            <div class="footer-actions">
+              <v-tooltip :text="theme === 'pratikaDark' ? 'Modo claro' : 'Modo escuro'" location="top">
+                <template #activator="{ props }">
+                  <v-btn v-bind="props" icon variant="text" size="x-small" class="footer-btn" @click="toggleTheme">
+                    <v-icon size="16">{{ theme === 'pratikaDark' ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+              <v-tooltip text="Sair" location="top">
+                <template #activator="{ props }">
+                  <v-btn v-bind="props" icon variant="text" size="x-small" class="footer-btn" @click="logout">
+                    <v-icon size="16">mdi-logout</v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+            </div>
+          </template>
+
+          <template v-else>
+            <v-tooltip :text="theme === 'pratikaDark' ? 'Modo claro' : 'Modo escuro'" location="right">
               <template #activator="{ props }">
-                <v-btn v-bind="props" icon variant="text" size="small" class="footer-btn" @click="logout">
-                  <v-icon size="18" color="rgba(255,255,255,0.6)">mdi-logout</v-icon>
+                <v-btn v-bind="props" icon variant="text" size="small" class="footer-btn" @click="toggleTheme">
+                  <v-icon size="16">{{ theme === 'pratikaDark' ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
                 </v-btn>
               </template>
             </v-tooltip>
-            <template v-if="!rail">
-              <v-spacer />
-              <v-btn variant="text" size="small" class="footer-btn logout-btn" @click="logout">
-                <v-icon size="16" class="mr-1">mdi-logout</v-icon>
-                Sair
-              </v-btn>
-            </template>
+            <v-tooltip text="Sair" location="right">
+              <template #activator="{ props }">
+                <v-btn v-bind="props" icon variant="text" size="small" class="footer-btn" @click="logout">
+                  <v-icon size="16">mdi-logout</v-icon>
+                </v-btn>
+              </template>
+            </v-tooltip>
           </template>
         </div>
       </template>
@@ -136,9 +156,21 @@ watch(() => route.meta.requiresAuth, (authed) => {
   }
 })
 
-const isAdmin = computed(() => localStorage.getItem('is_admin') === 'true')
-const isJuridico = computed(() => localStorage.getItem('is_juridico') === 'true')
+const isAdmin      = computed(() => localStorage.getItem('is_admin')      === 'true')
+const isJuridico   = computed(() => localStorage.getItem('is_juridico')   === 'true')
 const isFinanceiro = computed(() => localStorage.getItem('is_financeiro') === 'true')
+
+const userName     = computed(() => localStorage.getItem('user_name') || 'Usuário')
+const userInitials = computed(() => {
+  const n = userName.value.trim().split(' ')
+  return n.length >= 2 ? (n[0][0] + n[n.length - 1][0]).toUpperCase() : n[0].slice(0, 2).toUpperCase()
+})
+const userRole = computed(() => {
+  if (isAdmin.value)      return 'Administrador'
+  if (isJuridico.value)   return 'Jurídico'
+  if (isFinanceiro.value) return 'Financeiro'
+  return 'Usuário'
+})
 
 const allNavItems = [
   { to: '/dashboard',    icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true  },
@@ -177,23 +209,24 @@ const logout = () => {
 </script>
 
 <style>
-/* Sidebar */
+/* ── Sidebar container ── */
 .v-navigation-drawer.v-theme--pratikaLight .v-navigation-drawer__content,
 .v-navigation-drawer.v-theme--pratikaDark .v-navigation-drawer__content {
   display: flex;
   flex-direction: column;
 }
 
+/* ── Header ── */
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 16px 16px;
-  min-height: 72px;
+  padding: 18px 14px 14px;
+  min-height: 68px;
 }
 .sidebar-header.rail-mode {
   justify-content: center;
-  padding: 20px 8px 16px;
+  padding: 18px 8px 14px;
 }
 .logo-area {
   display: flex;
@@ -203,69 +236,143 @@ const logout = () => {
   user-select: none;
 }
 .logo-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0, 168, 81, 0.35);
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.3), 0 4px 14px rgba(5,150,105,0.45);
+}
+.logo-letter {
+  font-size: 15px;
+  font-weight: 800;
+  color: white;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 .logo-text {
   display: flex;
   flex-direction: column;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 .brand-name {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
-  color: white;
+  color: #f8fafc;
   letter-spacing: -0.02em;
 }
 .brand-sub {
   font-size: 10px;
-  color: rgba(255,255,255,0.5);
-  letter-spacing: 0.05em;
+  color: rgba(148,163,184,0.7);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.toggle-btn { opacity: 0.6; transition: opacity 0.2s; }
+.toggle-btn { opacity: 0.5; transition: opacity 0.2s; }
 .toggle-btn:hover { opacity: 1; }
 
-/* Nav items */
+/* ── Nav items ── */
 .sidebar-nav .nav-item {
-  color: rgba(255,255,255,0.65) !important;
+  color: rgba(148,163,184,0.9) !important;
   transition: all 0.15s ease;
+  position: relative;
+  min-height: 38px !important;
 }
 .sidebar-nav .nav-item:hover {
-  color: white !important;
-  background: rgba(255,255,255,0.08) !important;
+  color: #f8fafc !important;
+  background: rgba(255,255,255,0.06) !important;
 }
 .sidebar-nav .nav-item-active {
-  color: white !important;
-  background: rgba(0,168,81,0.25) !important;
+  color: #f8fafc !important;
+  background: rgba(52,211,153,0.1) !important;
+}
+.sidebar-nav .nav-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #34d399;
 }
 .sidebar-nav .nav-item-active .v-icon {
-  color: #4ade80 !important;
+  color: #34d399 !important;
 }
 
-/* Footer */
+/* ── Footer ── */
 .sidebar-footer {
+  padding: 10px 12px 14px;
+  min-height: 60px;
   display: flex;
   align-items: center;
-  padding: 10px 12px;
+  justify-content: space-between;
+}
+.sidebar-footer.rail-mode {
+  flex-direction: column;
   gap: 4px;
-  min-height: 52px;
+  justify-content: center;
+}
+
+/* Usuário */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+  border: 1px solid rgba(148,163,184,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.user-avatar span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+.user-details {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.user-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+.user-role {
+  font-size: 10px;
+  color: rgba(148,163,184,0.6);
+}
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
 }
 .footer-btn {
-  color: rgba(255,255,255,0.55) !important;
+  color: rgba(148,163,184,0.6) !important;
   transition: color 0.15s;
 }
-.footer-btn:hover { color: white !important; }
-.logout-btn { font-size: 12px; }
+.footer-btn:hover { color: #f8fafc !important; }
 
-/* Main */
+/* ── Main ── */
 .main-content {
   background: rgb(var(--v-theme-background)) !important;
 }
@@ -274,22 +381,78 @@ const logout = () => {
   padding: 28px;
 }
 
-/* Page transition */
+/* ── Page transition ── */
 .page-enter-active,
 .page-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
-.page-enter-from { opacity: 0; transform: translateY(6px); }
-.page-leave-to { opacity: 0; transform: translateY(-4px); }
+.page-enter-from { opacity: 0; transform: translateY(5px); }
+.page-leave-to   { opacity: 0; transform: translateY(-3px); }
 
-/* Fade slide logo */
+/* ── Fade slide logo ── */
 .fade-slide-enter-active,
 .fade-slide-leave-active { transition: opacity 0.2s, transform 0.2s; }
 .fade-slide-enter-from,
 .fade-slide-leave-to { opacity: 0; transform: translateX(-6px); }
 
-/* Login page — sem padding do v-main */
+/* ── Login page — sem padding do v-main ── */
 .v-main:has(.auth-page) { padding: 0 !important; }
 
-/* Global */
-.v-card { border-radius: 12px !important; }
-.v-btn { letter-spacing: 0.01em !important; }
+/* ── Global ── */
+.v-card { border-radius: 14px !important; }
+.v-btn  { letter-spacing: 0.01em !important; }
+
+/* ──────────────────────────────────────────────────────────
+   Page headers — padrão global para todos os views
+   ────────────────────────────────────────────────────────── */
+.page-icon {
+  width: 40px !important; height: 40px !important;
+  border-radius: 11px !important;
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%) !important;
+  display: flex !important; align-items: center !important;
+  justify-content: center !important; flex-shrink: 0 !important;
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.2), 0 4px 12px rgba(5,150,105,0.28) !important;
+  margin-right: 8px;
+}
+.page-title {
+  font-size: 1.15rem !important; font-weight: 700 !important;
+  letter-spacing: -0.02em !important; line-height: 1.3 !important; margin: 0 !important;
+}
+.page-subtitle { font-size: 0.8rem !important; opacity: .55 !important; margin: 2px 0 0 !important; }
+
+/* ──────────────────────────────────────────────────────────
+   Section cards — substituição do banner verde por design moderno
+   ────────────────────────────────────────────────────────── */
+.section-header {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  border-left: 3px solid #34d399 !important;
+  padding: 13px 20px !important;
+}
+.section-badge {
+  background: linear-gradient(135deg, #34d399, #059669) !important;
+  box-shadow: 0 2px 8px rgba(5,150,105,0.3) !important;
+  border-radius: 8px !important;
+  color: white !important;
+  font-weight: 700 !important;
+}
+.section-title    { color: #0f172a !important; }
+.section-subtitle { color: #64748b !important; }
+
+.v-theme--pratikaDark .section-header {
+  background: #1e293b !important;
+  border-bottom-color: #334155 !important;
+}
+.v-theme--pratikaDark .section-title    { color: #f1f5f9 !important; }
+.v-theme--pratikaDark .section-subtitle { color: #94a3b8 !important; }
+
+/* ── Templates dark mode ── */
+.v-theme--pratikaDark .template-card-header {
+  background: #1e293b !important;
+  border-bottom-color: #334155 !important;
+}
+.v-theme--pratikaDark .template-name  { color: #f1f5f9 !important; }
+.v-theme--pratikaDark .dialog-header  {
+  background: #1e293b !important;
+  border-bottom-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
 </style>

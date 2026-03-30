@@ -525,7 +525,12 @@ def get_dashboard(
                     sem_numero.extend(sem_c)
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).error(f"Dashboard _processar erro: {e}", exc_info=True)
+                _log = logging.getLogger(__name__)
+                msg = str(e).lower()
+                if 'timeout' in msg or 'timed out' in msg:
+                    _log.warning(f"Dashboard: timeout no condomínio {futures[future]} — ignorado")
+                else:
+                    _log.error(f"Dashboard _processar erro: {e}", exc_info=True)
 
     maior_condo = max(condo_valores, key=condo_valores.get) if condo_valores else None
     maior_valor = condo_valores.get(maior_condo, 0) if maior_condo else 0

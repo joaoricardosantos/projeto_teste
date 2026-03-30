@@ -4,6 +4,7 @@
     <div class="auth-bg">
       <div class="bg-orb bg-orb--1" />
       <div class="bg-orb bg-orb--2" />
+      <div class="bg-orb bg-orb--3" />
       <div class="bg-grid" />
     </div>
 
@@ -51,7 +52,7 @@
             <div class="brand-icon">
               <v-icon size="24" color="white">mdi-home-city</v-icon>
             </div>
-            <div class="brand-title" style="color: #006837;">Pratika</div>
+            <div class="brand-title" style="color: #059669;">Pratika</div>
           </div>
 
           <div class="form-header">
@@ -194,9 +195,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
 
-const router       = useRouter()
 const email        = ref('')
 const password     = ref('')
 const showPassword = ref(false)
@@ -311,27 +310,33 @@ const handleLogin = async () => {
 .bg-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.35;
+  filter: blur(90px);
+  opacity: 0.3;
 }
 .bg-orb--1 {
-  width: 500px; height: 500px;
-  background: radial-gradient(circle, #00a651 0%, transparent 70%);
-  top: -100px; left: -100px;
+  width: 480px; height: 480px;
+  background: radial-gradient(circle, #059669 0%, transparent 70%);
+  top: -120px; left: -80px;
 }
 .bg-orb--2 {
-  width: 400px; height: 400px;
-  background: radial-gradient(circle, #006837 0%, transparent 70%);
-  bottom: -80px; right: 35%;
-  opacity: 0.2;
+  width: 360px; height: 360px;
+  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  bottom: -60px; right: 32%;
+  opacity: 0.18;
+}
+.bg-orb--3 {
+  width: 280px; height: 280px;
+  background: radial-gradient(circle, #34d399 0%, transparent 70%);
+  top: 40%; left: 30%;
+  opacity: 0.12;
 }
 .bg-grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0,104,55,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,104,55,0.04) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px);
+  background-size: 44px 44px;
 }
 
 /* Layout dois painéis, altura total */
@@ -347,7 +352,7 @@ const handleLogin = async () => {
 .auth-left {
   display: none;
   flex: 1;
-  background: linear-gradient(150deg, #0f1d14 0%, #1a3a23 60%, #0a2e12 100%);
+  background: linear-gradient(145deg, #0f172a 0%, #1e293b 55%, #0c1a2e 100%);
   align-items: center;
   justify-content: center;
   padding: 60px 56px;
@@ -364,7 +369,14 @@ const handleLogin = async () => {
   background-image: url('/fundosistema.png');
   background-size: cover;
   background-position: center;
-  opacity: 0.06;
+  opacity: 0.04;
+}
+.auth-left::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(52,211,153,0.3), transparent);
 }
 .auth-left-content {
   position: relative;
@@ -381,12 +393,12 @@ const handleLogin = async () => {
 .brand-icon {
   width: 44px; height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 6px 20px rgba(0,168,81,0.4);
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.25), 0 6px 20px rgba(5,150,105,0.45);
 }
 .brand-title {
   font-size: 18px;
@@ -408,7 +420,7 @@ const handleLogin = async () => {
   letter-spacing: -0.03em;
   margin-bottom: 20px;
 }
-.headline-accent { color: #4ade80; }
+.headline-accent { color: #34d399; }
 .auth-desc {
   font-size: 15px;
   color: rgba(255,255,255,0.55);
@@ -424,11 +436,11 @@ const handleLogin = async () => {
   font-size: 14px;
 }
 .feature-dot {
-  width: 7px; height: 7px;
+  width: 6px; height: 6px;
   border-radius: 50%;
-  background: #4ade80;
+  background: #34d399;
   flex-shrink: 0;
-  box-shadow: 0 0 8px rgba(74,222,128,0.6);
+  box-shadow: 0 0 8px rgba(52,211,153,0.55);
 }
 
 /* Painel direito: largura fixa, altura 100% */
@@ -440,8 +452,9 @@ const handleLogin = async () => {
   align-items: center;
   justify-content: center;
   padding: 40px 32px;
-  background: white;
+  background: #f8fafc;
   overflow-y: auto;
+  border-left: 1px solid #e2e8f0;
 }
 /* Mobile: ocupa tela inteira */
 @media (max-width: 959px) {
@@ -468,7 +481,7 @@ const handleLogin = async () => {
 .form-title {
   font-size: 26px;
   font-weight: 700;
-  color: #0f1d14;
+  color: #0f172a;
   letter-spacing: -0.02em;
   margin-bottom: 6px;
 }
@@ -494,16 +507,16 @@ const handleLogin = async () => {
   font-weight: 600 !important;
   font-size: 14px !important;
   letter-spacing: 0.01em !important;
-  box-shadow: 0 4px 16px rgba(0,104,55,0.3) !important;
+  box-shadow: 0 4px 16px rgba(5,150,105,0.3) !important;
   transition: box-shadow 0.2s, transform 0.15s !important;
 }
 .submit-btn:hover {
-  box-shadow: 0 6px 20px rgba(0,104,55,0.4) !important;
+  box-shadow: 0 6px 22px rgba(5,150,105,0.42) !important;
   transform: translateY(-1px);
 }
 .forgot-link {
   font-size: 13px;
-  color: #006837;
+  color: #059669;
   text-decoration: none;
   opacity: 0.8;
   transition: opacity 0.15s;
