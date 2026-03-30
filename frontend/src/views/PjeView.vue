@@ -114,16 +114,16 @@
               </div>
             </v-card>
 
-            <v-card class="mb-4" elevation="2" rounded="lg" v-if="processo.ultimo_movimento?.descricao">
-              <v-card-text class="d-flex align-center gap-4 pa-5">
+            <v-card class="mb-4 section-card" v-if="processo.ultimo_movimento?.descricao">
+              <div class="section-header d-flex align-center" style="gap: 10px;">
                 <div class="ultimo-mov-icon">
-                  <v-icon color="white" size="22">mdi-clock-check-outline</v-icon>
+                  <v-icon color="white" size="15">mdi-clock-check-outline</v-icon>
                 </div>
-                <div>
-                  <p class="text-caption text-medium-emphasis mb-1">ÚLTIMA MOVIMENTAÇÃO</p>
-                  <p class="text-body-1 font-weight-bold">{{ processo.ultimo_movimento.descricao }}</p>
-                  <p class="text-caption text-medium-emphasis">{{ processo.ultimo_movimento.data }}</p>
-                </div>
+                <p class="section-title">Última Movimentação</p>
+              </div>
+              <v-card-text class="pa-4">
+                <p class="text-body-1 font-weight-bold mb-1">{{ processo.ultimo_movimento.descricao }}</p>
+                <p class="text-caption text-medium-emphasis">{{ processo.ultimo_movimento.data }}</p>
               </v-card-text>
             </v-card>
 
@@ -452,9 +452,9 @@ const mudarPagina = (p) => consultarOab(parseInt(p))
 .info-value { font-size: 0.9rem; font-weight: 500; margin: 0; }
 
 .ultimo-mov-icon {
-  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
-  background: linear-gradient(135deg, #00a651, #006837);
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+  background: linear-gradient(135deg, #34d399, #059669);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.25);
+  box-shadow: 0 2px 8px rgba(5,150,105,0.3);
 }
 </style>

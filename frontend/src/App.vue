@@ -444,6 +444,10 @@ const logout = () => {
 .v-theme--pratikaDark .section-title    { color: #f1f5f9 !important; }
 .v-theme--pratikaDark .section-subtitle { color: #94a3b8 !important; }
 
+/* ── Template preview ── */
+.template-preview { background: #f1f5f9 !important; }
+.v-theme--pratikaDark .template-preview { background: #0f172a !important; }
+
 /* ── Templates dark mode ── */
 .v-theme--pratikaDark .template-card-header {
   background: #1e293b !important;
