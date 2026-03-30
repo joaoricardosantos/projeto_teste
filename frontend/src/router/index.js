@@ -37,7 +37,7 @@ router.beforeEach((to, from, next) => {
     if (to.meta.requiresAdmin && !isAdmin) return next('/dashboard')
     if (to.meta.requiresAdminOrJuridico && !isAdmin && !isJuridico) return next('/dashboard')
     // Bloqueia jurídico de acessar rotas não permitidas
-    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/pje'].includes(to.path)) return next('/dashboard')
+    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/pje', '/levantamento'].includes(to.path)) return next('/dashboard')
     // Bloqueia financeiro de acessar rotas não permitidas
     if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets', '/financeiro'].includes(to.path)) return next('/dashboard')
     next()

@@ -24,6 +24,10 @@ def _require_admin(user):
     if not _is_admin(user):
         raise HttpError(403, "Admin_privileges_required")
 
+def _require_admin_or_juridico(user):
+    if not (_is_admin(user) or getattr(user, 'is_juridico', False)):
+        raise HttpError(403, "Admin_privileges_required")
+
 def _require_approved(user):
     if not user.is_approved:
         raise HttpError(403, "Account_not_approved")
@@ -477,40 +481,56 @@ def get_dashboard(
     sem_numero   = []
     total_unidades = 0
 
+    import logging as _logging
+    import time as _time
+    import requests as _requests
+    _log = _logging.getLogger(__name__)
+
     def _processar(condo_id):
-        acesso, nome = verificar_condominio(condo_id)
-        if not acesso:
-            return None
-        mapa = buscar_unidades(condo_id)
-        if not mapa:
-            return None
-        try:
-            resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa, data_inicio)
-        except TypeError:
-            # Retrocompatibilidade: superlogica.py ainda sem patch data_inicio
-            resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
-        if not resumo:
-            return None
-
-        condo_total   = Decimal("0")
-        sem_num_local = []
-        for uid, vals in resumo.items():
+        _MAX_TENTATIVAS = 3
+        for tentativa in range(_MAX_TENTATIVAS):
             try:
-                condo_total += Decimal(str(vals["total"]))
-            except Exception:
-                pass
-            tels     = vals.get("telefones", [])
-            t1       = tels[0] if len(tels) > 0 else "s/n"
-            t2       = tels[1] if len(tels) > 1 else "s/n"
-            dados_uni = mapa.get(uid, {})
-            if t1.lower() == "s/n" and t2.lower() == "s/n":
-                sem_num_local.append({
-                    "condominio": nome or "",
-                    "unidade":    dados_uni.get("unidade") or vals.get("nome_pdf", ""),
-                    "nome":       dados_uni.get("sacado", ""),
-                })
+                acesso, nome = verificar_condominio(condo_id)
+                if not acesso:
+                    return None
+                mapa = buscar_unidades(condo_id)
+                if not mapa:
+                    return None
+                try:
+                    resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa, data_inicio)
+                except TypeError:
+                    # Retrocompatibilidade: superlogica.py ainda sem patch data_inicio
+                    resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
+                if not resumo:
+                    return None
 
-        return nome, float(condo_total.quantize(Decimal("0.01"))), len(resumo), sem_num_local
+                condo_total   = Decimal("0")
+                sem_num_local = []
+                for uid, vals in resumo.items():
+                    try:
+                        condo_total += Decimal(str(vals["total"]))
+                    except Exception:
+                        pass
+                    tels     = vals.get("telefones", [])
+                    t1       = tels[0] if len(tels) > 0 else "s/n"
+                    t2       = tels[1] if len(tels) > 1 else "s/n"
+                    dados_uni = mapa.get(uid, {})
+                    if t1.lower() == "s/n" and t2.lower() == "s/n":
+                        sem_num_local.append({
+                            "condominio": nome or "",
+                            "unidade":    dados_uni.get("unidade") or vals.get("nome_pdf", ""),
+                            "nome":       dados_uni.get("sacado", ""),
+                        })
+
+                return nome, float(condo_total.quantize(Decimal("0.01"))), len(resumo), sem_num_local
+
+            except _requests.exceptions.RequestException as net_err:
+                if tentativa < _MAX_TENTATIVAS - 1:
+                    _log.warning(f"Dashboard: erro de rede no condomínio {condo_id} (tentativa {tentativa + 1}/{_MAX_TENTATIVAS}): {net_err} — retentando...")
+                    _time.sleep(2 ** tentativa)  # 1s, 2s
+                else:
+                    _log.error(f"Dashboard: condomínio {condo_id} falhou após {_MAX_TENTATIVAS} tentativas — dados ausentes nas métricas")
+                    return None
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS_CONDOMINIOS) as executor:
         futures = {executor.submit(_processar, cid): cid for cid in ids_range}
@@ -524,13 +544,7 @@ def get_dashboard(
                     total_unidades += qtd_c
                     sem_numero.extend(sem_c)
             except Exception as e:
-                import logging
-                _log = logging.getLogger(__name__)
-                msg = str(e).lower()
-                if 'timeout' in msg or 'timed out' in msg:
-                    _log.warning(f"Dashboard: timeout no condomínio {futures[future]} — ignorado")
-                else:
-                    _log.error(f"Dashboard _processar erro: {e}", exc_info=True)
+                _log.error(f"Dashboard _processar erro inesperado no condomínio {futures[future]}: {e}", exc_info=True)
 
     maior_condo = max(condo_valores, key=condo_valores.get) if condo_valores else None
     maior_valor = condo_valores.get(maior_condo, 0) if maior_condo else 0
@@ -832,7 +846,7 @@ def relatorio_sem_numero_xlsx(
     excluir_juridico_externo: bool = False,
 ):
     """Gera Excel com unidades sem número cadastrado."""
-    _require_admin(request.auth)
+    _require_admin_or_juridico(request.auth)
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
@@ -945,7 +959,7 @@ def relatorio_sem_numero_pdf(
     excluir_juridico_externo: bool = False,
 ):
     """Gera PDF com unidades sem número cadastrado."""
-    _require_admin(request.auth)
+    _require_admin_or_juridico(request.auth)
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
