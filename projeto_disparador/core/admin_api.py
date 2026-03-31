@@ -783,11 +783,11 @@ def exportar_sem_cpf_pdf(request, id_condominio: Optional[str] = None):
         _logo_path = os.path.join(os.path.dirname(__file__), "logo_pratika.png")
         if os.path.exists(_logo_path):
             from reportlab.platypus import Image as RLImage
-            logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+            logo_img = RLImage(_logo_path, width=2.4*cm, height=2.4*cm)
         else:
             logo_img = Paragraph("", style_sub)
 
-        header_table = Table([[logo_img, Paragraph("Unidades sem CPF/CNPJ", style_title)]], colWidths=[4*cm, None])
+        header_table = Table([[logo_img, Paragraph("Unidades sem CPF/CNPJ", style_title)]], colWidths=[2.8*cm, None])
         header_table.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("LEFTPADDING", (0,0), (-1,-1), 0)]))
         story.append(header_table)
         story.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", style_sub))
@@ -1027,11 +1027,11 @@ def relatorio_sem_numero_pdf(
         _logo_path = os.path.join(os.path.dirname(__file__), "logo_pratika.png")
         if os.path.exists(_logo_path):
             from reportlab.platypus import Image as RLImage
-            logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+            logo_img = RLImage(_logo_path, width=2.4*cm, height=2.4*cm)
         else:
             logo_img = Paragraph("", style_sub)
 
-        header_table = Table([[logo_img, Paragraph("Unidades sem Número Cadastrado", style_title)]], colWidths=[4*cm, None])
+        header_table = Table([[logo_img, Paragraph("Unidades sem Número Cadastrado", style_title)]], colWidths=[2.8*cm, None])
         header_table.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("LEFTPADDING", (0,0), (-1,-1), 0)]))
         story.append(header_table)
 

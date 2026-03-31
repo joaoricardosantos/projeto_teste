@@ -60,10 +60,10 @@
               style="position:absolute;visibility:hidden;width:0;height:0;"
             />
 
-            <v-btn size="default" color="primary" :loading="loading" prepend-icon="mdi-refresh" @click="carregar(false)">
+            <v-btn size="default" color="primary" :loading="loading" :disabled="loading" prepend-icon="mdi-refresh" @click="carregar(false)">
               Atualizar
             </v-btn>
-            <v-btn size="default" variant="outlined" :loading="loading" prepend-icon="mdi-refresh-circle" @click="carregar(true)">
+            <v-btn size="default" variant="outlined" :loading="loading" :disabled="loading" prepend-icon="mdi-refresh-circle" @click="carregar(true)">
               Forçar
             </v-btn>
           </div>
@@ -288,7 +288,6 @@ const carregar = async (forceRefresh = false) => {
   }
   if (!forceRefresh && localCache[key]) {
     dados.value = localCache[key]
-    preCarregarOposto()
     return
   }
   loading.value = true
@@ -296,7 +295,6 @@ const carregar = async (forceRefresh = false) => {
   erro.value    = ''
   try {
     dados.value = await fetchDados(ultimos5anos.value)
-    preCarregarOposto()
   } catch (e) {
     erro.value = e.message
   } finally {
@@ -328,12 +326,7 @@ const toggleFiltro = async () => {
   preCarregarOposto()
 }
 
-const preCarregarOposto = () => {
-  const outroFiltro = !ultimos5anos.value
-  const outraKey = cacheKey(outroFiltro)
-  if (localCache[outraKey]) return
-  fetchDados(outroFiltro).catch(() => {})
-}
+// preCarregarOposto removido — causava duplo scan e rate-limit 429 na Superlógica
 
 const headersRanking = [
   { title: '#',          key: 'posicao',    width: 70,  sortable: false },

@@ -11,6 +11,19 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 
+import logging as _log
+import threading as _threading
+
+_logger = _log.getLogger(__name__)
+
+_MAX_RETRIES_429 = 5        # tentativas ao receber 429
+_BASE_WAIT_429   = 3        # segundos base de espera ao receber 429
+
+# Limita o total de chamadas simultâneas à API Superlógica em todo o processo.
+# Evita explosão de requisições que gera 429.
+_SL_SEMAFORO = _threading.Semaphore(8)
+
+
 def _get_headers() -> dict:
     return {
         "Content-Type": "application/json",
@@ -19,10 +32,40 @@ def _get_headers() -> dict:
     }
 
 
+def _get_sl(url: str, params: dict, timeout: int = 30) -> requests.Response:
+    """
+    GET com:
+    - Semáforo global que limita as chamadas simultâneas (evita 429 por excesso)
+    - Retry automático em caso de 429 ou falha de rede
+    - Respeita o header Retry-After quando presente
+    """
+    with _SL_SEMAFORO:
+        for tentativa in range(_MAX_RETRIES_429):
+            try:
+                resp = requests.get(url, headers=_get_headers(), params=params, timeout=timeout)
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 0))
+                    wait = retry_after if retry_after > 0 else _BASE_WAIT_429 * (2 ** tentativa)
+                    _logger.warning(
+                        f"Rate limit 429 em {url} — aguardando {wait}s "
+                        f"(tentativa {tentativa+1}/{_MAX_RETRIES_429})"
+                    )
+                    time.sleep(wait)
+                    continue
+                return resp
+            except requests.exceptions.RequestException as exc:
+                if tentativa < _MAX_RETRIES_429 - 1:
+                    wait = _BASE_WAIT_429 * (2 ** tentativa)
+                    _logger.warning(f"Erro de rede em {url}: {exc} — retry em {wait}s")
+                    time.sleep(wait)
+                else:
+                    raise
+        return resp  # noqa: F821 — última tentativa foi 429
+
+
 def verificar_condominio(id_condominio: int):
-    response = requests.get(
+    response = _get_sl(
         f"{settings.SUPERLOGICA_BASE_URL}/unidades",
-        headers=_get_headers(),
         params={"idCondominio": id_condominio, "pagina": 1, "itensPorPagina": 1},
         timeout=20,
     )
@@ -39,9 +82,8 @@ def buscar_unidades(id_condominio: int):
     mapa = {}
     pagina = 1
     while True:
-        response = requests.get(
+        response = _get_sl(
             f"{settings.SUPERLOGICA_BASE_URL}/unidades",
-            headers=_get_headers(),
             params={"idCondominio": id_condominio, "pagina": pagina, "itensPorPagina": 50},
             timeout=30,
         )
@@ -112,9 +154,8 @@ def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> 
     processados = set()
 
     while True:
-        response = requests.get(
+        response = _get_sl(
             f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/index",
-            headers=_get_headers(),
             params={
                 "idCondominio":      id_condominio,
                 "pagina":            pagina,
@@ -122,7 +163,7 @@ def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> 
                 "posicaoEm":         data_posicao,
                 "comValoresAtualizados": 1,
             },
-            timeout=30,
+            timeout=45,
         )
         if response.status_code != 200:
             break
@@ -152,12 +193,11 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
     Usa /avancada filtrando por unidade para obter valores exatos
     com índice de correção monetária atualizado.
     """
-    # Retry até 3 vezes em caso de erro temporário
+    # Retry até 3 vezes em caso de erro temporário (429 já tratado por _get_sl)
     for tentativa in range(3):
         try:
-            response = requests.get(
+            response = _get_sl(
                 f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
-                headers=_get_headers(),
                 params={
                     "idCondominio":           id_condominio,
                     "idUnidades":             id_unidade,
@@ -255,10 +295,10 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
 
 
 # Número de threads paralelas por condomínio.
-# 8 é um bom equilíbrio: rápido sem sobrecarregar a API Superlógica.
-_MAX_WORKERS_UNIDADES = 12
-# Número de condomínios processados em paralelo.
-_MAX_WORKERS_CONDOMINIOS = 6
+# Workers reduzidos para evitar rate-limit 429 (limite: 5000 req/min).
+# _get_sl já faz retry com backoff em 429, mas reduzir concorrência é mais seguro.
+_MAX_WORKERS_UNIDADES    = 4
+_MAX_WORKERS_CONDOMINIOS = 3
 
 
 def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict):
@@ -698,13 +738,13 @@ def gerar_pdf_inadimplentes(
     _logo_path = _os.path.join(_os.path.dirname(__file__), "logo_pratika.png")
 
     if _os.path.exists(_logo_path):
-        logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+        logo_img = RLImage(_logo_path, width=2.4*cm, height=2.4*cm)
     else:
         logo_img = Paragraph("", style_sub)
 
     header_table = Table(
         [[logo_img, Paragraph(titulo_txt, style_title)]],
-        colWidths=[4*cm, None],
+        colWidths=[2.8*cm, None],
     )
     header_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

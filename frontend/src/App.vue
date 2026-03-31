@@ -61,13 +61,13 @@
       <v-divider style="border-color: rgba(255,255,255,0.08)" />
 
       <!-- Nav items — só mostra se autenticado -->
-      <v-list v-if="isAuthenticated" nav density="compact" class="sidebar-nav px-2 py-3">
+      <v-list v-if="isAuthenticated" nav density="comfortable" class="sidebar-nav px-2 py-3">
         <v-list-item
           v-for="item in navItems"
           :key="item.to"
           :to="item.to"
           rounded="lg"
-          class="nav-item mb-1"
+          class="nav-item mb-2"
           active-class="nav-item-active"
           :value="item.to"
         >
@@ -217,6 +217,7 @@ const allNavItems = [
   { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false },
+  { to: '/agenda',       icon: 'mdi-calendar-month-outline', label: 'Agenda',           adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true  },
   { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
 ]
 
@@ -314,7 +315,7 @@ const logout = () => {
   color: rgba(148,163,184,0.9) !important;
   transition: all 0.15s ease;
   position: relative;
-  min-height: 38px !important;
+  min-height: 44px !important;
 }
 .sidebar-nav .nav-item:hover {
   color: #f8fafc !important;
