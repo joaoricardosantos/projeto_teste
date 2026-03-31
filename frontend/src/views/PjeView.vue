@@ -114,16 +114,16 @@
               </div>
             </v-card>
 
-            <v-card class="mb-4" elevation="2" rounded="lg" v-if="processo.ultimo_movimento?.descricao">
-              <v-card-text class="d-flex align-center gap-4 pa-5">
+            <v-card class="mb-4 section-card" v-if="processo.ultimo_movimento?.descricao">
+              <div class="section-header d-flex align-center" style="gap: 10px;">
                 <div class="ultimo-mov-icon">
-                  <v-icon color="white" size="22">mdi-clock-check-outline</v-icon>
+                  <v-icon color="white" size="15">mdi-clock-check-outline</v-icon>
                 </div>
-                <div>
-                  <p class="text-caption text-medium-emphasis mb-1">ÚLTIMA MOVIMENTAÇÃO</p>
-                  <p class="text-body-1 font-weight-bold">{{ processo.ultimo_movimento.descricao }}</p>
-                  <p class="text-caption text-medium-emphasis">{{ processo.ultimo_movimento.data }}</p>
-                </div>
+                <p class="section-title">Última Movimentação</p>
+              </div>
+              <v-card-text class="pa-4">
+                <p class="text-body-1 font-weight-bold mb-1">{{ processo.ultimo_movimento.descricao }}</p>
+                <p class="text-caption text-medium-emphasis">{{ processo.ultimo_movimento.data }}</p>
               </v-card-text>
             </v-card>
 
@@ -390,6 +390,7 @@ const carregarMovimentos = async () => {
 
 // ---- Funções: OAB ----
 const consultarOab = async (pagina = 1) => {
+  pagina = parseInt(pagina) || 1
   if (!oabNumero.value || !oabUf.value) return
   loadingOab.value  = true
   erroOab.value     = ''
@@ -404,7 +405,15 @@ const consultarOab = async (pagina = 1) => {
     })
     const res  = await fetch(`/api/pje/oab?${params}`, { headers: authHeader() })
     const data = await res.json()
-    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail) || 'Erro ao consultar OAB')
+    if (!res.ok) {
+      const detail = data.detail
+      const msg = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+          : (detail?.message || detail?.msg || JSON.stringify(detail) || 'Erro ao consultar OAB')
+      throw new Error(msg || 'Erro ao consultar OAB')
+    }
     comunicacoes.value    = data.comunicacoes
     oabTotal.value        = data.total
     oabPagina.value       = data.pagina
@@ -417,15 +426,15 @@ const consultarOab = async (pagina = 1) => {
   }
 }
 
-const mudarPagina = (p) => consultarOab(p)
+const mudarPagina = (p) => consultarOab(parseInt(p))
 </script>
 
 <style scoped>
 .page-icon {
   width: 42px; height: 42px; border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3); flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28); flex-shrink: 0;
   margin-right: 8px;
 }
 .page-title    { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
@@ -433,7 +442,7 @@ const mudarPagina = (p) => consultarOab(p)
 
 .section-card   { border-radius: 14px !important; overflow: hidden; }
 .section-header {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center;
 }
@@ -443,9 +452,9 @@ const mudarPagina = (p) => consultarOab(p)
 .info-value { font-size: 0.9rem; font-weight: 500; margin: 0; }
 
 .ultimo-mov-icon {
-  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
-  background: linear-gradient(135deg, #00a651, #006837);
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+  background: linear-gradient(135deg, #34d399, #059669);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.25);
+  box-shadow: 0 2px 8px rgba(5,150,105,0.3);
 }
 </style>

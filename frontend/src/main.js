@@ -16,72 +16,72 @@ const vuetify = createVuetify({
       pratikaLight: {
         dark: false,
         colors: {
-          // Brand
-          primary: '#006837',
-          'primary-darken-1': '#004d28',
-          secondary: '#00a651',
-          accent: '#4ade80',
+          // Brand — emerald moderno
+          primary: '#059669',
+          'primary-darken-1': '#047857',
+          secondary: '#10b981',
+          accent: '#34d399',
 
-          // UI
-          background: '#F0F2F5',
-          surface: '#FFFFFF',
-          sidebar: '#0f1d14',  // verde quase preto para a sidebar
+          // UI — slate limpo
+          background: '#f1f5f9',
+          surface: '#ffffff',
+          sidebar: '#0f172a',   // slate-900
 
           // Status
-          error: '#e53935',
+          error: '#ef4444',
           warning: '#f59e0b',
-          info: '#0ea5e9',
-          success: '#16a34a',
+          info: '#3b82f6',
+          success: '#10b981',
 
           // Text helpers
-          'on-surface': '#1a2e1c',
-          'on-background': '#374151',
+          'on-surface': '#0f172a',
+          'on-background': '#64748b',
         },
         variables: {
-          'border-color': '#e5e7eb',
+          'border-color': '#e2e8f0',
           'border-opacity': 1,
-          'high-emphasis-opacity': 0.87,
-          'medium-emphasis-opacity': 0.55,
+          'high-emphasis-opacity': 0.9,
+          'medium-emphasis-opacity': 0.6,
           'hover-opacity': 0.04,
-          'focus-opacity': 0.12,
+          'focus-opacity': 0.1,
           'selected-opacity': 0.08,
-          'activated-opacity': 0.12,
-          'pressed-opacity': 0.16,
+          'activated-opacity': 0.1,
+          'pressed-opacity': 0.14,
           'dragged-opacity': 0.08,
           'theme-overlay-multiplier': 1,
           'disabled-opacity': 0.38,
           'idle-opacity': 0.04,
-          'kbd-background-color': '#212529',
-          'kbd-color': '#FFFFFF',
-          'code-background-color': '#f3f4f6',
+          'kbd-background-color': '#1e293b',
+          'kbd-color': '#f8fafc',
+          'code-background-color': '#f8fafc',
         },
       },
       pratikaDark: {
         dark: true,
         colors: {
           // Brand
-          primary: '#4ade80',
-          'primary-darken-1': '#22c55e',
-          secondary: '#00a651',
-          accent: '#86efac',
+          primary: '#34d399',
+          'primary-darken-1': '#10b981',
+          secondary: '#10b981',
+          accent: '#6ee7b7',
 
           // UI
-          background: '#0d1117',
-          surface: '#161b22',
-          sidebar: '#0a0f0b',
+          background: '#0f172a',
+          surface: '#1e293b',
+          sidebar: '#020617',   // slate-950
 
           // Status
           error: '#f87171',
           warning: '#fbbf24',
-          info: '#38bdf8',
-          success: '#4ade80',
+          info: '#60a5fa',
+          success: '#34d399',
 
           // Text helpers
-          'on-surface': '#e6edf3',
-          'on-background': '#c9d1d9',
+          'on-surface': '#f1f5f9',
+          'on-background': '#94a3b8',
         },
         variables: {
-          'border-color': '#30363d',
+          'border-color': '#334155',
           'border-opacity': 1,
         },
       },

@@ -1,20 +1,33 @@
 """
-API do módulo financeiro — Despesas via Superlógica.
+API do módulo financeiro — Despesas via Superlógica + Despesas locais.
 """
 
 from typing import List, Optional
+from datetime import date
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from core.auth import JWTAuth
-from core.superlogica_despesas import buscar_todas_despesas, resumo_despesas, buscar_despesas
+from core.superlogica_despesas import (
+    buscar_todas_despesas, resumo_despesas, buscar_despesas,
+    liquidar_despesa, criar_despesa_superlogica,
+)
 
 financeiro_router = Router(auth=JWTAuth(), tags=["Financeiro"])
+
+
+def _require_financeiro_or_admin(user):
+    is_admin = getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False)
+    is_financeiro = getattr(user, 'is_financeiro', False)
+    if not (is_admin or is_financeiro):
+        raise HttpError(403, "Acesso restrito ao setor financeiro")
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class DespesaOut(Schema):
     id: str
+    id_parcela: str = ""
+    id_contato: str = ""
     descricao: str
     fornecedor: str
     conta: str
@@ -136,3 +149,371 @@ def listar_despesas_paginado(
 
     except Exception as e:
         raise HttpError(400, str(e))
+
+
+# ── Liquidar despesa no Superlógica ───────────────────────────────────────────
+
+class LiquidarDespesaIn(Schema):
+    id_condominio:        int
+    id_despesa:           str
+    id_parcela:           str
+    id_contato:           str = ""
+    nome_contato:         str = ""
+    dt_liquidacao:        str          # DD/MM/YYYY
+    id_forma_pag:         int = 0
+    id_conta_banco:       int = 0
+    nm_numero_ch:         str = ""
+    vl_valor:             float
+    vl_pago:              float
+    vl_desconto:          float = 0
+    vl_multa:             float = 0
+    vl_juros:             float = 0
+    liquidar_todos:       int = 0      # 0 = só esta parcela, 1 = todas
+    emitir_recibo:        int = 0
+
+
+@financeiro_router.post("/liquidar", response={200: dict})
+def liquidar(request, payload: LiquidarDespesaIn):
+    """Liquida uma despesa diretamente no Superlógica."""
+    _require_financeiro_or_admin(request.auth)
+    try:
+        data = {
+            "ID_DESPESA_DES":          payload.id_despesa,
+            "ID_PARCELA_PDES":         payload.id_parcela,
+            "ID_CONTATO_CON":          payload.id_contato,
+            "ST_NOME_CON":             payload.nome_contato,
+            "DT_LIQUIDACAO_PDES":      payload.dt_liquidacao,
+            "ID_FORMA_PAG":            payload.id_forma_pag,
+            "ID_CONTABANCO_CB":        payload.id_conta_banco,
+            "NM_NUMERO_CH":            payload.nm_numero_ch,
+            "VL_VALOR_PDES":           payload.vl_valor,
+            "CHECK_LIQUIDAR_TODOS_CH": payload.liquidar_todos,
+            "EMITIR_RECIBO":           payload.emitir_recibo,
+            "VL_DESCONTO_PDES":        payload.vl_desconto,
+            "VL_MULTA_PDES":           payload.vl_multa,
+            "VL_JUROS_PDES":           payload.vl_juros,
+            "VL_PAGO":                 payload.vl_pago,
+            "ID_CONDOMINIO_COND":      payload.id_condominio,
+        }
+        resultado = liquidar_despesa(data)
+        return 200, {"ok": True, "resultado": resultado}
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+# ── Criar despesa no Superlógica ──────────────────────────────────────────────
+
+class CriarDespesaSuperlogicaIn(Schema):
+    id_condominio:    int
+    id_contato:       str = ""
+    nome_contato:     str = ""
+    descricao:        str
+    dt_vencimento:    str           # DD/MM/YYYY
+    dt_competencia:   str = ""      # DD/MM/YYYY
+    vl_valor:         float
+    qt_parcelas:      int = 1       # número de parcelas (1–60)
+    id_conta:         str = ""      # ex: "2.1.1"
+    id_forma_pag:     int = 0
+    id_conta_banco:   int = 0
+    observacao:       str = ""
+    liquidar_agora:   bool = False
+    dt_liquidacao:    str = ""
+    vl_pago:          float = 0
+
+
+@financeiro_router.post("/criar-superlogica", response={200: dict})
+def criar_no_superlogica(request, payload: CriarDespesaSuperlogicaIn):
+    """Cria uma despesa diretamente no Superlógica."""
+    _require_financeiro_or_admin(request.auth)
+    try:
+        data = {
+            "ID_CONDOMINIO_COND":   payload.id_condominio,
+            "ID_CONTATO_CON":       payload.id_contato,
+            "ST_NOME_CON":          payload.nome_contato,
+            "ST_COMPLEMENTO_PDES":  payload.descricao,
+            "DT_VENCIMENTO_PDES":   payload.dt_vencimento,
+            "DT_DESPESA_DES":       payload.dt_competencia or payload.dt_vencimento,
+            "VL_VALOR_PDES":        payload.vl_valor,
+            "ST_CONTA_CONT":        payload.id_conta,
+            "ID_FORMA_PAG":         payload.id_forma_pag,
+            "ID_CONTABANCO_CB":     payload.id_conta_banco,
+            "ST_OBS_DES":           payload.observacao,
+        }
+        if payload.liquidar_agora and payload.dt_liquidacao:
+            data["FL_LIQUIDADO_PDES"] = 1
+            data["DT_LIQUIDACAO_PDES"] = payload.dt_liquidacao
+            data["VL_PAGO"] = payload.vl_pago or payload.vl_valor
+        resultado = criar_despesa_superlogica(data, qt_parcelas=max(1, payload.qt_parcelas or 1))
+        return 200, {"ok": True, "resultado": resultado}
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+# ── Despesas Locais (CRUD) ─────────────────────────────────────────────────────
+
+class DespesaLocalIn(Schema):
+    condominio_id:   int
+    condominio_nome: str = ""
+    descricao:       str
+    fornecedor:      str = ""
+    categoria:       str = ""
+    valor:           float
+    vencimento:      date
+    data_pagamento:  Optional[date] = None
+    status:          str = "pendente"
+    observacao:      str = ""
+
+
+class DespesaLocalOut(Schema):
+    id:              str
+    condominio_id:   int
+    condominio_nome: str
+    descricao:       str
+    fornecedor:      str
+    categoria:       str
+    valor:           float
+    vencimento:      str
+    data_pagamento:  Optional[str]
+    status:          str
+    observacao:      str
+    criado_por:      str
+    criado_em:       str
+
+
+def _fmt_date(d) -> Optional[str]:
+    return d.strftime("%d/%m/%Y") if d else None
+
+
+@financeiro_router.get("/locais", response=List[DespesaLocalOut])
+def listar_despesas_locais(
+    request,
+    condominio_id: Optional[int] = None,
+    status: Optional[str] = None,
+):
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaLocal
+    qs = DespesaLocal.objects.all()
+    if condominio_id:
+        qs = qs.filter(condominio_id=condominio_id)
+    if status and status != "todas":
+        qs = qs.filter(status=status)
+    return [
+        DespesaLocalOut(
+            id=str(d.id),
+            condominio_id=d.condominio_id,
+            condominio_nome=d.condominio_nome,
+            descricao=d.descricao,
+            fornecedor=d.fornecedor,
+            categoria=d.categoria,
+            valor=float(d.valor),
+            vencimento=_fmt_date(d.vencimento),
+            data_pagamento=_fmt_date(d.data_pagamento),
+            status=d.status,
+            observacao=d.observacao,
+            criado_por=d.criado_por,
+            criado_em=d.criado_em.strftime("%d/%m/%Y %H:%M"),
+        )
+        for d in qs
+    ]
+
+
+@financeiro_router.post("/locais", response={201: DespesaLocalOut})
+def criar_despesa_local(request, payload: DespesaLocalIn):
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaLocal
+    user = request.auth
+    d = DespesaLocal.objects.create(
+        condominio_id=payload.condominio_id,
+        condominio_nome=payload.condominio_nome,
+        descricao=payload.descricao,
+        fornecedor=payload.fornecedor,
+        categoria=payload.categoria,
+        valor=payload.valor,
+        vencimento=payload.vencimento,
+        data_pagamento=payload.data_pagamento,
+        status=payload.status,
+        observacao=payload.observacao,
+        criado_por=getattr(user, 'name', '') or getattr(user, 'email', ''),
+    )
+    return 201, DespesaLocalOut(
+        id=str(d.id),
+        condominio_id=d.condominio_id,
+        condominio_nome=d.condominio_nome,
+        descricao=d.descricao,
+        fornecedor=d.fornecedor,
+        categoria=d.categoria,
+        valor=float(d.valor),
+        vencimento=_fmt_date(d.vencimento),
+        data_pagamento=_fmt_date(d.data_pagamento),
+        status=d.status,
+        observacao=d.observacao,
+        criado_por=d.criado_por,
+        criado_em=d.criado_em.strftime("%d/%m/%Y %H:%M"),
+    )
+
+
+@financeiro_router.put("/locais/{despesa_id}", response=DespesaLocalOut)
+def atualizar_despesa_local(request, despesa_id: str, payload: DespesaLocalIn):
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaLocal
+    try:
+        d = DespesaLocal.objects.get(id=despesa_id)
+    except DespesaLocal.DoesNotExist:
+        raise HttpError(404, "Despesa não encontrada")
+    for field, value in payload.dict().items():
+        setattr(d, field, value)
+    d.save()
+    return DespesaLocalOut(
+        id=str(d.id),
+        condominio_id=d.condominio_id,
+        condominio_nome=d.condominio_nome,
+        descricao=d.descricao,
+        fornecedor=d.fornecedor,
+        categoria=d.categoria,
+        valor=float(d.valor),
+        vencimento=_fmt_date(d.vencimento),
+        data_pagamento=_fmt_date(d.data_pagamento),
+        status=d.status,
+        observacao=d.observacao,
+        criado_por=d.criado_por,
+        criado_em=d.criado_em.strftime("%d/%m/%Y %H:%M"),
+    )
+
+
+@financeiro_router.delete("/locais/{despesa_id}", response={204: None})
+def excluir_despesa_local(request, despesa_id: str):
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaLocal
+    try:
+        DespesaLocal.objects.get(id=despesa_id).delete()
+    except DespesaLocal.DoesNotExist:
+        raise HttpError(404, "Despesa não encontrada")
+    return 204, None
+
+
+# ── Fila de Pagamentos ────────────────────────────────────────────────────────
+
+class DespesaParaPagarItemIn(Schema):
+    id_despesa:      str
+    id_parcela:      str = ""
+    id_contato:      str = ""
+    descricao:       str
+    fornecedor:      str = ""
+    condominio_id:   int
+    condominio_nome: str = ""
+    valor:           float
+    vencimento:      str = ""
+    observacao:      str = ""
+
+
+class DespesaParaPagarIn(Schema):
+    despesas: List[DespesaParaPagarItemIn]
+
+
+class DespesaParaPagarOut(Schema):
+    id:              str
+    id_despesa:      str
+    id_parcela:      str
+    descricao:       str
+    fornecedor:      str
+    condominio_id:   int
+    condominio_nome: str
+    valor:           float
+    vencimento:      str
+    status:          str
+    observacao:      str
+    marcado_por:     str
+    marcado_em:      str
+
+
+class AtualizarStatusIn(Schema):
+    status:     str   # aguardando | pago | cancelado
+    observacao: str = ""
+
+
+def _fpp_out(d) -> DespesaParaPagarOut:
+    return DespesaParaPagarOut(
+        id=str(d.id),
+        id_despesa=d.id_despesa,
+        id_parcela=d.id_parcela,
+        descricao=d.descricao,
+        fornecedor=d.fornecedor,
+        condominio_id=d.condominio_id,
+        condominio_nome=d.condominio_nome,
+        valor=float(d.valor),
+        vencimento=d.vencimento,
+        status=d.status,
+        observacao=d.observacao,
+        marcado_por=d.marcado_por,
+        marcado_em=d.marcado_em.strftime("%d/%m/%Y %H:%M"),
+    )
+
+
+@financeiro_router.get("/fila-pagamento", response=List[DespesaParaPagarOut])
+def listar_fila_pagamento(request, status: Optional[str] = None):
+    """Lista despesas marcadas para pagamento."""
+    from core.models import DespesaParaPagar
+    qs = DespesaParaPagar.objects.all()
+    if status and status != "todas":
+        qs = qs.filter(status=status)
+    return [_fpp_out(d) for d in qs]
+
+
+@financeiro_router.post("/fila-pagamento", response={201: List[DespesaParaPagarOut]})
+def marcar_para_pagamento(request, payload: DespesaParaPagarIn):
+    """Marca uma ou mais despesas para pagamento."""
+    from core.models import DespesaParaPagar
+    user = request.auth
+    marcado_por = getattr(user, 'name', '') or getattr(user, 'email', '') or 'Sistema'
+    criados = []
+    for item in payload.despesas:
+        # Evita duplicatas de despesas já na fila aguardando
+        if DespesaParaPagar.objects.filter(
+            id_despesa=item.id_despesa, id_parcela=item.id_parcela, status='aguardando'
+        ).exists():
+            continue
+        d = DespesaParaPagar.objects.create(
+            id_despesa=item.id_despesa,
+            id_parcela=item.id_parcela,
+            id_contato=item.id_contato,
+            descricao=item.descricao,
+            fornecedor=item.fornecedor,
+            condominio_id=item.condominio_id,
+            condominio_nome=item.condominio_nome,
+            valor=item.valor,
+            vencimento=item.vencimento,
+            observacao=item.observacao,
+            marcado_por=marcado_por,
+        )
+        criados.append(_fpp_out(d))
+    return 201, criados
+
+
+@financeiro_router.put("/fila-pagamento/{item_id}", response=DespesaParaPagarOut)
+def atualizar_fila_pagamento(request, item_id: str, payload: AtualizarStatusIn):
+    """Atualiza o status de um item da fila (pago / cancelado)."""
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaParaPagar
+    try:
+        d = DespesaParaPagar.objects.get(id=item_id)
+    except DespesaParaPagar.DoesNotExist:
+        raise HttpError(404, "Item não encontrado")
+    if payload.status not in ('aguardando', 'pago', 'cancelado'):
+        raise HttpError(400, "Status inválido")
+    d.status = payload.status
+    if payload.observacao:
+        d.observacao = payload.observacao
+    d.save()
+    return _fpp_out(d)
+
+
+@financeiro_router.delete("/fila-pagamento/{item_id}", response={204: None})
+def remover_da_fila(request, item_id: str):
+    """Remove um item da fila de pagamento."""
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaParaPagar
+    try:
+        DespesaParaPagar.objects.get(id=item_id).delete()
+    except DespesaParaPagar.DoesNotExist:
+        raise HttpError(404, "Item não encontrado")
+    return 204, None

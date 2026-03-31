@@ -150,6 +150,100 @@ class SheetSetor(models.Model):
         return self.nome
 
 
+class DespesaLocal(models.Model):
+    """Despesas e custos cadastrados manualmente no sistema."""
+
+    STATUS_CHOICES = [
+        ('pendente', 'Pendente'),
+        ('pago',     'Pago'),
+    ]
+
+    id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    condominio_id   = models.IntegerField()
+    condominio_nome = models.CharField(max_length=255, blank=True)
+    descricao       = models.CharField(max_length=500)
+    fornecedor      = models.CharField(max_length=255, blank=True)
+    categoria       = models.CharField(max_length=255, blank=True)
+    valor           = models.DecimalField(max_digits=14, decimal_places=2)
+    vencimento      = models.DateField()
+    data_pagamento  = models.DateField(null=True, blank=True)
+    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
+    observacao      = models.TextField(blank=True)
+    criado_por      = models.CharField(max_length=255, blank=True)
+    criado_em       = models.DateTimeField(auto_now_add=True)
+    atualizado_em   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Despesa Local"
+        verbose_name_plural = "Despesas Locais"
+        ordering = ["-vencimento"]
+
+    def __str__(self):
+        return f"{self.descricao} — R$ {self.valor} ({self.status})"
+
+
+class AgendaTarefa(models.Model):
+    """Tarefas do calendário de agenda."""
+    COR_CHOICES = [
+        ('primary', 'Azul'),
+        ('success', 'Verde'),
+        ('error',   'Vermelho'),
+        ('warning', 'Laranja'),
+        ('info',    'Ciano'),
+    ]
+    id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    titulo        = models.CharField(max_length=255)
+    descricao     = models.TextField(blank=True)
+    data          = models.DateField()
+    hora          = models.TimeField(null=True, blank=True)
+    cor           = models.CharField(max_length=20, choices=COR_CHOICES, default='primary')
+    criado_por    = models.CharField(max_length=255, blank=True)
+    criado_em     = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['data', 'hora']
+        verbose_name = 'Tarefa de Agenda'
+        verbose_name_plural = 'Tarefas de Agenda'
+
+    def __str__(self):
+        return f"{self.data} — {self.titulo}"
+
+
+class DespesaParaPagar(models.Model):
+    """Despesas do Superlógica marcadas para pagamento pelo financeiro."""
+
+    STATUS_CHOICES = [
+        ('aguardando', 'Aguardando Pagamento'),
+        ('pago',       'Pago'),
+        ('cancelado',  'Cancelado'),
+    ]
+
+    id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id_despesa      = models.CharField(max_length=64)
+    id_parcela      = models.CharField(max_length=64, blank=True)
+    id_contato      = models.CharField(max_length=64, blank=True)
+    descricao       = models.CharField(max_length=500)
+    fornecedor      = models.CharField(max_length=255, blank=True)
+    condominio_id   = models.IntegerField()
+    condominio_nome = models.CharField(max_length=255, blank=True)
+    valor           = models.DecimalField(max_digits=14, decimal_places=2)
+    vencimento      = models.CharField(max_length=10, blank=True)   # DD/MM/YYYY
+    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='aguardando')
+    observacao      = models.TextField(blank=True)
+    marcado_por     = models.CharField(max_length=255, blank=True)
+    marcado_em      = models.DateTimeField(auto_now_add=True)
+    atualizado_em   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['marcado_em']
+        verbose_name = 'Despesa Para Pagar'
+        verbose_name_plural = 'Despesas Para Pagar'
+
+    def __str__(self):
+        return f"{self.descricao} — R$ {self.valor} ({self.status})"
+
+
 class PasswordResetToken(models.Model):
     """Token de redefinição de senha com expiração de 1 hora."""
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

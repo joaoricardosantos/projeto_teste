@@ -10,6 +10,7 @@ import SheetsView from '../views/SheetsView.vue'  // ← NOVA INTEGRAÇÃO
 import LevantamentoView from '../views/LevantamentoView.vue'
 import FinanceiroView from '../views/FinanceiroView.vue'
 import PjeView from '../views/PjeView.vue'
+import AgendaView from '../views/AgendaView.vue'
 
 const routes = [
     { path: '/', name: 'Auth', component: AuthView },
@@ -23,6 +24,7 @@ const routes = [
     { path: '/levantamento', name: 'Levantamento', component: LevantamentoView, meta: { requiresAuth: true } },
     { path: '/financeiro',   name: 'Financeiro',   component: FinanceiroView,   meta: { requiresAuth: true } },
     { path: '/pje',          name: 'Pje',          component: PjeView,          meta: { requiresAuth: true } },
+    { path: '/agenda',       name: 'Agenda',       component: AgendaView,       meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })
@@ -37,9 +39,9 @@ router.beforeEach((to, from, next) => {
     if (to.meta.requiresAdmin && !isAdmin) return next('/dashboard')
     if (to.meta.requiresAdminOrJuridico && !isAdmin && !isJuridico) return next('/dashboard')
     // Bloqueia jurídico de acessar rotas não permitidas
-    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/pje'].includes(to.path)) return next('/dashboard')
+    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/pje', '/levantamento', '/agenda'].includes(to.path)) return next('/dashboard')
     // Bloqueia financeiro de acessar rotas não permitidas
-    if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets', '/financeiro'].includes(to.path)) return next('/dashboard')
+    if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets', '/financeiro', '/agenda'].includes(to.path)) return next('/dashboard')
     next()
 })
 

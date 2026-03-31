@@ -60,10 +60,10 @@
               style="position:absolute;visibility:hidden;width:0;height:0;"
             />
 
-            <v-btn size="default" color="primary" :loading="loading" prepend-icon="mdi-refresh" @click="carregar(false)">
+            <v-btn size="default" color="primary" :loading="loading" :disabled="loading" prepend-icon="mdi-refresh" @click="carregar(false)">
               Atualizar
             </v-btn>
-            <v-btn size="default" variant="outlined" :loading="loading" prepend-icon="mdi-refresh-circle" @click="carregar(true)">
+            <v-btn size="default" variant="outlined" :loading="loading" :disabled="loading" prepend-icon="mdi-refresh-circle" @click="carregar(true)">
               Forçar
             </v-btn>
           </div>
@@ -86,7 +86,7 @@
             <v-row class="mb-6" align="stretch">
               <v-col cols="12" sm="6" md="3">
                 <v-card class="kpi-card" elevation="3">
-                  <div class="kpi-icon-wrap" style="background: linear-gradient(135deg, #00c853 0%, #006837 100%);">
+                  <div class="kpi-icon-wrap" style="background: linear-gradient(135deg, #34d399 0%, #059669 100%);">
                     <v-icon color="white" size="22">mdi-currency-brl</v-icon>
                   </div>
                   <p class="kpi-label">Total Inadimplência</p>
@@ -262,20 +262,39 @@ const cacheKey = (filtro5a = ultimos5anos.value) => {
   return `${dp}_${filtro5a ? '5a' : 'all'}`
 }
 
-const fetchDados = async (filtro5a) => {
+const _buildParams = (filtro5a) => {
   const params = new URLSearchParams()
   if (dataPosicao.value) {
     const [ano, mes, dia] = dataPosicao.value.split('-')
     params.append('data_posicao', `${dia}/${mes}/${ano}`)
   }
   if (filtro5a) params.append('ultimos_5_anos', 'true')
-  const query = params.toString() ? `?${params.toString()}` : ''
-  const res = await fetch(`/api/admin/dashboard${query}`, { headers: authHeader() })
+  return params
+}
+
+const _pollJob = async (jobId) => {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2000))
+    const res = await fetch(`/api/admin/dashboard/status/${jobId}`, { headers: authHeader() })
+    if (!res.ok) throw new Error('Erro ao verificar status do carregamento')
+    const job = await res.json()
+    if (job.status === 'pronto') return job.result
+    if (job.status === 'erro') throw new Error(job.error || 'Erro ao calcular dashboard')
+  }
+}
+
+const fetchDados = async (filtro5a, forcar = false) => {
+  const params = _buildParams(filtro5a)
+  if (forcar) params.append('forcar', 'true')
+
+  // Dispara job em background
+  const res = await fetch(`/api/admin/dashboard/iniciar?${params}`, { method: 'POST', headers: authHeader() })
   if (!res.ok) {
     const d = await res.json().catch(() => ({}))
-    throw new Error(d.detail || 'Erro ao carregar dashboard')
+    throw new Error(d.detail || 'Erro ao iniciar carregamento')
   }
-  const resultado = await res.json()
+  const { job_id } = await res.json()
+  const resultado = await _pollJob(job_id)
   localCache[cacheKey(filtro5a)] = resultado
   return resultado
 }
@@ -288,15 +307,13 @@ const carregar = async (forceRefresh = false) => {
   }
   if (!forceRefresh && localCache[key]) {
     dados.value = localCache[key]
-    preCarregarOposto()
     return
   }
   loading.value = true
   dados.value   = null
   erro.value    = ''
   try {
-    dados.value = await fetchDados(ultimos5anos.value)
-    preCarregarOposto()
+    dados.value = await fetchDados(ultimos5anos.value, forceRefresh)
   } catch (e) {
     erro.value = e.message
   } finally {
@@ -325,15 +342,9 @@ const toggleFiltro = async () => {
       loading.value = false
     }
   }
-  preCarregarOposto()
 }
 
-const preCarregarOposto = () => {
-  const outroFiltro = !ultimos5anos.value
-  const outraKey = cacheKey(outroFiltro)
-  if (localCache[outraKey]) return
-  fetchDados(outroFiltro).catch(() => {})
-}
+// preCarregarOposto removido — causava duplo scan e rate-limit 429 na Superlógica
 
 const headersRanking = [
   { title: '#',          key: 'posicao',    width: 70,  sortable: false },
@@ -384,9 +395,9 @@ onMounted(carregar)
 .page-icon {
   width: 42px; height: 42px;
   border-radius: 11px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,168,81,0.3);
+  box-shadow: 0 4px 12px rgba(5,150,105,0.28);
   flex-shrink: 0; margin-right: 8px;
 }
 .page-title   { font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: 0; }
@@ -419,7 +430,7 @@ onMounted(carregar)
 
 /* ── Card header bar ── */
 .card-header-bar {
-  background: linear-gradient(135deg, #006837 0%, #00a651 100%);
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
   padding: 14px 20px;
   display: flex; align-items: center; justify-content: space-between;
 }
@@ -428,7 +439,7 @@ onMounted(carregar)
 /* ── Percentual bar ── */
 .pct-cell { display: flex; align-items: center; gap: 10px; width: 100%; padding-right: 4px; }
 .pct-bar-bg { flex: 1; height: 8px; background: rgba(0,104,55,.1); border-radius: 99px; overflow: hidden; min-width: 80px; }
-.pct-bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #006837, #00a651); transition: width 0.4s ease; }
+.pct-bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #059669, #34d399); transition: width 0.4s ease; }
 .pct-label { font-size: 12px; font-weight: 600; color: rgb(var(--v-theme-primary)); min-width: 38px; text-align: right; flex-shrink: 0; }
 
 /* ── Transições ── */

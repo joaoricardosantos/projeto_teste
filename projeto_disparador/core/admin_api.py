@@ -24,6 +24,10 @@ def _require_admin(user):
     if not _is_admin(user):
         raise HttpError(403, "Admin_privileges_required")
 
+def _require_admin_or_juridico(user):
+    if not (_is_admin(user) or getattr(user, 'is_juridico', False)):
+        raise HttpError(403, "Admin_privileges_required")
+
 def _require_approved(user):
     if not user.is_approved:
         raise HttpError(403, "Account_not_approved")
@@ -36,6 +40,12 @@ _JOBS_LOCK = threading.Lock()
 _DASHBOARD_CACHE: dict = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_TTL_MINUTES = 30
+
+
+# ── Jobs assíncronos do dashboard ─────────────────────────────────────────────
+import uuid as _uuid
+_JOBS: dict = {}   # job_id -> {status, result, error}
+_JOBS_LOCK = threading.Lock()
 
 def _proximas_8h():
     agora = datetime.now()
@@ -322,6 +332,54 @@ def clear_dashboard_cache(request):
     return 200, {"message": "Cache limpo com sucesso"}
 
 
+# ── Dashboard assíncrono ──────────────────────────────────────────────────────
+@admin_router.post("/dashboard/iniciar", response={202: dict})
+def iniciar_dashboard(
+    request,
+    data_posicao: Optional[str] = None,
+    ultimos_5_anos: bool = False,
+    forcar: bool = False,
+):
+    """Dispara o cálculo do dashboard em background e retorna um job_id."""
+    _require_approved(request.auth)
+
+    job_id = str(_uuid.uuid4())
+
+    def _executar():
+        try:
+            resultado = _calcular_dashboard(
+                id_condominio=None,
+                data_posicao=data_posicao,
+                ultimos_5_anos=ultimos_5_anos,
+                forcar=forcar,
+            )
+            with _JOBS_LOCK:
+                _JOBS[job_id] = {"status": "pronto", "result": resultado}
+        except Exception as e:
+            with _JOBS_LOCK:
+                _JOBS[job_id] = {"status": "erro", "error": str(e)}
+
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {"status": "processando", "result": None}
+
+    t = threading.Thread(target=_executar, daemon=True)
+    t.start()
+
+    return 202, {"job_id": job_id}
+
+
+@admin_router.get("/dashboard/status/{job_id}", response={200: dict})
+def status_dashboard(request, job_id: str):
+    """Retorna o status e resultado de um job de dashboard."""
+    _require_approved(request.auth)
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if not job:
+        from ninja.errors import HttpError
+        raise HttpError(404, "Job não encontrado")
+    return 200, job
+
+
 # ── Endpoints de PDF (background job) ────────────────────────────────────────
 @admin_router.post("/export-pdf/start", response={202: dict})
 def start_export_pdf(
@@ -423,22 +481,14 @@ def download_pdf(request, job_id: str):
     return response
 
 
-# ── Endpoint de Dashboard ─────────────────────────────────────────────────────
-@admin_router.get("/dashboard", response={200: dict})
-def get_dashboard(
-    request,
-    id_condominio: Optional[int] = None,
-    data_posicao: Optional[str] = None,
-    ultimos_5_anos: bool = False,
+# ── Lógica central do dashboard (reutilizada por endpoint síncrono e assíncrono)
+def _calcular_dashboard(
+    id_condominio=None,
+    data_posicao=None,
+    ultimos_5_anos=False,
+    forcar=False,
 ):
-    """
-    Retorna dados resumidos para o dashboard.
-    ultimos_5_anos=true filtra vencimentos dos últimos 5 anos.
-    """
-    _require_approved(request.auth)
-
     from core.superlogica import (
-        verificar_condominio,
         buscar_unidades,
         buscar_inadimplentes_condominio,
         _MAX_WORKERS_CONDOMINIOS,
@@ -446,6 +496,10 @@ def get_dashboard(
     from django.conf import settings
     from decimal import Decimal
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    import logging as _logging
+    import time as _time
+    import requests as _requests
+    _log = _logging.getLogger(__name__)
 
     if not data_posicao:
         data_posicao_fmt   = datetime.today().strftime("%m/%d/%Y")
@@ -458,59 +512,67 @@ def get_dashboard(
             data_posicao_fmt = data_posicao
         data_posicao_label = data_posicao
 
-    # Calcula data_inicio se filtro de 5 anos estiver ativo
     data_inicio = None
     if ultimos_5_anos:
         data_inicio = (datetime.now() - timedelta(days=5 * 365)).strftime("%d/%m/%Y")
 
-    # Cache key inclui o flag de 5 anos
     cache_key = f"{id_condominio or 'todos'}_{data_posicao_label}_{'5a' if ultimos_5_anos else 'all'}"
 
-    with _CACHE_LOCK:
-        cached = _DASHBOARD_CACHE.get(cache_key)
-        if cached and cached["expires_at"] > datetime.now():
-            return 200, cached["data"]
+    if not forcar:
+        with _CACHE_LOCK:
+            cached = _DASHBOARD_CACHE.get(cache_key)
+            if cached and cached["expires_at"] > datetime.now():
+                return cached["data"]
 
-    ids_range    = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
-    total_geral  = Decimal("0")
+    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
+
+    total_geral   = Decimal("0")
     condo_valores = {}
-    sem_numero   = []
+    sem_numero    = []
     total_unidades = 0
 
     def _processar(condo_id):
-        acesso, nome = verificar_condominio(condo_id)
-        if not acesso:
-            return None
-        mapa = buscar_unidades(condo_id)
-        if not mapa:
-            return None
-        try:
-            resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa, data_inicio)
-        except TypeError:
-            # Retrocompatibilidade: superlogica.py ainda sem patch data_inicio
-            resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
-        if not resumo:
-            return None
-
-        condo_total   = Decimal("0")
-        sem_num_local = []
-        for uid, vals in resumo.items():
+        _MAX_TENTATIVAS = 3
+        for tentativa in range(_MAX_TENTATIVAS):
             try:
-                condo_total += Decimal(str(vals["total"]))
-            except Exception:
-                pass
-            tels     = vals.get("telefones", [])
-            t1       = tels[0] if len(tels) > 0 else "s/n"
-            t2       = tels[1] if len(tels) > 1 else "s/n"
-            dados_uni = mapa.get(uid, {})
-            if t1.lower() == "s/n" and t2.lower() == "s/n":
-                sem_num_local.append({
-                    "condominio": nome or "",
-                    "unidade":    dados_uni.get("unidade") or vals.get("nome_pdf", ""),
-                    "nome":       dados_uni.get("sacado", ""),
-                })
+                mapa = buscar_unidades(condo_id)
+                if not mapa:
+                    return None
+                nome = mapa.pop("__nome_cond__", None) or f"Condomínio {condo_id}"
+                try:
+                    resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa, data_inicio)
+                except TypeError:
+                    resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
+                if not resumo:
+                    return None
 
-        return nome, float(condo_total.quantize(Decimal("0.01"))), len(resumo), sem_num_local
+                condo_total   = Decimal("0")
+                sem_num_local = []
+                for uid, vals in resumo.items():
+                    try:
+                        condo_total += Decimal(str(vals["total"]))
+                    except Exception:
+                        pass
+                    tels      = vals.get("telefones", [])
+                    t1        = tels[0] if len(tels) > 0 else "s/n"
+                    t2        = tels[1] if len(tels) > 1 else "s/n"
+                    dados_uni = mapa.get(uid, {})
+                    if t1.lower() == "s/n" and t2.lower() == "s/n":
+                        sem_num_local.append({
+                            "condominio": nome or "",
+                            "unidade":    dados_uni.get("unidade") or vals.get("nome_pdf", ""),
+                            "nome":       dados_uni.get("sacado", ""),
+                        })
+
+                return nome, float(condo_total.quantize(Decimal("0.01"))), len(resumo), sem_num_local
+
+            except _requests.exceptions.RequestException as net_err:
+                if tentativa < _MAX_TENTATIVAS - 1:
+                    _log.warning(f"Dashboard: erro de rede no condomínio {condo_id} (tentativa {tentativa+1}/{_MAX_TENTATIVAS}): {net_err} — retentando...")
+                    _time.sleep(2 ** tentativa)
+                else:
+                    _log.error(f"Dashboard: condomínio {condo_id} falhou após {_MAX_TENTATIVAS} tentativas")
+                    return None
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS_CONDOMINIOS) as executor:
         futures = {executor.submit(_processar, cid): cid for cid in ids_range}
@@ -524,18 +586,15 @@ def get_dashboard(
                     total_unidades += qtd_c
                     sem_numero.extend(sem_c)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Dashboard _processar erro: {e}", exc_info=True)
+                _log.error(f"Dashboard _processar erro inesperado: {e}", exc_info=True)
 
     maior_condo = max(condo_valores, key=condo_valores.get) if condo_valores else None
     maior_valor = condo_valores.get(maior_condo, 0) if maior_condo else 0
-
     sem_numero.sort(key=lambda x: (x["condominio"], x["unidade"]))
 
     condo_ranking = sorted(
         [{"nome": k, "valor": round(v, 2)} for k, v in condo_valores.items()],
-        key=lambda x: x["valor"],
-        reverse=True,
+        key=lambda x: x["valor"], reverse=True,
     )
 
     resultado = {
@@ -557,7 +616,23 @@ def get_dashboard(
             "expires_at": _proximas_8h(),
         }
 
-    return 200, resultado
+    return resultado
+
+
+# ── Endpoint de Dashboard (síncrono — mantido para compatibilidade) ───────────
+@admin_router.get("/dashboard", response={200: dict})
+def get_dashboard(
+    request,
+    id_condominio: Optional[int] = None,
+    data_posicao: Optional[str] = None,
+    ultimos_5_anos: bool = False,
+):
+    _require_approved(request.auth)
+    return 200, _calcular_dashboard(
+        id_condominio=id_condominio,
+        data_posicao=data_posicao,
+        ultimos_5_anos=ultimos_5_anos,
+    )
 
 
 # ── Endpoint: listar condomínios ──────────────────────────────────────────────
@@ -764,11 +839,11 @@ def exportar_sem_cpf_pdf(request, id_condominio: Optional[str] = None):
         _logo_path = os.path.join(os.path.dirname(__file__), "logo_pratika.png")
         if os.path.exists(_logo_path):
             from reportlab.platypus import Image as RLImage
-            logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+            logo_img = RLImage(_logo_path, width=2.4*cm, height=2.4*cm)
         else:
             logo_img = Paragraph("", style_sub)
 
-        header_table = Table([[logo_img, Paragraph("Unidades sem CPF/CNPJ", style_title)]], colWidths=[4*cm, None])
+        header_table = Table([[logo_img, Paragraph("Unidades sem CPF/CNPJ", style_title)]], colWidths=[2.8*cm, None])
         header_table.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("LEFTPADDING", (0,0), (-1,-1), 0)]))
         story.append(header_table)
         story.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", style_sub))
@@ -827,7 +902,7 @@ def relatorio_sem_numero_xlsx(
     excluir_juridico_externo: bool = False,
 ):
     """Gera Excel com unidades sem número cadastrado."""
-    _require_admin(request.auth)
+    _require_admin_or_juridico(request.auth)
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
@@ -940,7 +1015,7 @@ def relatorio_sem_numero_pdf(
     excluir_juridico_externo: bool = False,
 ):
     """Gera PDF com unidades sem número cadastrado."""
-    _require_admin(request.auth)
+    _require_admin_or_juridico(request.auth)
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
@@ -1008,11 +1083,11 @@ def relatorio_sem_numero_pdf(
         _logo_path = os.path.join(os.path.dirname(__file__), "logo_pratika.png")
         if os.path.exists(_logo_path):
             from reportlab.platypus import Image as RLImage
-            logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+            logo_img = RLImage(_logo_path, width=2.4*cm, height=2.4*cm)
         else:
             logo_img = Paragraph("", style_sub)
 
-        header_table = Table([[logo_img, Paragraph("Unidades sem Número Cadastrado", style_title)]], colWidths=[4*cm, None])
+        header_table = Table([[logo_img, Paragraph("Unidades sem Número Cadastrado", style_title)]], colWidths=[2.8*cm, None])
         header_table.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("LEFTPADDING", (0,0), (-1,-1), 0)]))
         story.append(header_table)
 
