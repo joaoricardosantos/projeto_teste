@@ -10,6 +10,7 @@ from core.password_reset_api import password_router
 from core.sheets_api import sheets_router
 from core.financeiro_api import financeiro_router
 from core.pje_api import pje_router
+from core.agenda_api import agenda_router
 
 api = NinjaAPI(title="Condominium Messaging API", version="1.0.0")
 
@@ -23,6 +24,7 @@ api.add_router("/campanhas", campanha_router)
 api.add_router("/sheets",     sheets_router)
 api.add_router("/financeiro", financeiro_router)
 api.add_router("/pje",        pje_router)
+api.add_router("/agenda",     agenda_router)
 
 urlpatterns = [
     path("api/", api.urls),

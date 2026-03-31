@@ -101,13 +101,13 @@ def gerar_pdf_relatorio_envio(
     _logo_path = os.path.join(os.path.dirname(__file__), "logo_pratika.png")
     if os.path.exists(_logo_path):
         from reportlab.platypus import Image as RLImage
-        logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+        logo_img = RLImage(_logo_path, width=2.4*cm, height=2.4*cm)
     else:
         logo_img = Paragraph("", style_sub)
 
     header_table = Table(
         [[logo_img, Paragraph("Relatório de Envio de Mensagens", style_title)]],
-        colWidths=[4*cm, None],
+        colWidths=[2.8*cm, None],
     )
     header_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

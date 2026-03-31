@@ -40,7 +40,7 @@
             <div class="brand-icon">
               <v-icon size="24" color="white">mdi-home-city</v-icon>
             </div>
-            <div class="brand-title" style="color: #006837;">Pratika</div>
+            <div class="brand-title" style="color: #059669;">Pratika</div>
           </div>
 
           <!-- Token inválido -->
@@ -228,22 +228,22 @@ const redefinir = async () => {
   opacity: 0.35;
 }
 .bg-orb--1 {
-  width: 500px; height: 500px;
-  background: radial-gradient(circle, #00a651 0%, transparent 70%);
-  top: -100px; left: -100px;
+  width: 480px; height: 480px;
+  background: radial-gradient(circle, #059669 0%, transparent 70%);
+  top: -120px; left: -80px;
 }
 .bg-orb--2 {
-  width: 400px; height: 400px;
-  background: radial-gradient(circle, #006837 0%, transparent 70%);
-  bottom: -80px; right: 35%;
-  opacity: 0.2;
+  width: 360px; height: 360px;
+  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  bottom: -60px; right: 32%;
+  opacity: 0.18;
 }
 .bg-grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0,104,55,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,104,55,0.04) 1px, transparent 1px);
+    linear-gradient(rgba(5,150,105,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(5,150,105,0.04) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 .auth-layout {
@@ -256,7 +256,7 @@ const redefinir = async () => {
 .auth-left {
   display: none;
   flex: 1;
-  background: linear-gradient(150deg, #0f1d14 0%, #1a3a23 60%, #0a2e12 100%);
+  background: linear-gradient(150deg, #0f172a 0%, #1e293b 60%, #0c1a2e 100%);
   align-items: center;
   justify-content: center;
   padding: 60px 56px;
@@ -278,21 +278,22 @@ const redefinir = async () => {
 .brand-icon {
   width: 44px; height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #00a651 0%, #006837 100%);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 6px 20px rgba(0,168,81,0.4);
+  box-shadow: 0 6px 20px rgba(5,150,105,0.38);
 }
 .brand-title { font-size: 18px; font-weight: 700; color: white; letter-spacing: -0.02em; }
 .brand-tagline { font-size: 11px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.1em; }
 .auth-headline { font-size: 40px; font-weight: 800; color: white; line-height: 1.15; letter-spacing: -0.03em; margin-bottom: 20px; }
-.headline-accent { color: #4ade80; }
+.headline-accent { color: #34d399; }
 .auth-desc { font-size: 15px; color: rgba(255,255,255,0.55); line-height: 1.65; }
 .auth-right {
   width: 460px; flex-shrink: 0; height: 100%;
   display: flex; align-items: center; justify-content: center;
   padding: 40px 32px;
-  background: white;
+  background: #f8fafc;
+  border-left: 1px solid #e2e8f0;
   overflow-y: auto;
 }
 @media (max-width: 959px) { .auth-right { width: 100%; } }
@@ -300,7 +301,7 @@ const redefinir = async () => {
 .mobile-brand { display: none; align-items: center; gap: 12px; margin-bottom: 36px; }
 @media (max-width: 959px) { .mobile-brand { display: flex; } }
 .form-header { margin-bottom: 28px; }
-.form-title { font-size: 26px; font-weight: 700; color: #0f1d14; letter-spacing: -0.02em; margin-bottom: 6px; }
+.form-title { font-size: 26px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin-bottom: 6px; }
 .form-subtitle { font-size: 14px; color: #6b7280; }
 .field-group { margin-bottom: 16px; }
 .field-label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
@@ -310,12 +311,12 @@ const redefinir = async () => {
   font-weight: 600 !important;
   font-size: 14px !important;
   letter-spacing: 0.01em !important;
-  box-shadow: 0 4px 16px rgba(0,104,55,0.3) !important;
+  box-shadow: 0 4px 16px rgba(5,150,105,0.25) !important;
 }
 .submit-btn:hover {
-  box-shadow: 0 6px 20px rgba(0,104,55,0.4) !important;
+  box-shadow: 0 6px 20px rgba(5,150,105,0.35) !important;
   transform: translateY(-1px);
 }
-.forgot-link { font-size: 13px; color: #006837; text-decoration: none; opacity: 0.8; }
+.forgot-link { font-size: 13px; color: #059669; text-decoration: none; opacity: 0.8; }
 .forgot-link:hover { opacity: 1; text-decoration: underline; }
 </style>
