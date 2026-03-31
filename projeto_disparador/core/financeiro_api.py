@@ -211,6 +211,7 @@ class CriarDespesaSuperlogicaIn(Schema):
     dt_vencimento:    str           # DD/MM/YYYY
     dt_competencia:   str = ""      # DD/MM/YYYY
     vl_valor:         float
+    qt_parcelas:      int = 1       # número de parcelas (1–60)
     id_conta:         str = ""      # ex: "2.1.1"
     id_forma_pag:     int = 0
     id_conta_banco:   int = 0
@@ -242,7 +243,7 @@ def criar_no_superlogica(request, payload: CriarDespesaSuperlogicaIn):
             data["FL_LIQUIDADO_PDES"] = 1
             data["DT_LIQUIDACAO_PDES"] = payload.dt_liquidacao
             data["VL_PAGO"] = payload.vl_pago or payload.vl_valor
-        resultado = criar_despesa_superlogica(data)
+        resultado = criar_despesa_superlogica(data, qt_parcelas=max(1, payload.qt_parcelas or 1))
         return 200, {"ok": True, "resultado": resultado}
     except Exception as e:
         raise HttpError(400, str(e))
@@ -387,4 +388,132 @@ def excluir_despesa_local(request, despesa_id: str):
         DespesaLocal.objects.get(id=despesa_id).delete()
     except DespesaLocal.DoesNotExist:
         raise HttpError(404, "Despesa não encontrada")
+    return 204, None
+
+
+# ── Fila de Pagamentos ────────────────────────────────────────────────────────
+
+class DespesaParaPagarItemIn(Schema):
+    id_despesa:      str
+    id_parcela:      str = ""
+    id_contato:      str = ""
+    descricao:       str
+    fornecedor:      str = ""
+    condominio_id:   int
+    condominio_nome: str = ""
+    valor:           float
+    vencimento:      str = ""
+    observacao:      str = ""
+
+
+class DespesaParaPagarIn(Schema):
+    despesas: List[DespesaParaPagarItemIn]
+
+
+class DespesaParaPagarOut(Schema):
+    id:              str
+    id_despesa:      str
+    id_parcela:      str
+    descricao:       str
+    fornecedor:      str
+    condominio_id:   int
+    condominio_nome: str
+    valor:           float
+    vencimento:      str
+    status:          str
+    observacao:      str
+    marcado_por:     str
+    marcado_em:      str
+
+
+class AtualizarStatusIn(Schema):
+    status:     str   # aguardando | pago | cancelado
+    observacao: str = ""
+
+
+def _fpp_out(d) -> DespesaParaPagarOut:
+    return DespesaParaPagarOut(
+        id=str(d.id),
+        id_despesa=d.id_despesa,
+        id_parcela=d.id_parcela,
+        descricao=d.descricao,
+        fornecedor=d.fornecedor,
+        condominio_id=d.condominio_id,
+        condominio_nome=d.condominio_nome,
+        valor=float(d.valor),
+        vencimento=d.vencimento,
+        status=d.status,
+        observacao=d.observacao,
+        marcado_por=d.marcado_por,
+        marcado_em=d.marcado_em.strftime("%d/%m/%Y %H:%M"),
+    )
+
+
+@financeiro_router.get("/fila-pagamento", response=List[DespesaParaPagarOut])
+def listar_fila_pagamento(request, status: Optional[str] = None):
+    """Lista despesas marcadas para pagamento."""
+    from core.models import DespesaParaPagar
+    qs = DespesaParaPagar.objects.all()
+    if status and status != "todas":
+        qs = qs.filter(status=status)
+    return [_fpp_out(d) for d in qs]
+
+
+@financeiro_router.post("/fila-pagamento", response={201: List[DespesaParaPagarOut]})
+def marcar_para_pagamento(request, payload: DespesaParaPagarIn):
+    """Marca uma ou mais despesas para pagamento."""
+    from core.models import DespesaParaPagar
+    user = request.auth
+    marcado_por = getattr(user, 'name', '') or getattr(user, 'email', '') or 'Sistema'
+    criados = []
+    for item in payload.despesas:
+        # Evita duplicatas de despesas já na fila aguardando
+        if DespesaParaPagar.objects.filter(
+            id_despesa=item.id_despesa, id_parcela=item.id_parcela, status='aguardando'
+        ).exists():
+            continue
+        d = DespesaParaPagar.objects.create(
+            id_despesa=item.id_despesa,
+            id_parcela=item.id_parcela,
+            id_contato=item.id_contato,
+            descricao=item.descricao,
+            fornecedor=item.fornecedor,
+            condominio_id=item.condominio_id,
+            condominio_nome=item.condominio_nome,
+            valor=item.valor,
+            vencimento=item.vencimento,
+            observacao=item.observacao,
+            marcado_por=marcado_por,
+        )
+        criados.append(_fpp_out(d))
+    return 201, criados
+
+
+@financeiro_router.put("/fila-pagamento/{item_id}", response=DespesaParaPagarOut)
+def atualizar_fila_pagamento(request, item_id: str, payload: AtualizarStatusIn):
+    """Atualiza o status de um item da fila (pago / cancelado)."""
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaParaPagar
+    try:
+        d = DespesaParaPagar.objects.get(id=item_id)
+    except DespesaParaPagar.DoesNotExist:
+        raise HttpError(404, "Item não encontrado")
+    if payload.status not in ('aguardando', 'pago', 'cancelado'):
+        raise HttpError(400, "Status inválido")
+    d.status = payload.status
+    if payload.observacao:
+        d.observacao = payload.observacao
+    d.save()
+    return _fpp_out(d)
+
+
+@financeiro_router.delete("/fila-pagamento/{item_id}", response={204: None})
+def remover_da_fila(request, item_id: str):
+    """Remove um item da fila de pagamento."""
+    _require_financeiro_or_admin(request.auth)
+    from core.models import DespesaParaPagar
+    try:
+        DespesaParaPagar.objects.get(id=item_id).delete()
+    except DespesaParaPagar.DoesNotExist:
+        raise HttpError(404, "Item não encontrado")
     return 204, None

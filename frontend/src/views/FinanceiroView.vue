@@ -11,7 +11,7 @@
           <p class="page-subtitle">Despesas por condomínio via Superlógica</p>
         </div>
       </div>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirFormDespesa(null)">
+      <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirCriarSuperlogica">
         Nova Despesa
       </v-btn>
     </div>
@@ -29,6 +29,27 @@
       </div>
 
       <div class="pa-6">
+        <!-- Filtros salvos -->
+        <div v-if="filtrosSalvos.length" class="mb-4">
+          <p class="text-caption text-medium-emphasis text-uppercase font-weight-bold mb-2" style="letter-spacing:.05em;">Filtros salvos</p>
+          <div class="d-flex flex-wrap gap-2">
+            <v-chip
+              v-for="f in filtrosSalvos"
+              :key="f.nome"
+              :color="filtroAtivoNome === f.nome ? 'primary' : undefined"
+              :variant="filtroAtivoNome === f.nome ? 'flat' : 'tonal'"
+              size="small"
+              closable
+              @click="aplicarFiltroSalvo(f)"
+              @click:close="excluirFiltroSalvo(f.nome)"
+            >
+              <v-icon start size="14">mdi-bookmark-outline</v-icon>
+              {{ f.nome }}
+              <span class="ml-1 opacity-60">({{ f.ids.length }})</span>
+            </v-chip>
+          </div>
+        </div>
+
         <v-row>
           <v-col cols="12" md="4">
             <v-autocomplete
@@ -40,38 +61,68 @@
               variant="outlined"
               density="comfortable"
               clearable
-              hide-details
+              :hide-details="!loadingCondominios"
               multiple
               chips
               closable-chips
               :disabled="loadingCondominios || loading"
-              no-data-text="Nenhum condomínio encontrado"
-              placeholder="Selecione um ou mais condomínios..."
+              :no-data-text="loadingCondominios ? 'Carregando condomínios...' : 'Nenhum condomínio encontrado'"
+              :placeholder="loadingCondominios ? 'Carregando, só um momento...' : 'Selecione um ou mais condomínios...'"
+              :loading="loadingCondominios"
+              :hint="loadingCondominios ? 'Buscando condomínios disponíveis...' : ''"
+              :persistent-hint="loadingCondominios"
+              @update:model-value="filtroAtivoNome = null"
             />
           </v-col>
 
           <v-col cols="12" sm="6" md="2">
-            <v-text-field
-              v-model="dtInicio"
-              label="Data início"
-              variant="outlined"
-              density="comfortable"
-              placeholder="DD/MM/AAAA"
-              hide-details
-              :disabled="loading"
-            />
+            <v-menu v-model="menuDtInicio" :close-on-content-click="false" min-width="0">
+              <template #activator="{ props }">
+                <v-text-field
+                  v-bind="props"
+                  :model-value="dtInicio"
+                  label="Data início"
+                  variant="outlined"
+                  density="comfortable"
+                  placeholder="DD/MM/AAAA"
+                  hide-details
+                  readonly
+                  :disabled="loading"
+                  prepend-inner-icon="mdi-calendar-outline"
+                />
+              </template>
+              <v-date-picker
+                :model-value="dtInicioISO"
+                color="primary"
+                show-adjacent-months
+                @update:model-value="val => { dtInicio = isoParaBR(val); menuDtInicio = false }"
+              />
+            </v-menu>
           </v-col>
 
           <v-col cols="12" sm="6" md="2">
-            <v-text-field
-              v-model="dtFim"
-              label="Data fim"
-              variant="outlined"
-              density="comfortable"
-              placeholder="DD/MM/AAAA"
-              hide-details
-              :disabled="loading"
-            />
+            <v-menu v-model="menuDtFim" :close-on-content-click="false" min-width="0">
+              <template #activator="{ props }">
+                <v-text-field
+                  v-bind="props"
+                  :model-value="dtFim"
+                  label="Data fim"
+                  variant="outlined"
+                  density="comfortable"
+                  placeholder="DD/MM/AAAA"
+                  hide-details
+                  readonly
+                  :disabled="loading"
+                  prepend-inner-icon="mdi-calendar-outline"
+                />
+              </template>
+              <v-date-picker
+                :model-value="dtFimISO"
+                color="primary"
+                show-adjacent-months
+                @update:model-value="val => { dtFim = isoParaBR(val); menuDtFim = false }"
+              />
+            </v-menu>
           </v-col>
 
           <v-col cols="12" sm="6" md="2">
@@ -92,7 +143,7 @@
             />
           </v-col>
 
-          <v-col cols="12" sm="6" md="2" class="d-flex align-start">
+          <v-col cols="12" sm="6" md="2" class="d-flex flex-column gap-2 align-start">
             <v-btn
               color="primary"
               block
@@ -102,10 +153,54 @@
               :disabled="!condominioSelecionado.length || !dtInicio || !dtFim || loading"
               @click="buscar"
             >Buscar despesas</v-btn>
+            <v-btn
+              v-if="condominioSelecionado.length"
+              block
+              size="small"
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-bookmark-plus-outline"
+              @click="dialogSalvarFiltro = true"
+            >Salvar filtro</v-btn>
           </v-col>
         </v-row>
       </div>
     </v-card>
+
+    <!-- ── Dialog: Salvar filtro ── -->
+    <v-dialog v-model="dialogSalvarFiltro" max-width="400" persistent>
+      <v-card rounded="xl">
+        <div class="dialog-header d-flex align-center gap-3">
+          <div class="page-icon" style="width:36px;height:36px;border-radius:9px;flex-shrink:0;">
+            <v-icon size="18" color="white">mdi-bookmark-plus-outline</v-icon>
+          </div>
+          <div>
+            <p style="font-weight:700;font-size:0.95rem;margin:0;">Salvar filtro</p>
+            <p style="font-size:0.75rem;opacity:.5;margin:2px 0 0;">{{ condominioSelecionado.length }} condomínio(s) selecionado(s)</p>
+          </div>
+        </div>
+        <v-divider />
+        <div class="pa-5">
+          <v-text-field
+            v-model="novoFiltroNome"
+            label="Nome do filtro"
+            variant="outlined"
+            density="comfortable"
+            placeholder="Ex: Zona Sul, Clientes VIP..."
+            autofocus
+            hide-details="auto"
+            :rules="[v => !!v || 'Informe um nome']"
+            @keyup.enter="confirmarSalvarFiltro"
+          />
+          <v-alert v-if="erroSalvarFiltro" type="error" density="compact" class="mt-3">{{ erroSalvarFiltro }}</v-alert>
+        </div>
+        <v-divider />
+        <div class="d-flex justify-end gap-2 pa-4">
+          <v-btn variant="text" color="grey" @click="dialogSalvarFiltro = false; novoFiltroNome = ''; erroSalvarFiltro = ''">Cancelar</v-btn>
+          <v-btn color="primary" :disabled="!novoFiltroNome.trim()" @click="confirmarSalvarFiltro">Salvar</v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
 
     <!-- Erro -->
     <v-alert v-if="erro" type="error" class="mb-4" closable @click:close="erro = ''">
@@ -173,7 +268,7 @@
       </v-row>
 
       <!-- Dialog KPI -->
-      <v-dialog v-model="dialogKpi" max-width="900">
+      <v-dialog v-model="dialogKpi" max-width="960">
         <v-card>
           <v-card-title class="pa-4 d-flex align-center justify-space-between">
             <div class="d-flex align-center gap-2">
@@ -186,11 +281,15 @@
           <v-divider />
           <v-card-text class="pa-4">
             <v-data-table
+              v-model="selecionadasParaPagar"
               :headers="dialogFiltro === 'pendente' ? headersPendentes : headersDialog"
               :items="dialogItens"
               :items-per-page="15"
               density="compact"
               class="text-body-2"
+              :show-select="dialogFiltro === 'pendente'"
+              item-value="id"
+              return-object
             >
               <template #item.valor="{ item }">{{ brl(item.valor) }}</template>
               <template #item.valor_pago="{ item }">{{ item.valor_pago > 0 ? brl(item.valor_pago) : '-' }}</template>
@@ -210,8 +309,23 @@
               </template>
             </v-data-table>
 
-            <div class="d-flex justify-end mt-3">
-              <strong>Total: {{ brl(dialogItens.reduce((s, d) => s + d.valor, 0)) }}</strong>
+            <div class="d-flex align-center justify-space-between mt-3 flex-wrap gap-2">
+              <div v-if="dialogFiltro === 'pendente'">
+                <v-btn
+                  v-if="selecionadasParaPagar.length"
+                  color="warning"
+                  variant="tonal"
+                  prepend-icon="mdi-clock-outline"
+                  :loading="marcandoPagamento"
+                  @click="marcarParaPagamento"
+                >
+                  Marcar {{ selecionadasParaPagar.length }} para pagamento
+                </v-btn>
+                <span v-else class="text-caption text-medium-emphasis">
+                  Selecione despesas para encaminhar ao financeiro
+                </span>
+              </div>
+              <strong class="ml-auto">Total: {{ brl(dialogItens.reduce((s, d) => s + d.valor, 0)) }}</strong>
             </div>
           </v-card-text>
         </v-card>
@@ -345,256 +459,104 @@
         </v-data-table>
       </v-card>
     </div>
-    <!-- ── Despesas Cadastradas no Sistema ── -->
+    <!-- ── Fila de Pagamentos ── -->
     <v-card class="section-card mt-6" elevation="3">
       <div class="section-header d-flex align-center justify-space-between">
-        <div class="section-badge" style="background: linear-gradient(135deg,#059669,#34d399); flex-shrink:0;">
-          <v-icon size="16" color="white">mdi-clipboard-list-outline</v-icon>
+        <div class="section-badge" style="background: linear-gradient(135deg,#f59e0b,#d97706);">
+          <v-icon size="16" color="white">mdi-clock-outline</v-icon>
         </div>
         <div class="flex-grow-1">
-          <p class="section-title">Despesas Cadastradas no Sistema</p>
-          <p class="section-subtitle">Custos e despesas registrados manualmente</p>
+          <p class="section-title">Fila de Pagamentos</p>
+          <p class="section-subtitle">Despesas encaminhadas para o financeiro pagar</p>
         </div>
-        <div class="d-flex align-center gap-3 pr-1">
-          <v-chip v-if="despesasLocais.length" size="small" color="primary" variant="tonal">
-            {{ despesasLocais.length }} registro{{ despesasLocais.length !== 1 ? 's' : '' }}
+        <div class="d-flex align-center gap-2">
+          <v-chip v-if="filaPagamento.filter(i=>i.status==='aguardando').length" color="warning" size="small" variant="tonal">
+            {{ filaPagamento.filter(i=>i.status==='aguardando').length }} aguardando
           </v-chip>
           <v-select
-            v-model="filtroStatusLocal"
-            :items="[{title:'Todas',value:'todas'},{title:'Pendentes',value:'pendente'},{title:'Pagas',value:'pago'}]"
+            v-model="filaFiltroStatus"
+            :items="[{title:'Aguardando',value:'aguardando'},{title:'Pagas',value:'pago'},{title:'Canceladas',value:'cancelado'},{title:'Todas',value:'todas'}]"
             item-title="title"
             item-value="value"
             density="compact"
             variant="outlined"
             hide-details
-            style="min-width:130px;"
-            @update:model-value="fetchDespesasLocais"
+            style="max-width:160px;"
+            @update:model-value="fetchFilaPagamento"
           />
+          <v-btn icon size="small" variant="text" :loading="loadingFila" @click="fetchFilaPagamento">
+            <v-icon size="18">mdi-refresh</v-icon>
+          </v-btn>
         </div>
       </div>
+      <v-divider />
 
       <div class="pa-4">
-        <div v-if="loadingLocais" class="d-flex align-center justify-center py-8">
-          <v-progress-circular indeterminate color="primary" size="28" class="mr-3" />
-          <span class="text-body-2 text-medium-emphasis">Carregando...</span>
+        <div v-if="!loadingFila && !filaPagamento.length" class="text-center py-8 text-disabled">
+          <v-icon size="40" class="mb-2 opacity-30">mdi-clock-check-outline</v-icon>
+          <p style="font-size:0.85rem;">Nenhuma despesa na fila de pagamento.</p>
         </div>
 
-        <div v-else-if="!despesasLocais.length" class="text-center py-10">
-          <v-icon size="48" color="grey-lighten-1">mdi-clipboard-text-off-outline</v-icon>
-          <p class="text-body-2 text-medium-emphasis mt-3">Nenhuma despesa cadastrada ainda.</p>
-          <v-btn color="primary" variant="tonal" size="small" class="mt-3" prepend-icon="mdi-plus" @click="abrirFormDespesa(null)">
-            Adicionar despesa
-          </v-btn>
-        </div>
-
-        <div v-else>
-          <!-- KPIs locais -->
-          <v-row class="mb-4">
-            <v-col cols="6" sm="3">
-              <div class="local-kpi">
-                <span class="local-kpi__label">Total</span>
-                <span class="local-kpi__value">{{ brl(totalLocais) }}</span>
-              </div>
-            </v-col>
-            <v-col cols="6" sm="3">
-              <div class="local-kpi local-kpi--red">
-                <span class="local-kpi__label">Pendente</span>
-                <span class="local-kpi__value">{{ brl(totalLocaisPendente) }}</span>
-              </div>
-            </v-col>
-            <v-col cols="6" sm="3">
-              <div class="local-kpi local-kpi--green">
-                <span class="local-kpi__label">Pago</span>
-                <span class="local-kpi__value">{{ brl(totalLocaisPago) }}</span>
-              </div>
-            </v-col>
-            <v-col cols="6" sm="3">
-              <div class="local-kpi">
-                <span class="local-kpi__label">Registros</span>
-                <span class="local-kpi__value">{{ despesasLocais.length }}</span>
-              </div>
-            </v-col>
-          </v-row>
-
-          <v-data-table
-            :headers="headersLocais"
-            :items="despesasLocais"
-            :items-per-page="10"
-            density="compact"
-            class="text-body-2"
-          >
-            <template #item.valor="{ item }">{{ brl(item.valor) }}</template>
-            <template #item.status="{ item }">
-              <v-chip :color="item.status === 'pago' ? 'green' : 'orange'" size="x-small" variant="tonal">
-                {{ item.status === 'pago' ? 'Pago' : 'Pendente' }}
-              </v-chip>
-            </template>
-            <template #item.acoes="{ item }">
-              <div class="d-flex gap-1">
-                <v-tooltip v-if="item.status === 'pendente'" text="Marcar como pago" location="top">
-                  <template #activator="{ props }">
-                    <v-btn v-bind="props" icon size="x-small" variant="text" color="green" @click="marcarComoPago(item)">
-                      <v-icon size="16">mdi-check-circle-outline</v-icon>
-                    </v-btn>
-                  </template>
-                </v-tooltip>
-                <v-tooltip text="Editar" location="top">
-                  <template #activator="{ props }">
-                    <v-btn v-bind="props" icon size="x-small" variant="text" color="primary" @click="abrirFormDespesa(item)">
-                      <v-icon size="16">mdi-pencil-outline</v-icon>
-                    </v-btn>
-                  </template>
-                </v-tooltip>
-                <v-tooltip text="Excluir" location="top">
-                  <template #activator="{ props }">
-                    <v-btn v-bind="props" icon size="x-small" variant="text" color="error" @click="confirmarExclusao(item)">
-                      <v-icon size="16">mdi-delete-outline</v-icon>
-                    </v-btn>
-                  </template>
-                </v-tooltip>
-              </div>
-            </template>
-          </v-data-table>
-        </div>
+        <v-table v-else density="compact">
+          <thead>
+            <tr>
+              <th>Descrição</th>
+              <th>Fornecedor</th>
+              <th>Condomínio</th>
+              <th>Vencimento</th>
+              <th class="text-right">Valor</th>
+              <th>Status</th>
+              <th>Encaminhado por</th>
+              <th class="text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in filaPagamento" :key="item.id">
+              <td>{{ item.descricao }}</td>
+              <td class="text-medium-emphasis">{{ item.fornecedor || '—' }}</td>
+              <td class="text-medium-emphasis" style="max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ item.condominio_nome }}</td>
+              <td>{{ item.vencimento || '—' }}</td>
+              <td class="text-right font-weight-bold">{{ brl(item.valor) }}</td>
+              <td>
+                <v-chip
+                  :color="item.status==='pago'?'success':item.status==='cancelado'?'error':'warning'"
+                  size="x-small" variant="tonal"
+                >{{ item.status }}</v-chip>
+              </td>
+              <td class="text-caption text-medium-emphasis">{{ item.marcado_por }}</td>
+              <td class="text-center">
+                <div class="d-flex gap-1 justify-center">
+                  <v-tooltip v-if="item.status==='aguardando'" text="Marcar como Pago" location="top">
+                    <template #activator="{ props }">
+                      <v-btn v-bind="props" icon size="x-small" variant="text" color="success"
+                        @click="atualizarStatusFila(item.id, 'pago')">
+                        <v-icon size="16">mdi-check-circle-outline</v-icon>
+                      </v-btn>
+                    </template>
+                  </v-tooltip>
+                  <v-tooltip v-if="item.status==='aguardando'" text="Cancelar" location="top">
+                    <template #activator="{ props }">
+                      <v-btn v-bind="props" icon size="x-small" variant="text" color="error"
+                        @click="atualizarStatusFila(item.id, 'cancelado')">
+                        <v-icon size="16">mdi-close-circle-outline</v-icon>
+                      </v-btn>
+                    </template>
+                  </v-tooltip>
+                  <v-tooltip text="Remover" location="top">
+                    <template #activator="{ props }">
+                      <v-btn v-bind="props" icon size="x-small" variant="text" color="grey"
+                        @click="removerDaFila(item.id)">
+                        <v-icon size="15">mdi-delete-outline</v-icon>
+                      </v-btn>
+                    </template>
+                  </v-tooltip>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
       </div>
     </v-card>
-
-    <!-- ── Dialog: Formulário de Despesa ── -->
-    <v-dialog v-model="dialogForm" max-width="560" persistent eager>
-      <v-card rounded="xl">
-        <div class="dialog-header d-flex align-center gap-3">
-          <div class="page-icon" style="width:36px;height:36px;border-radius:9px;flex-shrink:0;">
-            <v-icon size="18" color="white">{{ formEdicao ? 'mdi-pencil' : 'mdi-plus' }}</v-icon>
-          </div>
-          <div>
-            <p style="font-weight:700;font-size:0.95rem;margin:0;">{{ formEdicao ? 'Editar Despesa' : 'Nova Despesa' }}</p>
-            <p style="font-size:0.75rem;opacity:.5;margin:2px 0 0;">Preencha os dados da despesa</p>
-          </div>
-        </div>
-        <v-divider />
-
-        <div class="pa-5">
-          <v-form ref="formRef">
-            <v-row dense>
-              <v-col cols="12">
-                <v-select
-                  v-model="form.condominio_id"
-                  :items="condominios"
-                  item-title="nome"
-                  item-value="id"
-                  label="Condomínio *"
-                  variant="outlined"
-                  density="comfortable"
-                  clearable
-                  hide-details="auto"
-                  :loading="loadingCondominios"
-                  :disabled="loadingCondominios"
-                  no-data-text="Nenhum condomínio encontrado"
-                  :rules="[v => !!v || 'Obrigatório']"
-                  @update:model-value="onFormCondominioChange"
-                />
-              </v-col>
-              <v-col cols="12">
-                <v-text-field
-                  v-model="form.descricao"
-                  label="Descrição *"
-                  variant="outlined"
-                  density="comfortable"
-                  hide-details="auto"
-                  :rules="[v => !!v || 'Obrigatório']"
-                />
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-text-field
-                  v-model="form.fornecedor"
-                  label="Fornecedor"
-                  variant="outlined"
-                  density="comfortable"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-combobox
-                  v-model="form.categoria"
-                  :items="categoriasDisponiveis"
-                  label="Categoria"
-                  variant="outlined"
-                  density="comfortable"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-text-field
-                  v-model="form.valor"
-                  label="Valor (R$) *"
-                  variant="outlined"
-                  density="comfortable"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  hide-details="auto"
-                  :rules="[v => !!v && v > 0 || 'Informe um valor']"
-                />
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-text-field
-                  v-model="form.vencimento"
-                  label="Vencimento *"
-                  variant="outlined"
-                  density="comfortable"
-                  placeholder="DD/MM/AAAA"
-                  hide-details="auto"
-                  :rules="[v => !!v || 'Obrigatório']"
-                />
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-select
-                  v-model="form.status"
-                  :items="[{title:'Pendente',value:'pendente'},{title:'Pago',value:'pago'}]"
-                  item-title="title"
-                  item-value="value"
-                  label="Status"
-                  variant="outlined"
-                  density="comfortable"
-                  hide-details
-                />
-              </v-col>
-              <v-col v-if="form.status === 'pago'" cols="12" sm="6">
-                <v-text-field
-                  v-model="form.data_pagamento"
-                  label="Data de Pagamento"
-                  variant="outlined"
-                  density="comfortable"
-                  placeholder="DD/MM/AAAA"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12">
-                <v-textarea
-                  v-model="form.observacao"
-                  label="Observação"
-                  variant="outlined"
-                  density="comfortable"
-                  rows="2"
-                  hide-details
-                />
-              </v-col>
-            </v-row>
-          </v-form>
-
-          <v-alert v-if="erroForm" type="error" density="compact" class="mt-3">{{ erroForm }}</v-alert>
-        </div>
-
-        <v-divider />
-        <div class="d-flex justify-end gap-2 pa-4">
-          <v-btn variant="text" color="grey" @click="dialogForm = false">Cancelar</v-btn>
-          <v-btn color="primary" :loading="salvando" @click="salvarDespesa">
-            <v-icon start size="16">mdi-content-save-outline</v-icon>
-            {{ formEdicao ? 'Salvar alterações' : 'Cadastrar despesa' }}
-          </v-btn>
-        </div>
-      </v-card>
-    </v-dialog>
 
     <!-- ── Dialog: Liquidar despesa Superlógica ── -->
     <v-dialog v-model="dialogLiquidar" max-width="560" persistent eager>
@@ -668,106 +630,303 @@
     </v-dialog>
 
     <!-- ── Dialog: Criar despesa no Superlógica ── -->
-    <v-dialog v-model="dialogCriarSL" max-width="600" persistent eager>
+    <v-dialog v-model="dialogCriarSL" max-width="680" persistent scrollable>
       <v-card rounded="xl">
+
+        <!-- Header -->
         <div class="dialog-header d-flex align-center gap-3">
-          <div class="page-icon" style="width:36px;height:36px;border-radius:9px;flex-shrink:0;">
-            <v-icon size="18" color="white">mdi-cloud-upload-outline</v-icon>
+          <div class="page-icon" style="width:38px;height:38px;border-radius:10px;flex-shrink:0;">
+            <v-icon size="19" color="white">mdi-cloud-upload-outline</v-icon>
           </div>
           <div>
-            <p style="font-weight:700;font-size:0.95rem;margin:0;">Nova Despesa no Superlógica</p>
-            <p style="font-size:0.75rem;opacity:.5;margin:2px 0 0;">Cria e salva diretamente no Superlógica</p>
+            <p style="font-weight:700;font-size:1rem;margin:0;">Nova Despesa no Superlógica</p>
+            <p style="font-size:0.75rem;opacity:.5;margin:2px 0 0;">Preencha os dados e clique em Criar</p>
           </div>
         </div>
         <v-divider />
 
-        <div class="pa-5">
-          <v-row dense>
-            <v-col cols="12">
-              <v-select
-                v-model="formCriarSL.id_condominio"
-                :items="condominios"
-                item-title="nome"
-                item-value="id"
-                label="Condomínio *"
-                variant="outlined"
-                density="comfortable"
-                :loading="loadingCondominios"
-                hide-details="auto"
-                :rules="[v => !!v || 'Obrigatório']"
-              />
-            </v-col>
-            <v-col cols="12">
-              <v-text-field v-model="formCriarSL.descricao" label="Descrição / Complemento *" variant="outlined" density="comfortable" hide-details="auto" :rules="[v => !!v || 'Obrigatório']" />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model="formCriarSL.nome_contato" label="Nome do Fornecedor" variant="outlined" density="comfortable" hide-details />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model="formCriarSL.id_conta" label="Conta Contábil (ex: 2.1.1)" variant="outlined" density="comfortable" hide-details />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model.number="formCriarSL.vl_valor" label="Valor (R$) *" variant="outlined" density="comfortable" type="number" step="0.01" hide-details="auto" :rules="[v => v > 0 || 'Obrigatório']" />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model="formCriarSL.dt_vencimento" label="Vencimento *" variant="outlined" density="comfortable" placeholder="DD/MM/AAAA" hide-details="auto" :rules="[v => !!v || 'Obrigatório']" />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model="formCriarSL.dt_competencia" label="Competência" variant="outlined" density="comfortable" placeholder="DD/MM/AAAA" hide-details />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-select v-model="formCriarSL.id_forma_pag" :items="formasPagamento" item-title="label" item-value="value" label="Forma de Pagamento" variant="outlined" density="comfortable" hide-details />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model.number="formCriarSL.id_conta_banco" label="ID Conta Banco" variant="outlined" density="comfortable" type="number" hide-details />
-            </v-col>
-            <v-col cols="12">
-              <v-textarea v-model="formCriarSL.observacao" label="Observação" variant="outlined" density="comfortable" rows="2" hide-details />
-            </v-col>
-            <v-col cols="12">
-              <v-switch v-model="formCriarSL.liquidar_agora" label="Já liquidar ao criar" color="primary" hide-details density="compact" />
-            </v-col>
-            <template v-if="formCriarSL.liquidar_agora">
-              <v-col cols="12" sm="6">
-                <v-text-field v-model="formCriarSL.dt_liquidacao" label="Data Liquidação" variant="outlined" density="comfortable" placeholder="DD/MM/AAAA" hide-details />
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-text-field v-model.number="formCriarSL.vl_pago" label="Valor Pago (R$)" variant="outlined" density="comfortable" type="number" step="0.01" hide-details />
-              </v-col>
-            </template>
-          </v-row>
+        <v-card-text class="pa-0">
+          <div class="sl-form-body">
 
-          <v-alert v-if="erroCriarSL" type="error" density="compact" class="mt-3">{{ erroCriarSL }}</v-alert>
-        </div>
+            <!-- Seção 1: Condomínio e Descrição -->
+            <div class="sl-section">
+              <p class="sl-section-label">
+                <v-icon size="13" class="mr-1">mdi-office-building-outline</v-icon>
+                Identificação
+              </p>
+              <v-row dense>
+                <v-col cols="12">
+                  <v-select
+                    v-model="formCriarSL.id_condominio"
+                    :items="condominios"
+                    item-title="nome"
+                    item-value="id"
+                    label="Condomínio *"
+                    variant="outlined"
+                    density="comfortable"
+                    :loading="loadingCondominios"
+                    hide-details="auto"
+                    :rules="[v => !!v || 'Obrigatório']"
+                  />
+                </v-col>
+                <v-col cols="12">
+                  <v-text-field
+                    v-model="formCriarSL.descricao"
+                    label="Descrição / Complemento *"
+                    variant="outlined"
+                    density="comfortable"
+                    hide-details="auto"
+                    :rules="[v => !!v || 'Obrigatório']"
+                    prepend-inner-icon="mdi-text-short"
+                  />
+                </v-col>
+              </v-row>
+            </div>
+
+            <v-divider />
+
+            <!-- Seção 2: Fornecedor -->
+            <div class="sl-section">
+              <p class="sl-section-label">
+                <v-icon size="13" class="mr-1">mdi-account-outline</v-icon>
+                Fornecedor / Favorecido
+              </p>
+              <v-row dense>
+                <v-col cols="12" sm="7">
+                  <v-text-field
+                    v-model="formCriarSL.nome_contato"
+                    label="Nome do Fornecedor *"
+                    variant="outlined"
+                    density="comfortable"
+                    hide-details="auto"
+                    :rules="[v => !!v || 'Obrigatório']"
+                    prepend-inner-icon="mdi-account"
+                  />
+                </v-col>
+                <v-col cols="12" sm="5">
+                  <v-text-field
+                    v-model="formCriarSL.id_contato"
+                    label="ID Superlógica *"
+                    variant="outlined"
+                    density="comfortable"
+                    hide-details="auto"
+                    :rules="[v => !!v || 'Obrigatório']"
+                    prepend-inner-icon="mdi-identifier"
+                    hint="Ver em Despesas → Favorecidos"
+                    persistent-hint
+                  />
+                </v-col>
+              </v-row>
+            </div>
+
+            <v-divider />
+
+            <!-- Seção 3: Valores e Parcelas -->
+            <div class="sl-section">
+              <p class="sl-section-label">
+                <v-icon size="13" class="mr-1">mdi-cash-multiple</v-icon>
+                Valores e Parcelas
+              </p>
+              <v-row dense>
+                <v-col cols="6" sm="4">
+                  <v-text-field
+                    v-model.number="formCriarSL.vl_valor"
+                    label="Valor Total (R$) *"
+                    variant="outlined"
+                    density="comfortable"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    hide-details="auto"
+                    :rules="[v => v > 0 || 'Obrigatório']"
+                    prepend-inner-icon="mdi-currency-brl"
+                  />
+                </v-col>
+                <v-col cols="6" sm="4">
+                  <v-text-field
+                    v-model="formCriarSL.dt_vencimento"
+                    label="1º Vencimento *"
+                    variant="outlined"
+                    density="comfortable"
+                    placeholder="DD/MM/AAAA"
+                    hide-details="auto"
+                    :rules="[v => !!v || 'Obrigatório']"
+                    prepend-inner-icon="mdi-calendar"
+                  />
+                </v-col>
+                <v-col cols="6" sm="4">
+                  <v-text-field
+                    v-model.number="formCriarSL.qt_parcelas"
+                    label="Parcelas"
+                    variant="outlined"
+                    density="comfortable"
+                    type="number"
+                    min="1"
+                    max="60"
+                    hide-details
+                    prepend-inner-icon="mdi-numeric"
+                  />
+                </v-col>
+              </v-row>
+            </div>
+
+            <v-divider />
+
+            <!-- Seção 4: Dados Complementares -->
+            <div class="sl-section">
+              <p class="sl-section-label">
+                <v-icon size="13" class="mr-1">mdi-tune-variant</v-icon>
+                Dados Complementares
+              </p>
+              <v-row dense>
+                <v-col cols="12" sm="4">
+                  <v-text-field
+                    v-model="formCriarSL.dt_competencia"
+                    label="Competência"
+                    variant="outlined"
+                    density="comfortable"
+                    placeholder="DD/MM/AAAA"
+                    hide-details
+                    prepend-inner-icon="mdi-calendar-month"
+                  />
+                </v-col>
+                <v-col cols="12" sm="4">
+                  <v-select
+                    v-model="formCriarSL.id_forma_pag"
+                    :items="formasPagamento"
+                    item-title="label"
+                    item-value="value"
+                    label="Forma de Pagamento"
+                    variant="outlined"
+                    density="comfortable"
+                    hide-details
+                  />
+                </v-col>
+                <v-col cols="12" sm="4">
+                  <v-text-field
+                    v-model="formCriarSL.id_conta"
+                    label="Conta Contábil"
+                    placeholder="ex: 2.1.1"
+                    variant="outlined"
+                    density="comfortable"
+                    hide-details
+                    prepend-inner-icon="mdi-book-outline"
+                  />
+                </v-col>
+                <v-col cols="12">
+                  <v-textarea
+                    v-model="formCriarSL.observacao"
+                    label="Observação"
+                    variant="outlined"
+                    density="comfortable"
+                    rows="2"
+                    hide-details
+                    prepend-inner-icon="mdi-note-text-outline"
+                  />
+                </v-col>
+              </v-row>
+            </div>
+
+            <!-- Seção 5: Liquidação imediata -->
+            <div class="sl-section sl-section--liquidar">
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <p class="sl-section-label mb-0">
+                    <v-icon size="13" class="mr-1">mdi-check-circle-outline</v-icon>
+                    Liquidar ao criar
+                  </p>
+                  <p style="font-size:0.72rem;opacity:.45;margin:2px 0 0;">Marca a 1ª parcela como paga imediatamente</p>
+                </div>
+                <v-switch v-model="formCriarSL.liquidar_agora" color="primary" hide-details density="compact" />
+              </div>
+              <v-row v-if="formCriarSL.liquidar_agora" dense class="mt-3">
+                <v-col cols="12" sm="6">
+                  <v-text-field
+                    v-model="formCriarSL.dt_liquidacao"
+                    label="Data de Liquidação"
+                    variant="outlined"
+                    density="comfortable"
+                    placeholder="DD/MM/AAAA"
+                    hide-details
+                    prepend-inner-icon="mdi-calendar-check"
+                  />
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field
+                    v-model.number="formCriarSL.vl_pago"
+                    label="Valor Pago (R$)"
+                    variant="outlined"
+                    density="comfortable"
+                    type="number"
+                    step="0.01"
+                    hide-details
+                    prepend-inner-icon="mdi-currency-brl"
+                  />
+                </v-col>
+              </v-row>
+            </div>
+
+          </div>
+        </v-card-text>
 
         <v-divider />
-        <div class="d-flex justify-end gap-2 pa-4">
-          <v-btn variant="text" color="grey" @click="dialogCriarSL = false">Cancelar</v-btn>
-          <v-btn color="primary" :loading="salvandoCriarSL" @click="salvarNoSuperlogica">
-            <v-icon start size="16">mdi-cloud-upload-outline</v-icon>
-            Criar no Superlógica
-          </v-btn>
+
+        <!-- Erro + Ações -->
+        <div class="pa-4">
+          <v-alert v-if="erroCriarSL" type="error" density="compact" variant="tonal" class="mb-3" :text="erroCriarSL" />
+          <div class="d-flex justify-end gap-2">
+            <v-btn variant="text" color="grey" @click="dialogCriarSL = false">Cancelar</v-btn>
+            <v-btn color="primary" :loading="salvandoCriarSL" @click="salvarNoSuperlogica" min-width="180">
+              <v-icon start size="16">mdi-cloud-upload-outline</v-icon>
+              Criar no Superlógica
+            </v-btn>
+          </div>
         </div>
+
       </v-card>
     </v-dialog>
 
-    <!-- ── Dialog: Confirmar exclusão ── -->
-    <v-dialog v-model="dialogExcluir" max-width="380">
-      <v-card rounded="xl">
-        <div class="pa-5 text-center">
-          <v-icon size="48" color="error" class="mb-3">mdi-delete-alert-outline</v-icon>
-          <p class="font-weight-bold mb-1">Excluir despesa?</p>
-          <p class="text-body-2 text-medium-emphasis">
-            "<strong>{{ despesaParaExcluir?.descricao }}</strong>" será removida permanentemente.
-          </p>
-        </div>
-        <v-divider />
-        <div class="d-flex justify-end gap-2 pa-4">
-          <v-btn variant="text" color="grey" @click="dialogExcluir = false">Cancelar</v-btn>
-          <v-btn color="error" :loading="excluindo" @click="excluirDespesa">Excluir</v-btn>
-        </div>
-      </v-card>
-    </v-dialog>
+    <!-- ── Snackbar sucesso Superlógica ── -->
+    <v-snackbar
+      v-model="snackSL"
+      color="success"
+      timeout="4000"
+      location="top right"
+      rounded="lg"
+      elevation="8"
+      min-width="320"
+      transition="slide-x-reverse-transition"
+      theme="dark"
+    >
+      <div class="d-flex align-center gap-3">
+        <v-icon size="22">mdi-check-circle-outline</v-icon>
+        <span style="font-size:0.9rem; font-weight:500;">Despesa criada com sucesso no Superlógica!</span>
+      </div>
+      <template #actions>
+        <v-btn variant="text" size="small" @click="snackSL = false">Fechar</v-btn>
+      </template>
+    </v-snackbar>
+
+    <!-- ── Snackbar ações fila ── -->
+    <v-snackbar
+      v-model="snackFila.show"
+      :color="snackFila.color"
+      timeout="4000"
+      location="top right"
+      rounded="lg"
+      elevation="8"
+      min-width="320"
+      transition="slide-x-reverse-transition"
+      theme="dark"
+    >
+      <div class="d-flex align-center gap-3">
+        <v-icon size="22">{{ snackFila.icon }}</v-icon>
+        <span style="font-size:0.9rem; font-weight:500;">{{ snackFila.msg }}</span>
+      </div>
+      <template #actions>
+        <v-btn variant="text" size="small" @click="snackFila.show = false">Fechar</v-btn>
+      </template>
+    </v-snackbar>
 
   </div>
 </template>
@@ -791,6 +950,59 @@ const ultimoDia = `${String(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
 const dtInicio = ref(primeiroDia)
 const dtFim = ref(ultimoDia)
 const comStatus = ref('todas')
+const menuDtInicio = ref(false)
+const menuDtFim    = ref(false)
+
+const brParaDate = (br) => {
+  if (!br) return null
+  const [d, m, y] = br.split('/')
+  return new Date(Number(y), Number(m) - 1, Number(d))
+}
+const isoParaBR = (val) => {
+  if (!val) return ''
+  const d = val instanceof Date ? val : new Date(val + 'T00:00:00')
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
+}
+const dtInicioISO = computed(() => brParaDate(dtInicio.value))
+const dtFimISO    = computed(() => brParaDate(dtFim.value))
+
+// ── Filtros salvos ────────────────────────────────────────────────────────────
+const FILTROS_KEY = 'financeiro_filtros_salvos'
+const filtrosSalvos    = ref(JSON.parse(localStorage.getItem(FILTROS_KEY) || '[]'))
+const filtroAtivoNome  = ref(null)
+const dialogSalvarFiltro = ref(false)
+const novoFiltroNome   = ref('')
+const erroSalvarFiltro = ref('')
+
+const persistirFiltros = () => {
+  localStorage.setItem(FILTROS_KEY, JSON.stringify(filtrosSalvos.value))
+}
+
+const aplicarFiltroSalvo = (f) => {
+  condominioSelecionado.value = [...f.ids]
+  filtroAtivoNome.value = f.nome
+}
+
+const confirmarSalvarFiltro = () => {
+  const nome = novoFiltroNome.value.trim()
+  if (!nome) return
+  if (filtrosSalvos.value.some(f => f.nome === nome)) {
+    erroSalvarFiltro.value = 'Já existe um filtro com esse nome.'
+    return
+  }
+  filtrosSalvos.value.push({ nome, ids: [...condominioSelecionado.value] })
+  persistirFiltros()
+  filtroAtivoNome.value = nome
+  dialogSalvarFiltro.value = false
+  novoFiltroNome.value = ''
+  erroSalvarFiltro.value = ''
+}
+
+const excluirFiltroSalvo = (nome) => {
+  filtrosSalvos.value = filtrosSalvos.value.filter(f => f.nome !== nome)
+  persistirFiltros()
+  if (filtroAtivoNome.value === nome) filtroAtivoNome.value = null
+}
 
 const headers = [
   { title: 'Descrição',   key: 'descricao',  sortable: true },
@@ -837,6 +1049,8 @@ const headersPendentes = [
 const dialogKpi = ref(false)
 const dialogFiltro = ref('todas')
 const dialogConfig = ref({ titulo: '', cor: 'primary', icone: 'mdi-cash-multiple' })
+const selecionadasParaPagar = ref([])
+const marcandoPagamento = ref(false)
 
 const configPorFiltro = {
   todas:    { titulo: 'Todas as Despesas',   cor: 'blue',  icone: 'mdi-cash-multiple'       },
@@ -869,7 +1083,49 @@ const dialogItens = computed(() => {
 const abrirDialog = (filtro) => {
   dialogFiltro.value = filtro
   dialogConfig.value = configPorFiltro[filtro]
+  selecionadasParaPagar.value = []
   dialogKpi.value = true
+}
+
+const condominioNome = computed(() => {
+  const id = condominioSelecionado.value[0]
+  return condominios.value.find(c => c.id === id)?.nome || ''
+})
+
+const marcarParaPagamento = async () => {
+  if (!selecionadasParaPagar.value.length) return
+  marcandoPagamento.value = true
+  try {
+    const condId   = Number(condominioSelecionado.value[0]) || 0
+    const condNome = condominioNome.value
+    const despesas = selecionadasParaPagar.value.map(d => ({
+      id_despesa:      String(d.id        || ''),
+      id_parcela:      String(d.id_parcela || ''),
+      id_contato:      String(d.id_contato || ''),
+      descricao:       String(d.descricao  || ''),
+      fornecedor:      String(d.fornecedor || ''),
+      condominio_id:   condId,
+      condominio_nome: condNome,
+      valor:           Number(d.valor) || 0,
+      vencimento:      String(d.vencimento || ''),
+    }))
+    const res = await fetch('/api/financeiro/fila-pagamento', {
+      method: 'POST',
+      headers: authHeader(),
+      body: JSON.stringify({ despesas }),
+    })
+    const text = await res.text()
+    let data
+    try { data = JSON.parse(text) } catch { throw new Error(text.substring(0, 300)) }
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data))
+    selecionadasParaPagar.value = []
+    dialogKpi.value = false
+    await fetchFilaPagamento()
+  } catch (e) {
+    alert('Erro: ' + e.message)
+  } finally {
+    marcandoPagamento.value = false
+  }
 }
 
 const authHeader = () => ({
@@ -1035,13 +1291,16 @@ const confirmarLiquidacao = async () => {
 const dialogCriarSL    = ref(false)
 const salvandoCriarSL  = ref(false)
 const erroCriarSL      = ref('')
+const snackSL          = ref(false)
 
 const formCriarSLVazio = () => ({
   id_condominio:  null,
   descricao:      '',
   nome_contato:   '',
+  id_contato:     '',
   id_conta:       '',
   vl_valor:       0,
+  qt_parcelas:    1,
   dt_vencimento:  new Date().toLocaleDateString('pt-BR'),
   dt_competencia: '',
   id_forma_pag:   0,
@@ -1064,8 +1323,8 @@ const abrirCriarSuperlogica = () => {
 }
 
 const salvarNoSuperlogica = async () => {
-  if (!formCriarSL.value.id_condominio || !formCriarSL.value.descricao || formCriarSL.value.vl_valor <= 0) {
-    erroCriarSL.value = 'Preencha os campos obrigatórios.'
+  if (!formCriarSL.value.id_condominio || !formCriarSL.value.descricao || !formCriarSL.value.nome_contato || !formCriarSL.value.id_contato || formCriarSL.value.vl_valor <= 0) {
+    erroCriarSL.value = 'Preencha todos os campos obrigatórios (incluindo ID do Fornecedor).'
     return
   }
   salvandoCriarSL.value = true
@@ -1079,6 +1338,7 @@ const salvarNoSuperlogica = async () => {
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || 'Erro ao criar despesa')
     dialogCriarSL.value = false
+    snackSL.value = true
     await buscar()
   } catch (e) {
     erroCriarSL.value = e.message
@@ -1087,172 +1347,67 @@ const salvarNoSuperlogica = async () => {
   }
 }
 
-// ── Despesas Locais ────────────────────────────────────────────────────────────
-const despesasLocais    = ref([])
-const loadingLocais     = ref(false)
-const filtroStatusLocal = ref('todas')
-const dialogForm        = ref(false)
-const dialogExcluir     = ref(false)
-const formEdicao        = ref(null)   // null = novo, objeto = editar
-const salvando          = ref(false)
-const excluindo         = ref(false)
-const erroForm          = ref('')
-const despesaParaExcluir = ref(null)
-const formRef           = ref(null)
+// ── Fila de Pagamentos ────────────────────────────────────────────────────────
+const filaPagamento    = ref([])
+const loadingFila      = ref(false)
+const filaFiltroStatus = ref('aguardando')
+const snackFila        = ref({ show: false, msg: '', color: 'success', icon: 'mdi-check-circle-outline' })
 
-const categoriasDisponiveis = [
-  'Manutenção', 'Limpeza', 'Segurança', 'Água', 'Energia', 'Internet',
-  'Seguro', 'Administração', 'Jurídico', 'Outros',
-]
+const mostrarSnackFila = (msg, color = 'success', icon = 'mdi-check-circle-outline') => {
+  snackFila.value = { show: true, msg, color, icon }
+}
 
-const formVazio = () => ({
-  condominio_id:   null,
-  condominio_nome: '',
-  descricao:       '',
-  fornecedor:      '',
-  categoria:       '',
-  valor:           '',
-  vencimento:      '',
-  data_pagamento:  '',
-  status:          'pendente',
-  observacao:      '',
-})
-
-const form = ref(formVazio())
-
-const headersLocais = [
-  { title: 'Condomínio',  key: 'condominio_nome', sortable: true },
-  { title: 'Descrição',   key: 'descricao',        sortable: true },
-  { title: 'Fornecedor',  key: 'fornecedor',        sortable: true },
-  { title: 'Categoria',   key: 'categoria',         sortable: true },
-  { title: 'Vencimento',  key: 'vencimento',        sortable: true },
-  { title: 'Valor',       key: 'valor',             sortable: true },
-  { title: 'Status',      key: 'status',            sortable: true },
-  { title: 'Ações',       key: 'acoes',             sortable: false, align: 'center' },
-]
-
-const totalLocais        = computed(() => despesasLocais.value.reduce((s, d) => s + d.valor, 0))
-const totalLocaisPendente = computed(() => despesasLocais.value.filter(d => d.status === 'pendente').reduce((s, d) => s + d.valor, 0))
-const totalLocaisPago    = computed(() => despesasLocais.value.filter(d => d.status === 'pago').reduce((s, d) => s + d.valor, 0))
-
-const fetchDespesasLocais = async () => {
-  loadingLocais.value = true
+const fetchFilaPagamento = async () => {
+  loadingFila.value = true
   try {
-    const params = new URLSearchParams()
-    if (filtroStatusLocal.value !== 'todas') params.set('status', filtroStatusLocal.value)
-    const res = await fetch(`/api/financeiro/locais?${params}`, { headers: authHeader() })
-    if (res.ok) despesasLocais.value = await res.json()
-  } catch { /* silencioso */ }
-  finally { loadingLocais.value = false }
+    const res = await fetch(
+      `/api/financeiro/fila-pagamento?status=${filaFiltroStatus.value}`,
+      { headers: authHeader() }
+    )
+    if (res.ok) filaPagamento.value = await res.json()
+  } catch (_) {}
+  loadingFila.value = false
 }
 
-const onFormCondominioChange = (id) => {
-  const condo = condominios.value.find(c => c.id === id)
-  form.value.condominio_nome = condo?.nome || ''
-}
-
-const abrirFormDespesa = (despesa) => {
-  erroForm.value = ''
-  // Garante que os condomínios estejam carregados
-  if (!condominios.value.length && !loadingCondominios.value) {
-    fetchCondominios()
-  }
-  if (despesa) {
-    formEdicao.value = despesa
-    form.value = {
-      condominio_id:   despesa.condominio_id,
-      condominio_nome: despesa.condominio_nome,
-      descricao:       despesa.descricao,
-      fornecedor:      despesa.fornecedor,
-      categoria:       despesa.categoria,
-      valor:           despesa.valor,
-      vencimento:      despesa.vencimento,
-      data_pagamento:  despesa.data_pagamento || '',
-      status:          despesa.status,
-      observacao:      despesa.observacao,
-    }
-  } else {
-    formEdicao.value = null
-    form.value = formVazio()
-  }
-  dialogForm.value = true
-}
-
-const parseDate = (str) => {
-  if (!str) return null
-  const [d, m, y] = str.split('/')
-  return `${y}-${m}-${d}`
-}
-
-const salvarDespesa = async () => {
-  const { valid } = await formRef.value.validate()
-  if (!valid) return
-  salvando.value = true
-  erroForm.value = ''
+const atualizarStatusFila = async (id, status) => {
+  const item = filaPagamento.value.find(i => i.id === id)
+  const fornecedor = item?.fornecedor || item?.descricao || 'Despesa'
   try {
-    const payload = {
-      ...form.value,
-      valor:          parseFloat(form.value.valor),
-      vencimento:     parseDate(form.value.vencimento),
-      data_pagamento: form.value.data_pagamento ? parseDate(form.value.data_pagamento) : null,
-    }
-    const url    = formEdicao.value ? `/api/financeiro/locais/${formEdicao.value.id}` : '/api/financeiro/locais'
-    const method = formEdicao.value ? 'PUT' : 'POST'
-    const res = await fetch(url, { method, headers: authHeader(), body: JSON.stringify(payload) })
-    if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.detail || 'Erro ao salvar')
-    }
-    dialogForm.value = false
-    await fetchDespesasLocais()
-  } catch (e) {
-    erroForm.value = e.message
-  } finally {
-    salvando.value = false
-  }
-}
-
-const marcarComoPago = async (despesa) => {
-  try {
-    const payload = {
-      condominio_id:   despesa.condominio_id,
-      condominio_nome: despesa.condominio_nome,
-      descricao:       despesa.descricao,
-      fornecedor:      despesa.fornecedor,
-      categoria:       despesa.categoria,
-      valor:           despesa.valor,
-      vencimento:      parseDate(despesa.vencimento),
-      data_pagamento:  parseDate(new Date().toLocaleDateString('pt-BR')),
-      status:          'pago',
-      observacao:      despesa.observacao,
-    }
-    await fetch(`/api/financeiro/locais/${despesa.id}`, {
-      method: 'PUT', headers: authHeader(), body: JSON.stringify(payload),
+    await fetch(`/api/financeiro/fila-pagamento/${id}`, {
+      method: 'PUT',
+      headers: authHeader(),
+      body: JSON.stringify({ status }),
     })
-    await fetchDespesasLocais()
-  } catch { /* silencioso */ }
+    await fetchFilaPagamento()
+    if (status === 'pago') {
+      mostrarSnackFila(`"${fornecedor}" marcada como paga.`, 'success', 'mdi-check-circle-outline')
+    } else if (status === 'cancelado') {
+      mostrarSnackFila(`"${fornecedor}" foi cancelada.`, 'error', 'mdi-close-circle-outline')
+    }
+  } catch (_) {
+    mostrarSnackFila('Erro ao atualizar status.', 'error', 'mdi-alert-circle-outline')
+  }
 }
 
-const confirmarExclusao = (despesa) => {
-  despesaParaExcluir.value = despesa
-  dialogExcluir.value = true
-}
-
-const excluirDespesa = async () => {
-  excluindo.value = true
+const removerDaFila = async (id) => {
+  const item = filaPagamento.value.find(i => i.id === id)
+  const fornecedor = item?.fornecedor || item?.descricao || 'Despesa'
+  if (!confirm(`Remover "${fornecedor}" da fila de pagamento?`)) return
   try {
-    await fetch(`/api/financeiro/locais/${despesaParaExcluir.value.id}`, {
-      method: 'DELETE', headers: authHeader(),
+    await fetch(`/api/financeiro/fila-pagamento/${id}`, {
+      method: 'DELETE',
+      headers: authHeader(),
     })
-    dialogExcluir.value = false
-    await fetchDespesasLocais()
-  } catch { /* silencioso */ }
-  finally { excluindo.value = false }
+    await fetchFilaPagamento()
+    mostrarSnackFila(`"${fornecedor}" removida da fila.`, 'info', 'mdi-delete-outline')
+  } catch (_) {
+    mostrarSnackFila('Erro ao remover da fila.', 'error', 'mdi-alert-circle-outline')
+  }
 }
 
 onMounted(() => {
   fetchCondominios()
-  fetchDespesasLocais()
+  fetchFilaPagamento()
 })
 </script>
 
@@ -1297,33 +1452,31 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-/* ── Despesas Locais ── */
-.local-kpi {
-  padding: 12px 16px;
-  border-radius: 10px;
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  border: 1px solid rgba(var(--v-border-color), 0.08);
-}
-.local-kpi--red   { border-left: 3px solid #ef4444; }
-.local-kpi--green { border-left: 3px solid #22c55e; }
-.local-kpi__label {
-  display: block;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: .55;
-  margin-bottom: 4px;
-}
-.local-kpi__value {
-  display: block;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: rgb(var(--v-theme-on-surface));
-}
-
 /* dialog-header usado nos dialogs desta view */
 .dialog-header {
   padding: 16px 20px;
   border-left: 3px solid #34d399;
+}
+
+/* ── Form Nova Despesa Superlógica ── */
+.sl-form-body {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.sl-section {
+  padding: 18px 24px;
+}
+.sl-section--liquidar {
+  background: rgba(var(--v-theme-primary), 0.03);
+}
+.sl-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  opacity: 0.45;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
 }
 </style>

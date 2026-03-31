@@ -262,20 +262,39 @@ const cacheKey = (filtro5a = ultimos5anos.value) => {
   return `${dp}_${filtro5a ? '5a' : 'all'}`
 }
 
-const fetchDados = async (filtro5a) => {
+const _buildParams = (filtro5a) => {
   const params = new URLSearchParams()
   if (dataPosicao.value) {
     const [ano, mes, dia] = dataPosicao.value.split('-')
     params.append('data_posicao', `${dia}/${mes}/${ano}`)
   }
   if (filtro5a) params.append('ultimos_5_anos', 'true')
-  const query = params.toString() ? `?${params.toString()}` : ''
-  const res = await fetch(`/api/admin/dashboard${query}`, { headers: authHeader() })
+  return params
+}
+
+const _pollJob = async (jobId) => {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2000))
+    const res = await fetch(`/api/admin/dashboard/status/${jobId}`, { headers: authHeader() })
+    if (!res.ok) throw new Error('Erro ao verificar status do carregamento')
+    const job = await res.json()
+    if (job.status === 'pronto') return job.result
+    if (job.status === 'erro') throw new Error(job.error || 'Erro ao calcular dashboard')
+  }
+}
+
+const fetchDados = async (filtro5a, forcar = false) => {
+  const params = _buildParams(filtro5a)
+  if (forcar) params.append('forcar', 'true')
+
+  // Dispara job em background
+  const res = await fetch(`/api/admin/dashboard/iniciar?${params}`, { method: 'POST', headers: authHeader() })
   if (!res.ok) {
     const d = await res.json().catch(() => ({}))
-    throw new Error(d.detail || 'Erro ao carregar dashboard')
+    throw new Error(d.detail || 'Erro ao iniciar carregamento')
   }
-  const resultado = await res.json()
+  const { job_id } = await res.json()
+  const resultado = await _pollJob(job_id)
   localCache[cacheKey(filtro5a)] = resultado
   return resultado
 }
@@ -294,7 +313,7 @@ const carregar = async (forceRefresh = false) => {
   dados.value   = null
   erro.value    = ''
   try {
-    dados.value = await fetchDados(ultimos5anos.value)
+    dados.value = await fetchDados(ultimos5anos.value, forceRefresh)
   } catch (e) {
     erro.value = e.message
   } finally {
@@ -323,7 +342,6 @@ const toggleFiltro = async () => {
       loading.value = false
     }
   }
-  preCarregarOposto()
 }
 
 // preCarregarOposto removido — causava duplo scan e rate-limit 429 na Superlógica

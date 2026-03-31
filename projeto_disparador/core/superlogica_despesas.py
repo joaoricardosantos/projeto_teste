@@ -167,26 +167,43 @@ def buscar_todas_despesas(
     filtrar_por: str = "vencimento",
     contas: Optional[list] = None,
 ) -> list:
-    """Busca todas as páginas de despesas e retorna lista completa."""
-    todas = []
-    pagina = 1
+    """Busca todas as páginas de despesas em paralelo e retorna lista completa."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     itens_por_pagina = 50
 
-    while True:
-        resultado = buscar_despesas(
+    # Busca a primeira página para saber o total
+    primeira = buscar_despesas(
+        id_condominio, dt_inicio, dt_fim,
+        com_status=com_status, filtrar_por=filtrar_por,
+        contas=contas, pagina=1,
+        itens_por_pagina=itens_por_pagina,
+    )
+
+    todas = list(primeira["despesas"])
+    total_paginas = primeira["total_paginas"]
+
+    if total_paginas <= 1:
+        return todas
+
+    # Busca as páginas restantes em paralelo
+    def _buscar_pagina(p):
+        return buscar_despesas(
             id_condominio, dt_inicio, dt_fim,
             com_status=com_status, filtrar_por=filtrar_por,
-            contas=contas, pagina=pagina,
+            contas=contas, pagina=p,
             itens_por_pagina=itens_por_pagina,
-        )
-        lote = resultado["despesas"]
-        todas.extend(lote)
+        )["despesas"]
 
-        # Para quando a página retornar menos itens que o máximo (última página)
-        if len(lote) < itens_por_pagina:
-            break
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futuros = {executor.submit(_buscar_pagina, p): p for p in range(2, total_paginas + 1)}
+        resultados = {}
+        for futuro in as_completed(futuros):
+            resultados[futuros[futuro]] = futuro.result()
 
-        pagina += 1
+    # Mantém ordem das páginas
+    for p in range(2, total_paginas + 1):
+        todas.extend(resultados.get(p, []))
 
     return todas
 
@@ -239,13 +256,16 @@ def _proximos_vencimentos(dt_inicio_br: str, qt: int) -> list:
 
 def criar_despesa_superlogica(payload: dict, qt_parcelas: int = 1) -> dict:
     """
-    Criar uma despesa no Superlógica.
+    Criar uma despesa (parcelada ou não) no Superlógica.
     POST /v2/condor/despesas
 
-    A API exige o formato:
-      DADOS[0][CAMPO_CABECALHO]=valor
-      DADOS[0][PARCELA][i][CAMPO_PARCELA]=valor
+    Estrutura correta conforme documentação:
+      - Campos planos no topo: ID_CONDOMINIO_COND, ST_NOME_CON, NM_PARCELAS, etc.
+      - Parcelas: DESPESA_PARCELA[i][DT_VENCIMENTO_PDES], DESPESA_PARCELA[i][VL_VALOR_PDES]
+      - Complemento: RETENCOES[0][ST_COMPLEMENTO_PDES]
     """
+    from urllib.parse import quote as _quote
+
     headers = {
         "app_token":    settings.SUPERLOGICA_APP_TOKEN,
         "access_token": settings.SUPERLOGICA_ACCESS_TOKEN,
@@ -253,49 +273,67 @@ def criar_despesa_superlogica(payload: dict, qt_parcelas: int = 1) -> dict:
     }
 
     qt = max(1, int(qt_parcelas))
-    vl_total = float(payload.get("VL_VALOR_PDES", 0))
-    dt_venc   = str(payload.get("DT_VENCIMENTO_PDES", ""))
+    vl_total   = float(payload.get("VL_VALOR_PDES", 0))
+    dt_venc_br = str(payload.get("DT_VENCIMENTO_PDES", ""))   # DD/MM/YYYY
 
     # Valor por parcela (última absorve diferença de centavos)
     vl_parcela = round(vl_total / qt, 2)
     vl_ultima  = round(vl_total - vl_parcela * (qt - 1), 2)
-    vencimentos = _proximos_vencimentos(dt_venc, qt)
+    vencimentos = _proximos_vencimentos(dt_venc_br, qt)        # lista DD/MM/YYYY
 
-    # Campos de cabeçalho da despesa (nível DES)
-    campos_cabecalho = {
-        "ID_CONDOMINIO_COND", "ID_CONTATO_CON", "ST_NOME_CON",
-        "DT_DESPESA_DES", "ST_OBS_DES", "ST_CONTA_CONT",
+    # ── Campos planos (cabeçalho) ──────────────────────────────────────────────
+    dados: dict = {
+        "ID_CONDOMINIO_COND":          payload.get("ID_CONDOMINIO_COND", ""),
+        "ST_NOME_CON":                 payload.get("ST_NOME_CON", ""),
+        "ID_CONTATO_CON":              payload.get("ID_CONTATO_CON", ""),
+        "NM_PARCELAS":                 qt,
+        "DT_VENCIMENTOPRIMEIRAPARCELA": _para_formato_api(dt_venc_br),
+        "ID_FORMA_PAG":                payload.get("ID_FORMA_PAG", 0),
+        "ID_CONTABANCO_CB":            payload.get("ID_CONTABANCO_CB", 0),
     }
 
-    dados: dict = {}
+    # Observação geral
+    if payload.get("ST_OBS_DES"):
+        dados["ST_OBS_DES"] = payload["ST_OBS_DES"]
 
-    # Cabeçalho
-    for k, v in payload.items():
-        if k in campos_cabecalho:
-            dados[f"DADOS[0][{k}]"] = v
+    # ── Complemento / descrição via RETENCOES ──────────────────────────────────
+    dados["RETENCOES[0][ST_COMPLEMENTO_PDES]"] = payload.get("ST_COMPLEMENTO_PDES", "")
 
-    # Parcelas
-    for i, dt in enumerate(vencimentos):
+    # ── Parcelas ───────────────────────────────────────────────────────────────
+    nome_fav = payload.get("ST_NOME_CON", "")
+    id_fav   = payload.get("ID_CONTATO_CON", "")
+
+    for i, dt_br in enumerate(vencimentos):
         vl = vl_ultima if i == qt - 1 else vl_parcela
-        dados[f"DADOS[0][PARCELA][{i}][DT_VENCIMENTO_PDES]"]  = dt
-        dados[f"DADOS[0][PARCELA][{i}][VL_VALOR_PDES]"]       = vl
-        dados[f"DADOS[0][PARCELA][{i}][ST_COMPLEMENTO_PDES]"] = payload.get("ST_COMPLEMENTO_PDES", "")
-        dados[f"DADOS[0][PARCELA][{i}][ID_FORMA_PAG]"]        = payload.get("ID_FORMA_PAG", 0)
-        dados[f"DADOS[0][PARCELA][{i}][ID_CONTABANCO_CB]"]    = payload.get("ID_CONTABANCO_CB", 0)
-        if payload.get("FL_LIQUIDADO_PDES") and i == 0:
-            dados[f"DADOS[0][PARCELA][{i}][FL_LIQUIDADO_PDES]"]  = 1
-            dados[f"DADOS[0][PARCELA][{i}][DT_LIQUIDACAO_PDES]"] = payload.get("DT_LIQUIDACAO_PDES", dt)
-            dados[f"DADOS[0][PARCELA][{i}][VL_PAGO]"]            = payload.get("VL_PAGO", vl)
+        dados[f"DESPESA_PARCELA[{i}][DT_VENCIMENTO_PDES]"]    = _para_formato_api(dt_br)
+        dados[f"DESPESA_PARCELA[{i}][VL_VALOR_PDES]"]         = vl
+        dados[f"DESPESA_PARCELA[{i}][ST_NOMERECEBEDOR_FAV]"]  = nome_fav
+        dados[f"DESPESA_PARCELA[{i}][ID_FAVORECIDO_CON]"]     = id_fav
+
+    # ── Liquidação da 1ª parcela (opcional) ───────────────────────────────────
+    if payload.get("FL_LIQUIDADO_PDES"):
+        dados["DT_LIQUIDACAO_PDES"] = _para_formato_api(
+            payload.get("DT_LIQUIDACAO_PDES", dt_venc_br)
+        )
+        dados["VL_PAGO"] = payload.get("VL_PAGO", vl_total)
+
+    # ── Envio: colchetes nas chaves devem ser literais, não %5B%5D ─────────────
+    body = "&".join(f"{k}={_quote(str(v), safe='')}" for k, v in dados.items())
 
     response = requests.post(
         f"{settings.SUPERLOGICA_BASE_URL}/despesas",
         headers=headers,
-        data=dados,
+        data=body,
         timeout=30,
     )
-    if response.status_code not in (200, 201):
+
+    # Superlógica retorna 206 com JSON de erro em alguns casos
+    result = response.json() if response.text else {"ok": True}
+    if isinstance(result, list) and result and str(result[0].get("status")) == "500":
+        raise Exception(f"Erro Superlógica (206): {response.text[:400]}")
+    if response.status_code not in (200, 201, 206):
         raise Exception(f"Erro Superlógica ({response.status_code}): {response.text[:300]}")
-    return response.json() if response.text else {"ok": True}
+    return result
 
 
 def resumo_despesas(despesas: list) -> dict:
