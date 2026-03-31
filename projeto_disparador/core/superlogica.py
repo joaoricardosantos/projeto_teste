@@ -11,6 +11,19 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 
+import logging as _log
+import threading as _threading
+
+_logger = _log.getLogger(__name__)
+
+_MAX_RETRIES_429 = 5        # tentativas ao receber 429
+_BASE_WAIT_429   = 3        # segundos base de espera ao receber 429
+
+# Limita o total de chamadas simultâneas à API Superlógica em todo o processo.
+# O semáforo é a proteção real contra 429 — os workers podem ser maiores.
+_SL_SEMAFORO = _threading.Semaphore(12)
+
+
 def _get_headers() -> dict:
     return {
         "Content-Type": "application/json",
@@ -19,10 +32,40 @@ def _get_headers() -> dict:
     }
 
 
+def _get_sl(url: str, params: dict, timeout: int = 30) -> requests.Response:
+    """
+    GET com:
+    - Semáforo global que limita as chamadas simultâneas (evita 429 por excesso)
+    - Retry automático em caso de 429 ou falha de rede
+    - Respeita o header Retry-After quando presente
+    """
+    with _SL_SEMAFORO:
+        for tentativa in range(_MAX_RETRIES_429):
+            try:
+                resp = requests.get(url, headers=_get_headers(), params=params, timeout=timeout)
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 0))
+                    wait = retry_after if retry_after > 0 else _BASE_WAIT_429 * (2 ** tentativa)
+                    _logger.warning(
+                        f"Rate limit 429 em {url} — aguardando {wait}s "
+                        f"(tentativa {tentativa+1}/{_MAX_RETRIES_429})"
+                    )
+                    time.sleep(wait)
+                    continue
+                return resp
+            except requests.exceptions.RequestException as exc:
+                if tentativa < _MAX_RETRIES_429 - 1:
+                    wait = _BASE_WAIT_429 * (2 ** tentativa)
+                    _logger.warning(f"Erro de rede em {url}: {exc} — retry em {wait}s")
+                    time.sleep(wait)
+                else:
+                    raise
+        return resp  # noqa: F821 — última tentativa foi 429
+
+
 def verificar_condominio(id_condominio: int):
-    response = requests.get(
+    response = _get_sl(
         f"{settings.SUPERLOGICA_BASE_URL}/unidades",
-        headers=_get_headers(),
         params={"idCondominio": id_condominio, "pagina": 1, "itensPorPagina": 1},
         timeout=20,
     )
@@ -37,11 +80,11 @@ def verificar_condominio(id_condominio: int):
 
 def buscar_unidades(id_condominio: int):
     mapa = {}
+    nome_cond = ""
     pagina = 1
     while True:
-        response = requests.get(
+        response = _get_sl(
             f"{settings.SUPERLOGICA_BASE_URL}/unidades",
-            headers=_get_headers(),
             params={"idCondominio": id_condominio, "pagina": pagina, "itensPorPagina": 50},
             timeout=30,
         )
@@ -51,6 +94,8 @@ def buscar_unidades(id_condominio: int):
         if not dados:
             break
         for unidade in dados:
+            if not nome_cond:
+                nome_cond = (unidade.get("st_nome_cond") or "").strip()
             unidade_id = unidade.get("id_unidade_uni")
             codigo_unidade = (unidade.get("st_unidade_uni") or "").strip()
             sacado = (
@@ -69,6 +114,8 @@ def buscar_unidades(id_condominio: int):
                 "telefones": list(dict.fromkeys(telefones)),
             }
         pagina += 1
+    if mapa:
+        mapa["__nome_cond__"] = nome_cond  # metadado interno
     return mapa
 
 
@@ -112,9 +159,8 @@ def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> 
     processados = set()
 
     while True:
-        response = requests.get(
+        response = _get_sl(
             f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/index",
-            headers=_get_headers(),
             params={
                 "idCondominio":      id_condominio,
                 "pagina":            pagina,
@@ -122,7 +168,7 @@ def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> 
                 "posicaoEm":         data_posicao,
                 "comValoresAtualizados": 1,
             },
-            timeout=30,
+            timeout=45,
         )
         if response.status_code != 200:
             break
@@ -147,25 +193,27 @@ def _descobrir_unidades_inadimplentes(id_condominio: int, data_posicao: str) -> 
     return unidades
 
 
-def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: dict):
+def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: dict, data_inicio: str = None):
     """
     Usa /avancada filtrando por unidade para obter valores exatos
     com índice de correção monetária atualizado.
+    data_inicio: DD/MM/YYYY — se informado, filtra vencimentos a partir desta data.
     """
-    # Retry até 3 vezes em caso de erro temporário
+    params_req = {
+        "idCondominio":            id_condominio,
+        "idUnidades":              id_unidade,
+        "itensPorPagina":          500,
+        "comEncargos":             "true",
+        "comHonorarios":           "true",
+        "comAtualizacaoMonetaria": "true",
+    }
+
+    # Retry até 3 vezes em caso de erro temporário (429 já tratado por _get_sl)
     for tentativa in range(3):
         try:
-            response = requests.get(
+            response = _get_sl(
                 f"{settings.SUPERLOGICA_BASE_URL}/inadimplencia/avancada",
-                headers=_get_headers(),
-                params={
-                    "idCondominio":           id_condominio,
-                    "idUnidades":             id_unidade,
-                    "itensPorPagina":         500,
-                    "comEncargos":            "true",
-                    "comHonorarios":          "true",
-                    "comAtualizacaoMonetaria": "true",
-                },
+                params=params_req,
                 timeout=60,
             )
             if response.status_code == 200:
@@ -191,6 +239,15 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
     nome_pdf  = dados_unidade.get("nome_pdf", f"Unidade {id_unidade}")
     telefones = dados_unidade.get("telefones", [])
 
+    # Pré-processa data_inicio para comparação
+    dt_inicio_cmp = None
+    if data_inicio:
+        try:
+            d, m, y = data_inicio.split("/")
+            dt_inicio_cmp = datetime(int(y), int(m), int(d))
+        except Exception:
+            pass
+
     resumo = {
         "nome_pdf":    nome_pdf,
         "telefones":   telefones,
@@ -212,6 +269,26 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
         vencimento  = receb.get("dt_vencimento_recb", "")
         competencia = receb.get("dt_competencia_recb", "")
         id_receb    = receb.get("id_recebimento_recb")
+
+        # Filtra pelo vencimento se data_inicio informada
+        if dt_inicio_cmp and vencimento:
+            try:
+                venc_str = str(vencimento).strip()[:10]
+                dt_venc = None
+                if "-" in venc_str:
+                    dt_venc = datetime.strptime(venc_str, "%Y-%m-%d")
+                elif len(venc_str.split("/")[0]) == 4:
+                    dt_venc = datetime.strptime(venc_str, "%Y/%m/%d")
+                else:
+                    # API retorna MM/DD/YYYY — tenta esse primeiro
+                    try:
+                        dt_venc = datetime.strptime(venc_str, "%m/%d/%Y")
+                    except ValueError:
+                        dt_venc = datetime.strptime(venc_str, "%d/%m/%Y")
+                if dt_venc and dt_venc < dt_inicio_cmp:
+                    continue
+            except Exception:
+                pass
 
         if not resumo["vencimento"]:
             resumo["vencimento"]  = _formatar_data(vencimento)
@@ -254,18 +331,19 @@ def _buscar_valores_unidade(id_condominio: int, id_unidade: str, mapa_unidades: 
     return resumo, detalhado
 
 
-# Número de threads paralelas por condomínio.
-# 8 é um bom equilíbrio: rápido sem sobrecarregar a API Superlógica.
-_MAX_WORKERS_UNIDADES = 12
-# Número de condomínios processados em paralelo.
-_MAX_WORKERS_CONDOMINIOS = 6
+# Número de threads paralelas.
+# O semáforo _SL_SEMAFORO controla o rate-limit real — workers maiores apenas
+# aumentam o número de threads aguardando, sem gerar mais requisições simultâneas.
+_MAX_WORKERS_UNIDADES    = 16
+_MAX_WORKERS_CONDOMINIOS = 12
 
 
-def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict):
+def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_unidades: dict, data_inicio: str = None):
     """
     Estratégia em 2 etapas com paralelismo:
     1. /index  → descobre quais unidades são inadimplentes (rápido)
     2. /avancada por unidade → busca valores exatos em paralelo (rápido + preciso)
+    data_inicio: DD/MM/YYYY — filtra vencimentos a partir desta data (ex: últimos 5 anos).
     """
     unidades_ids = _descobrir_unidades_inadimplentes(id_condominio, data_posicao)
     if not unidades_ids:
@@ -277,7 +355,7 @@ def buscar_inadimplentes_condominio(id_condominio: int, data_posicao: str, mapa_
     # Busca todos os valores em paralelo com pool de threads
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS_UNIDADES) as executor:
         futures = {
-            executor.submit(_buscar_valores_unidade, id_condominio, id_uni, mapa_unidades): id_uni
+            executor.submit(_buscar_valores_unidade, id_condominio, id_uni, mapa_unidades, data_inicio): id_uni
             for id_uni in unidades_ids
         }
         for future in as_completed(futures):
@@ -401,6 +479,8 @@ def _sort_id(uid) -> int:
 def gerar_relatorio_inadimplentes(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
+    data_inicio: Optional[str] = None,
+    ordenar_desc: bool = False,
 ) -> tuple:
     if not data_posicao:
         data_posicao = datetime.today().strftime("%m/%d/%Y")
@@ -416,13 +496,11 @@ def gerar_relatorio_inadimplentes(
 
     def _processar_condominio(condo_id):
         """Processa um condomínio completo e retorna (linhas_resumo, linhas_detalhado)."""
-        acesso, nome_condominio = verificar_condominio(condo_id)
-        if not acesso:
-            return [], []
         mapa_unidades = buscar_unidades(condo_id)
         if not mapa_unidades:
             return [], []
-        resumo, detalhado = buscar_inadimplentes_condominio(condo_id, data_posicao, mapa_unidades)
+        nome_condominio = mapa_unidades.pop("__nome_cond__", None) or f"Condomínio {condo_id}"
+        resumo, detalhado = buscar_inadimplentes_condominio(condo_id, data_posicao, mapa_unidades, data_inicio)
         if not resumo:
             return [], []
 
@@ -564,6 +642,8 @@ def gerar_relatorio_inadimplentes(
 def gerar_pdf_inadimplentes(
     id_condominio: Optional[int] = None,
     data_posicao: Optional[str] = None,
+    data_inicio: Optional[str] = None,
+    ordenar_desc: bool = False,
 ) -> tuple:
     """
     Gera um relatório PDF de inadimplentes com tabela formatada.
@@ -602,13 +682,11 @@ def gerar_pdf_inadimplentes(
     todas_resumo = []
 
     def _processar_condo_pdf(condo_id):
-        acesso, nome_condo = verificar_condominio(condo_id)
-        if not acesso:
-            return []
         mapa = buscar_unidades(condo_id)
         if not mapa:
             return []
-        resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
+        nome_condo = mapa.pop("__nome_cond__", None) or f"Condomínio {condo_id}"
+        resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa, data_inicio)
         if not resumo:
             return []
         linhas = []
@@ -698,13 +776,13 @@ def gerar_pdf_inadimplentes(
     _logo_path = _os.path.join(_os.path.dirname(__file__), "logo_pratika.png")
 
     if _os.path.exists(_logo_path):
-        logo_img = RLImage(_logo_path, width=3.5*cm, height=1.8*cm)
+        logo_img = RLImage(_logo_path, width=2.4*cm, height=2.4*cm)
     else:
         logo_img = Paragraph("", style_sub)
 
     header_table = Table(
         [[logo_img, Paragraph(titulo_txt, style_title)]],
-        colWidths=[4*cm, None],
+        colWidths=[2.8*cm, None],
     )
     header_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

@@ -112,8 +112,20 @@ def buscar_despesas(
 
     despesas = []
     for item in itens:
-        valor = _para_decimal(item.get("vl_valor_pdes") or item.get("vl_valorbruto_pdes") or 0)
-        valor_pago = _para_decimal(item.get("vl_valor_pdes") if item.get("fl_liquidado_pdes") == "1" else 0)
+        # Campos de parcela podem vir aninhados em item["parcelas"][0] ou na raiz
+        parcelas = item.get("parcelas") or []
+        parcela = parcelas[0] if parcelas else {}
+
+        def _pdes(key, fallback=""):
+            """Busca campo de parcela: primeiro na parcela, depois na raiz do item."""
+            v = parcela.get(key)
+            if v is None or v == "":
+                v = item.get(key)
+            return v if v is not None else fallback
+
+        valor = _para_decimal(_pdes("vl_valor_pdes") or item.get("vl_valorbruto_pdes") or 0)
+        liquidado = str(_pdes("fl_liquidado_pdes", "0")) == "1"
+        valor_pago = _para_decimal(_pdes("vl_valor_pdes") if liquidado else 0)
 
         # Descrição vem da apropriação (lista)
         apropriacao = item.get("apropriacao") or []
@@ -122,17 +134,19 @@ def buscar_despesas(
         categoria = descricao  # usa descrição da conta como categoria
 
         despesas.append({
-            "id": str(item.get("id_despesa_des", "")),
-            "descricao": item.get("st_complemento_pdes", "") or descricao,
-            "fornecedor": item.get("st_nome_con") or item.get("st_fantasia_con", ""),
-            "conta": conta,
-            "categoria": categoria,
-            "valor": float(valor),
-            "valor_pago": float(valor_pago),
-            "vencimento": _formatar_data_br((item.get("dt_vencimento_pdes") or "")[:10]),
-            "liquidacao": _formatar_data_br((item.get("dt_liquidacao_pdes") or "")[:10]),
-            "competencia": _formatar_data_br((item.get("dt_despesa_des") or "")[:10]),
-            "status": "liquidada" if item.get("fl_liquidado_pdes") == "1" else "pendente",
+            "id":           str(item.get("id_despesa_des", "")),
+            "id_parcela":   str(_pdes("id_parcela_pdes", "") or ""),
+            "id_contato":   str(_pdes("id_contato_con", "") or ""),
+            "descricao":    _pdes("st_complemento_pdes", "") or descricao,
+            "fornecedor":   item.get("st_nome_con") or item.get("st_fantasia_con", ""),
+            "conta":        conta,
+            "categoria":    categoria,
+            "valor":        float(valor),
+            "valor_pago":   float(valor_pago),
+            "vencimento":   _formatar_data_br((_pdes("dt_vencimento_pdes", "") or "")[:10]),
+            "liquidacao":   _formatar_data_br((_pdes("dt_liquidacao_pdes", "") or "")[:10]),
+            "competencia":  _formatar_data_br((item.get("dt_despesa_des") or "")[:10]),
+            "status":       "liquidada" if liquidado else "pendente",
         })
 
     total_paginas = max(1, -(-total // itens_por_pagina))  # ceil division
@@ -153,28 +167,173 @@ def buscar_todas_despesas(
     filtrar_por: str = "vencimento",
     contas: Optional[list] = None,
 ) -> list:
-    """Busca todas as páginas de despesas e retorna lista completa."""
-    todas = []
-    pagina = 1
+    """Busca todas as páginas de despesas em paralelo e retorna lista completa."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     itens_por_pagina = 50
 
-    while True:
-        resultado = buscar_despesas(
+    # Busca a primeira página para saber o total
+    primeira = buscar_despesas(
+        id_condominio, dt_inicio, dt_fim,
+        com_status=com_status, filtrar_por=filtrar_por,
+        contas=contas, pagina=1,
+        itens_por_pagina=itens_por_pagina,
+    )
+
+    todas = list(primeira["despesas"])
+    total_paginas = primeira["total_paginas"]
+
+    if total_paginas <= 1:
+        return todas
+
+    # Busca as páginas restantes em paralelo
+    def _buscar_pagina(p):
+        return buscar_despesas(
             id_condominio, dt_inicio, dt_fim,
             com_status=com_status, filtrar_por=filtrar_por,
-            contas=contas, pagina=pagina,
+            contas=contas, pagina=p,
             itens_por_pagina=itens_por_pagina,
-        )
-        lote = resultado["despesas"]
-        todas.extend(lote)
+        )["despesas"]
 
-        # Para quando a página retornar menos itens que o máximo (última página)
-        if len(lote) < itens_por_pagina:
-            break
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futuros = {executor.submit(_buscar_pagina, p): p for p in range(2, total_paginas + 1)}
+        resultados = {}
+        for futuro in as_completed(futuros):
+            resultados[futuros[futuro]] = futuro.result()
 
-        pagina += 1
+    # Mantém ordem das páginas
+    for p in range(2, total_paginas + 1):
+        todas.extend(resultados.get(p, []))
 
     return todas
+
+
+def liquidar_despesa(payload: dict) -> dict:
+    """
+    Liquidar uma despesa no Superlógica.
+    PUT /v2/condor/despesas/liquidar
+    """
+    headers = {
+        "app_token":    settings.SUPERLOGICA_APP_TOKEN,
+        "access_token": settings.SUPERLOGICA_ACCESS_TOKEN,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    response = requests.put(
+        f"{settings.SUPERLOGICA_BASE_URL}/despesas/liquidar",
+        headers=headers,
+        data=payload,
+        timeout=30,
+    )
+    if response.status_code not in (200, 201):
+        raise Exception(f"Erro Superlógica ({response.status_code}): {response.text[:300]}")
+    return response.json() if response.text else {"ok": True}
+
+
+def _proximos_vencimentos(dt_inicio_br: str, qt: int) -> list:
+    """
+    Retorna lista de datas no formato DD/MM/YYYY para `qt` parcelas,
+    incrementando mês a mês a partir de dt_inicio_br (DD/MM/YYYY).
+    """
+    from calendar import monthrange
+    try:
+        d = datetime.strptime(dt_inicio_br.strip(), "%d/%m/%Y").date()
+    except ValueError:
+        d = datetime.today().date()
+
+    datas = []
+    dia = d.day
+    mes, ano = d.month, d.year
+    for _ in range(qt):
+        ultimo_dia = monthrange(ano, mes)[1]
+        dia_corrigido = min(dia, ultimo_dia)
+        datas.append(date(ano, mes, dia_corrigido).strftime("%d/%m/%Y"))
+        mes += 1
+        if mes > 12:
+            mes = 1
+            ano += 1
+    return datas
+
+
+def criar_despesa_superlogica(payload: dict, qt_parcelas: int = 1) -> dict:
+    """
+    Criar uma despesa (parcelada ou não) no Superlógica.
+    POST /v2/condor/despesas
+
+    Estrutura correta conforme documentação:
+      - Campos planos no topo: ID_CONDOMINIO_COND, ST_NOME_CON, NM_PARCELAS, etc.
+      - Parcelas: DESPESA_PARCELA[i][DT_VENCIMENTO_PDES], DESPESA_PARCELA[i][VL_VALOR_PDES]
+      - Complemento: RETENCOES[0][ST_COMPLEMENTO_PDES]
+    """
+    from urllib.parse import quote as _quote
+
+    headers = {
+        "app_token":    settings.SUPERLOGICA_APP_TOKEN,
+        "access_token": settings.SUPERLOGICA_ACCESS_TOKEN,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    qt = max(1, int(qt_parcelas))
+    vl_total   = float(payload.get("VL_VALOR_PDES", 0))
+    dt_venc_br = str(payload.get("DT_VENCIMENTO_PDES", ""))   # DD/MM/YYYY
+
+    # Valor por parcela (última absorve diferença de centavos)
+    vl_parcela = round(vl_total / qt, 2)
+    vl_ultima  = round(vl_total - vl_parcela * (qt - 1), 2)
+    vencimentos = _proximos_vencimentos(dt_venc_br, qt)        # lista DD/MM/YYYY
+
+    # ── Campos planos (cabeçalho) ──────────────────────────────────────────────
+    dados: dict = {
+        "ID_CONDOMINIO_COND":          payload.get("ID_CONDOMINIO_COND", ""),
+        "ST_NOME_CON":                 payload.get("ST_NOME_CON", ""),
+        "ID_CONTATO_CON":              payload.get("ID_CONTATO_CON", ""),
+        "NM_PARCELAS":                 qt,
+        "DT_VENCIMENTOPRIMEIRAPARCELA": _para_formato_api(dt_venc_br),
+        "ID_FORMA_PAG":                payload.get("ID_FORMA_PAG", 0),
+        "ID_CONTABANCO_CB":            payload.get("ID_CONTABANCO_CB", 0),
+    }
+
+    # Observação geral
+    if payload.get("ST_OBS_DES"):
+        dados["ST_OBS_DES"] = payload["ST_OBS_DES"]
+
+    # ── Complemento / descrição via RETENCOES ──────────────────────────────────
+    dados["RETENCOES[0][ST_COMPLEMENTO_PDES]"] = payload.get("ST_COMPLEMENTO_PDES", "")
+
+    # ── Parcelas ───────────────────────────────────────────────────────────────
+    nome_fav = payload.get("ST_NOME_CON", "")
+    id_fav   = payload.get("ID_CONTATO_CON", "")
+
+    for i, dt_br in enumerate(vencimentos):
+        vl = vl_ultima if i == qt - 1 else vl_parcela
+        dados[f"DESPESA_PARCELA[{i}][DT_VENCIMENTO_PDES]"]    = _para_formato_api(dt_br)
+        dados[f"DESPESA_PARCELA[{i}][VL_VALOR_PDES]"]         = vl
+        dados[f"DESPESA_PARCELA[{i}][ST_NOMERECEBEDOR_FAV]"]  = nome_fav
+        dados[f"DESPESA_PARCELA[{i}][ID_FAVORECIDO_CON]"]     = id_fav
+
+    # ── Liquidação da 1ª parcela (opcional) ───────────────────────────────────
+    if payload.get("FL_LIQUIDADO_PDES"):
+        dados["DT_LIQUIDACAO_PDES"] = _para_formato_api(
+            payload.get("DT_LIQUIDACAO_PDES", dt_venc_br)
+        )
+        dados["VL_PAGO"] = payload.get("VL_PAGO", vl_total)
+
+    # ── Envio: colchetes nas chaves devem ser literais, não %5B%5D ─────────────
+    body = "&".join(f"{k}={_quote(str(v), safe='')}" for k, v in dados.items())
+
+    response = requests.post(
+        f"{settings.SUPERLOGICA_BASE_URL}/despesas",
+        headers=headers,
+        data=body,
+        timeout=30,
+    )
+
+    # Superlógica retorna 206 com JSON de erro em alguns casos
+    result = response.json() if response.text else {"ok": True}
+    if isinstance(result, list) and result and str(result[0].get("status")) == "500":
+        raise Exception(f"Erro Superlógica (206): {response.text[:400]}")
+    if response.status_code not in (200, 201, 206):
+        raise Exception(f"Erro Superlógica ({response.status_code}): {response.text[:300]}")
+    return result
 
 
 def resumo_despesas(despesas: list) -> dict:
