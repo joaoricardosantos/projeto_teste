@@ -120,16 +120,16 @@
               <p style="font-size:0.85rem;">Nenhuma tarefa para este dia.</p>
             </div>
 
-            <div v-for="t in tarefasDoDia" :key="t.id" class="tarefa-item mb-3">
+            <div v-for="t in tarefasDoDia" :key="t.id" class="tarefa-item mb-3" style="cursor:pointer;" @click="verTarefa(t)">
               <div class="tarefa-cor" :class="`tarefa-cor--${t.cor}`"></div>
               <div class="tarefa-body">
                 <div class="d-flex align-center justify-space-between">
                   <span class="tarefa-titulo">{{ t.titulo }}</span>
                   <div class="d-flex gap-1">
-                    <v-btn icon size="x-small" variant="text" @click="abrirEditarTarefa(t)">
+                    <v-btn icon size="x-small" variant="text" @click.stop="abrirEditarTarefa(t)">
                       <v-icon size="14">mdi-pencil-outline</v-icon>
                     </v-btn>
-                    <v-btn icon size="x-small" variant="text" color="error" @click="excluirTarefa(t.id)">
+                    <v-btn icon size="x-small" variant="text" color="error" @click.stop="excluirTarefa(t.id)">
                       <v-icon size="14">mdi-delete-outline</v-icon>
                     </v-btn>
                   </div>
@@ -138,6 +138,9 @@
                   <v-icon size="12">mdi-clock-outline</v-icon> {{ t.hora }}
                 </p>
                 <p v-if="t.descricao" class="tarefa-desc">{{ t.descricao }}</p>
+                <p v-if="t.criado_por" class="tarefa-hora">
+                  <v-icon size="12">mdi-account-outline</v-icon> {{ t.criado_por }}
+                </p>
               </div>
             </div>
           </div>
@@ -174,12 +177,23 @@
                   {{ insights.inadimplencia?.total_condominios || 0 }} cond.
                 </p>
               </div>
-              <div class="kpi-card kpi-orange">
-                <p class="kpi-label">Maior Devedor</p>
-                <p class="kpi-value" style="font-size:0.82rem;line-height:1.3;">
-                  {{ insights.inadimplencia?.maior_condo_nome || '—' }}
+              <div class="kpi-card" :class="insights.inadimplencia?.variacao_valor == null ? 'kpi-orange' : insights.inadimplencia.variacao_valor > 0 ? 'kpi-red' : 'kpi-green'">
+                <p class="kpi-label">Variação Inadimplência</p>
+                <p class="kpi-value" style="font-size:1rem; line-height:1.3;">
+                  <template v-if="insights.inadimplencia?.variacao_valor != null">
+                    <v-icon size="16" class="mr-1">
+                      {{ insights.inadimplencia.variacao_valor > 0 ? 'mdi-trending-up' : insights.inadimplencia.variacao_valor < 0 ? 'mdi-trending-down' : 'mdi-trending-neutral' }}
+                    </v-icon>
+                    {{ insights.inadimplencia.variacao_pct > 0 ? '+' : '' }}{{ insights.inadimplencia.variacao_pct }}%
+                  </template>
+                  <template v-else>—</template>
                 </p>
-                <p class="kpi-sub">{{ formatBRL(insights.inadimplencia?.maior_condo_valor || 0) }}</p>
+                <p class="kpi-sub">
+                  <template v-if="insights.inadimplencia?.variacao_valor != null">
+                    {{ insights.inadimplencia.variacao_valor > 0 ? '+' : '' }}{{ formatBRL(insights.inadimplencia.variacao_valor) }} desde última consulta
+                  </template>
+                  <template v-else>Sem dados anteriores</template>
+                </p>
               </div>
               <div class="kpi-card kpi-blue">
                 <p class="kpi-label">Demandas a Entregar</p>
@@ -385,6 +399,52 @@
         </div>
       </v-card>
     </v-dialog>
+
+    <!-- ── Dialog Visualizar Tarefa ── -->
+    <v-dialog v-model="dialogVerTarefa" max-width="500">
+      <v-card v-if="tarefaVisualizada" rounded="lg" class="tarefa-detail-card">
+        <!-- Barra colorida no topo -->
+        <div class="tarefa-detail-top" :class="`tarefa-cor--${tarefaVisualizada.cor}`"></div>
+
+        <div class="pa-5">
+          <div class="d-flex align-start justify-space-between gap-3 mb-4">
+            <h2 class="tarefa-detail-titulo">{{ tarefaVisualizada.titulo }}</h2>
+            <v-btn icon size="small" variant="text" @click="dialogVerTarefa = false">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
+          </div>
+
+          <div class="d-flex flex-wrap gap-3 mb-4">
+            <v-chip size="small" prepend-icon="mdi-calendar-outline" variant="tonal" color="primary">
+              {{ formatarDataLabel(tarefaVisualizada.data) }}
+            </v-chip>
+            <v-chip v-if="tarefaVisualizada.hora" size="small" prepend-icon="mdi-clock-outline" variant="tonal" color="secondary">
+              {{ tarefaVisualizada.hora }}
+            </v-chip>
+          </div>
+
+          <div v-if="tarefaVisualizada.descricao" class="tarefa-detail-desc mb-4">
+            <p class="tarefa-detail-desc-label">Descrição</p>
+            <p class="tarefa-detail-desc-body">{{ tarefaVisualizada.descricao }}</p>
+          </div>
+
+          <v-divider class="mb-3" />
+          <p v-if="tarefaVisualizada.criado_por" style="font-size:0.8rem;opacity:.55;">
+            <v-icon size="14">mdi-account-outline</v-icon>
+            Criado por <strong>{{ tarefaVisualizada.criado_por }}</strong>
+          </p>
+        </div>
+
+        <v-divider />
+        <div class="d-flex justify-end gap-2 pa-3">
+          <v-btn variant="text" color="grey" @click="dialogVerTarefa = false">Fechar</v-btn>
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-pencil-outline"
+            @click="dialogVerTarefa = false; abrirEditarTarefa(tarefaVisualizada)">
+            Editar
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -568,6 +628,15 @@ const excluirTarefa = async (id) => {
     await fetch(`/api/agenda/tarefas/${id}`, { method: 'DELETE', headers: authHeader() })
     await fetchTarefas()
   } catch (_) {}
+}
+
+// ── Visualizar Tarefa ─────────────────────────────────────────────────────────
+const dialogVerTarefa   = ref(false)
+const tarefaVisualizada = ref(null)
+
+const verTarefa = (t) => {
+  tarefaVisualizada.value = t
+  dialogVerTarefa.value = true
 }
 
 // ── Insights ──────────────────────────────────────────────────────────────────
@@ -992,5 +1061,38 @@ onUnmounted(() => {
   padding: 16px 20px;
   background: rgb(var(--v-theme-surface));
   border-left: 3px solid #818cf8;
+}
+
+/* ── Dialog Visualizar Tarefa ── */
+.tarefa-detail-card {
+  overflow: hidden;
+}
+.tarefa-detail-top {
+  height: 5px;
+  width: 100%;
+}
+.tarefa-detail-titulo {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.tarefa-detail-desc {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.tarefa-detail-desc-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  opacity: 0.45;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 6px;
+}
+.tarefa-detail-desc-body {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
 }
 </style>

@@ -609,9 +609,12 @@ def _calcular_dashboard(
     }
 
     with _CACHE_LOCK:
+        anterior = _DASHBOARD_CACHE.get(cache_key)
+        total_anterior = float(anterior["data"].get("total_inadimplencia", 0)) if anterior else None
         _DASHBOARD_CACHE[cache_key] = {
-            "data":       {**resultado, "cache": True},
-            "expires_at": _proximas_8h(),
+            "data":           {**resultado, "cache": True},
+            "expires_at":     _proximas_8h(),
+            "total_anterior": total_anterior,
         }
 
     return resultado

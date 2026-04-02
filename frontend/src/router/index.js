@@ -35,9 +35,13 @@ router.beforeEach((to, from, next) => {
     const isJuridico = localStorage.getItem('is_juridico') === 'true'
     const isFinanceiro = localStorage.getItem('is_financeiro') === 'true'
 
+    const isUsuario = !isAdmin && !isJuridico && !isFinanceiro
+
     if (to.meta.requiresAuth && !isAuthenticated) return next('/')
-    if (to.meta.requiresAdmin && !isAdmin) return next('/dashboard')
-    if (to.meta.requiresAdminOrJuridico && !isAdmin && !isJuridico) return next('/dashboard')
+    if (to.meta.requiresAdmin && !isAdmin) return next('/agenda')
+    if (to.meta.requiresAdminOrJuridico && !isAdmin && !isJuridico) return next('/agenda')
+    // Bloqueia usuário comum — apenas /agenda
+    if (isUsuario && isAuthenticated && to.path !== '/agenda') return next('/agenda')
     // Bloqueia jurídico de acessar rotas não permitidas
     if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/pje', '/levantamento', '/agenda'].includes(to.path)) return next('/dashboard')
     // Bloqueia financeiro de acessar rotas não permitidas

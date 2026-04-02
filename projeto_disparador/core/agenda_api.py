@@ -132,6 +132,37 @@ def excluir_tarefa(request, tarefa_id: str):
     return {"ok": True}
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+_BOLETOS_SHEET_ID  = "1C6XfrKUpIuLaj8hXCSMtCOa9_7inaIBZxYLz4awRwJ4"
+_BOLETOS_SHEET_ABA = "Planilha1"
+
+def _contar_boletos_gerados() -> int:
+    """
+    Lê a planilha de boletos e conta quantas linhas têm a coluna
+    'DATA LANÇAMENTO' (índice 2) preenchida.
+    Linha 0: título geral, Linha 1: cabeçalho, Linha 2+: dados
+    Colunas: CONDOMÍNIO | DATA VENCIMENTO | DATA LANÇAMENTO
+    """
+    try:
+        from core.sheets_service import buscar_dados_planilha
+        rows = buscar_dados_planilha(
+            _BOLETOS_SHEET_ID,
+            _BOLETOS_SHEET_ABA,
+            use_cache=True,
+        )
+        if not rows:
+            return 0
+        # Pula linha 0 (título) e linha 1 (cabeçalho), conta col[2] preenchida
+        count = 0
+        for row in rows[2:]:
+            if len(row) >= 3 and str(row[2]).strip():
+                count += 1
+        return count
+    except Exception:
+        return 0
+
+
 # ── Insights ──────────────────────────────────────────────────────────────────
 
 @agenda_router.get("/insights", response={200: dict})
@@ -201,14 +232,21 @@ def get_insights(request):
         if caches:
             mais_recente = max(caches, key=lambda c: c.get("expires_at", datetime.min))
             d = mais_recente.get("data", {})
-            # condo_ranking: [{"nome": ..., "valor": ...}]
+            total_atual = float(d.get("total_inadimplencia", 0) or 0)
+            total_anterior = mais_recente.get("total_anterior")
+            if total_anterior is not None and total_anterior > 0:
+                variacao_valor = total_atual - total_anterior
+                variacao_pct   = round((variacao_valor / total_anterior) * 100, 1)
+            else:
+                variacao_valor = None
+                variacao_pct   = None
             ranking_raw = d.get("condo_ranking") or []
             top_condominios_inadimp = [
                 {"nome": c.get("nome", ""), "total": float(c.get("valor", 0))}
                 for c in ranking_raw[:5]
             ]
             inadimplencia = {
-                "total_a_receber":    float(d.get("total_inadimplencia", 0) or 0),
+                "total_a_receber":    total_atual,
                 "total_condominios":  int(d.get("total_condominios", 0) or 0),
                 "total_unidades":     int(d.get("total_unidades", 0) or 0),
                 "maior_condo_nome":   d.get("maior_condo_nome") or "",
@@ -216,6 +254,8 @@ def get_insights(request):
                 "sem_numero":         int(d.get("sem_numero_count", 0) or 0),
                 "top_condominios":    top_condominios_inadimp,
                 "ultima_atualizacao": d.get("gerado_em", ""),
+                "variacao_valor":     variacao_valor,
+                "variacao_pct":       variacao_pct,
             }
     except Exception:
         pass
@@ -257,6 +297,6 @@ def get_insights(request):
             "condominios_sem_doc":   0,
             "folhas_pendentes":      0,
             "prestacao_pendentes":   0,
-            "boletos_gerados":        0,
+            "boletos_gerados":       _contar_boletos_gerados(),
         },
     }
