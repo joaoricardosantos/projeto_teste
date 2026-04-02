@@ -197,6 +197,7 @@ class AgendaTarefa(models.Model):
     data          = models.DateField()
     hora          = models.TimeField(null=True, blank=True)
     cor           = models.CharField(max_length=20, choices=COR_CHOICES, default='primary')
+    checklist     = models.JSONField(default=list, blank=True)
     criado_por    = models.CharField(max_length=255, blank=True)
     criado_em     = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)

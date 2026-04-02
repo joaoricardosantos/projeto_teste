@@ -16,12 +16,19 @@ agenda_router = Router(auth=JWTAuth(), tags=["Agenda"])
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+class ChecklistItem(Schema):
+    texto:      str
+    concluido:  bool = False
+    criado_por: str  = ""
+
+
 class TarefaIn(Schema):
-    titulo:   str
+    titulo:    str
     descricao: str = ""
-    data:     date
-    hora:     Optional[str] = None   # "HH:MM"
-    cor:      str = "primary"
+    data:      date
+    hora:      Optional[str] = None   # "HH:MM"
+    cor:       str = "primary"
+    checklist: List[ChecklistItem] = []
 
 
 class TarefaOut(Schema):
@@ -31,12 +38,14 @@ class TarefaOut(Schema):
     data:       str   # "YYYY-MM-DD"
     hora:       Optional[str]
     cor:        str
+    checklist:  List[ChecklistItem]
     criado_por: str
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _tarefa_out(t: AgendaTarefa) -> TarefaOut:
+    checklist_raw = t.checklist if isinstance(t.checklist, list) else []
     return TarefaOut(
         id=str(t.id),
         titulo=t.titulo,
@@ -44,6 +53,7 @@ def _tarefa_out(t: AgendaTarefa) -> TarefaOut:
         data=t.data.strftime("%Y-%m-%d"),
         hora=t.hora.strftime("%H:%M") if t.hora else None,
         cor=t.cor,
+        checklist=[ChecklistItem(**item) for item in checklist_raw],
         criado_por=t.criado_por,
     )
 
@@ -91,6 +101,7 @@ def criar_tarefa(request, payload: TarefaIn):
         data=payload.data,
         hora=hora,
         cor=payload.cor,
+        checklist=[item.dict() for item in payload.checklist],
         criado_por=getattr(request.auth, "name", "") or getattr(request.auth, "email", ""),
     )
     return 201, _tarefa_out(t)
@@ -118,6 +129,7 @@ def atualizar_tarefa(request, tarefa_id: str, payload: TarefaIn):
     t.data = payload.data
     t.hora = hora
     t.cor = payload.cor
+    t.checklist = [item.dict() for item in payload.checklist]
     t.save()
     return _tarefa_out(t)
 

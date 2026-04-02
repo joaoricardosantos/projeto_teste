@@ -96,7 +96,7 @@
     </v-row>
 
     <!-- ── Dialog: Criar / Editar ── -->
-    <v-dialog v-model="dialog.open" max-width="960" persistent>
+    <v-dialog v-model="dialog.open" max-width="960">
       <v-card class="overflow-hidden">
         <v-card-title class="pa-0">
           <div class="dialog-header">

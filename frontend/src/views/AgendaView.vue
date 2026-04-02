@@ -66,11 +66,29 @@
 
                 <div class="cal-events">
                   <template v-for="t in cel.tarefas.slice(0, (cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2)" :key="t.id">
-                    <div class="cal-event" :class="`cal-event--${t.cor}`">
+                    <div class="cal-event"
+                      :class="t.checklist?.length ? (t.checklist.every(i => i.concluido) ? 'cal-event--success' : 'cal-event--error') : `cal-event--${t.cor}`"
+                      style="cursor:pointer;"
+                      @click.stop="cel.dateStr === diaSelecionado ? verTarefa(t) : selecionarDia(cel)"
+                    >
                       <span class="cal-event-title">{{ t.titulo }}</span>
                       <span v-if="(cel.isNear || cel.dateStr === diaSelecionado) && t.descricao" class="cal-event-desc">
                         {{ t.descricao }}
                       </span>
+                      <template v-if="(cel.isNear || cel.dateStr === diaSelecionado) && t.checklist?.length">
+                        <div class="cal-checklist-row">
+                          <div class="checklist-bar-bg" style="flex:1;">
+                            <div
+                              class="checklist-bar-fill"
+                              :class="t.checklist.every(i => i.concluido) ? 'checklist-bar--green' : 'checklist-bar--red'"
+                              :style="{ width: (t.checklist.filter(i => i.concluido).length / t.checklist.length * 100) + '%' }"
+                            ></div>
+                          </div>
+                          <span class="cal-checklist-count">
+                            {{ t.checklist.filter(i => i.concluido).length }}/{{ t.checklist.length }}
+                          </span>
+                        </div>
+                      </template>
                     </div>
                   </template>
                   <div v-if="cel.tarefas.length > ((cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2)" class="cal-event-more">
@@ -121,7 +139,7 @@
             </div>
 
             <div v-for="t in tarefasDoDia" :key="t.id" class="tarefa-item mb-3" style="cursor:pointer;" @click="verTarefa(t)">
-              <div class="tarefa-cor" :class="`tarefa-cor--${t.cor}`"></div>
+              <div class="tarefa-cor" :class="t.checklist?.length ? (t.checklist.every(i => i.concluido) ? 'tarefa-cor--success' : 'tarefa-cor--error') : `tarefa-cor--${t.cor}`"></div>
               <div class="tarefa-body">
                 <div class="d-flex align-center justify-space-between">
                   <span class="tarefa-titulo">{{ t.titulo }}</span>
@@ -138,6 +156,18 @@
                   <v-icon size="12">mdi-clock-outline</v-icon> {{ t.hora }}
                 </p>
                 <p v-if="t.descricao" class="tarefa-desc">{{ t.descricao }}</p>
+                <div v-if="t.checklist?.length" class="d-flex align-center mt-2" style="gap:10px;">
+                  <div class="checklist-bar-bg" style="flex:1;">
+                    <div
+                      class="checklist-bar-fill"
+                      :class="t.checklist.every(i => i.concluido) ? 'checklist-bar--green' : 'checklist-bar--red'"
+                      :style="{ width: (t.checklist.filter(i => i.concluido).length / t.checklist.length * 100) + '%' }"
+                    ></div>
+                  </div>
+                  <span style="font-size:0.68rem;opacity:.5;white-space:nowrap;">
+                    {{ t.checklist.filter(i => i.concluido).length }}/{{ t.checklist.length }}
+                  </span>
+                </div>
                 <p v-if="t.criado_por" class="tarefa-hora">
                   <v-icon size="12">mdi-account-outline</v-icon> {{ t.criado_por }}
                 </p>
@@ -314,7 +344,7 @@
     </v-row>
 
     <!-- ── Dialog: Nova/Editar Tarefa ── -->
-    <v-dialog v-model="dialogTarefa" max-width="480" persistent eager>
+    <v-dialog v-model="dialogTarefa" max-width="480" eager>
       <v-card rounded="xl">
         <div class="dialog-header d-flex align-center gap-3">
           <div class="page-icon" style="width:36px;height:36px;border-radius:9px;flex-shrink:0;">
@@ -384,6 +414,42 @@
                 </div>
               </div>
             </v-col>
+
+            <!-- Checklist -->
+            <v-col cols="12">
+              <div class="d-flex align-center justify-space-between mb-2">
+                <p style="font-size:0.8rem;opacity:.6;margin:0;">Checklist</p>
+                <v-btn size="x-small" variant="tonal" color="primary" prepend-icon="mdi-plus"
+                  @click="adicionarItemChecklist">
+                  Adicionar item
+                </v-btn>
+              </div>
+              <div v-if="formTarefa.checklist.length === 0" class="checklist-empty">
+                <v-icon size="14" class="mr-1" style="opacity:.4;">mdi-checkbox-blank-outline</v-icon>
+                <span style="font-size:0.75rem;opacity:.4;">Nenhum item. Clique em "Adicionar item".</span>
+              </div>
+              <div v-for="(item, idx) in formTarefa.checklist" :key="idx" class="checklist-form-row">
+                <v-checkbox
+                  v-model="item.concluido"
+                  density="compact"
+                  hide-details
+                  color="primary"
+                  class="checklist-check"
+                />
+                <v-text-field
+                  v-model="item.texto"
+                  placeholder="Descreva o item..."
+                  variant="plain"
+                  density="compact"
+                  hide-details
+                  class="checklist-input"
+                  @keydown.enter.prevent="adicionarItemChecklist"
+                />
+                <v-btn icon size="x-small" variant="text" color="error" @click="removerItemChecklist(idx)">
+                  <v-icon size="14">mdi-close</v-icon>
+                </v-btn>
+              </div>
+            </v-col>
           </v-row>
 
           <v-alert v-if="erroTarefa" type="error" density="compact" class="mt-3">{{ erroTarefa }}</v-alert>
@@ -428,6 +494,37 @@
             <p class="tarefa-detail-desc-body">{{ tarefaVisualizada.descricao }}</p>
           </div>
 
+          <!-- Checklist no visualizar -->
+          <div v-if="tarefaVisualizada.checklist?.length" class="mb-4">
+            <p class="tarefa-detail-desc-label mb-2">
+              Checklist
+              <span style="opacity:.45;font-weight:400;">
+                ({{ tarefaVisualizada.checklist.filter(i => i.concluido).length }}/{{ tarefaVisualizada.checklist.length }})
+              </span>
+            </p>
+            <!-- barra de progresso -->
+            <div class="checklist-bar-bg mb-3">
+              <div
+                class="checklist-bar-fill"
+                :class="tarefaVisualizada.checklist.every(i => i.concluido) ? 'checklist-bar--green' : 'checklist-bar--red'"
+                :style="{ width: (tarefaVisualizada.checklist.filter(i => i.concluido).length / tarefaVisualizada.checklist.length * 100) + '%' }"
+              ></div>
+            </div>
+            <div v-for="(item, idx) in tarefaVisualizada.checklist" :key="idx"
+              class="checklist-view-row"
+              :class="{ 'checklist-view-row--blocked': item.criado_por && item.criado_por !== usuarioAtual && !isAdmin }"
+              @click="item.criado_por && item.criado_por !== usuarioAtual && !isAdmin ? null : (item.concluido = !item.concluido, salvarChecklistVisualizado())"
+            >
+              <v-icon size="18" :color="item.concluido ? 'primary' : (item.criado_por && item.criado_por !== usuarioAtual ? '' : '')">
+                {{ item.concluido ? 'mdi-checkbox-marked-circle' : 'mdi-checkbox-blank-circle-outline' }}
+              </v-icon>
+              <span :class="item.concluido ? 'checklist-done' : ''" style="flex:1;">{{ item.texto }}</span>
+              <span v-if="item.criado_por && item.criado_por !== usuarioAtual" class="checklist-item-owner">
+                <v-icon size="11">mdi-lock-outline</v-icon> {{ item.criado_por }}
+              </span>
+            </div>
+          </div>
+
           <v-divider class="mb-3" />
           <p v-if="tarefaVisualizada.criado_por" style="font-size:0.8rem;opacity:.55;">
             <v-icon size="14">mdi-account-outline</v-icon>
@@ -456,6 +553,8 @@ const authHeader = () => ({
   'Content-Type': 'application/json',
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
+const usuarioAtual = localStorage.getItem('user_name') || ''
+const isAdmin      = localStorage.getItem('is_admin') === 'true'
 
 // ── Estado do calendário ──────────────────────────────────────────────────────
 const inicioRef    = ref((() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d })())
@@ -572,6 +671,7 @@ const formTarefaVazio = (dateStr = null) => ({
   data:      dateStr || new Date().toISOString().split('T')[0],
   hora:      '',
   cor:       'primary',
+  checklist: [],
 })
 const formTarefa = ref(formTarefaVazio())
 
@@ -591,8 +691,20 @@ const abrirNovaTarefa = (dateStr) => {
 
 const abrirEditarTarefa = (t) => {
   erroTarefa.value = ''
-  formTarefa.value = { id: t.id, titulo: t.titulo, descricao: t.descricao, data: t.data, hora: t.hora || '', cor: t.cor }
+  formTarefa.value = {
+    id: t.id, titulo: t.titulo, descricao: t.descricao,
+    data: t.data, hora: t.hora || '', cor: t.cor,
+    checklist: (t.checklist || []).map(i => ({ ...i })),
+  }
   dialogTarefa.value = true
+}
+
+const adicionarItemChecklist = () => {
+  formTarefa.value.checklist.push({ texto: '', concluido: false, criado_por: usuarioAtual })
+}
+
+const removerItemChecklist = (idx) => {
+  formTarefa.value.checklist.splice(idx, 1)
 }
 
 const salvarTarefa = async () => {
@@ -609,6 +721,7 @@ const salvarTarefa = async () => {
       data:      formTarefa.value.data,
       hora:      formTarefa.value.hora || null,
       cor:       formTarefa.value.cor,
+      checklist: formTarefa.value.checklist.filter(i => i.texto.trim()),
     }
     const res = await fetch(url, { method, headers: authHeader(), body: JSON.stringify(body) })
     const data = await res.json()
@@ -635,8 +748,25 @@ const dialogVerTarefa   = ref(false)
 const tarefaVisualizada = ref(null)
 
 const verTarefa = (t) => {
-  tarefaVisualizada.value = t
+  tarefaVisualizada.value = { ...t, checklist: (t.checklist || []).map(i => ({ ...i })) }
   dialogVerTarefa.value = true
+}
+
+const salvarChecklistVisualizado = async () => {
+  const t = tarefaVisualizada.value
+  if (!t) return
+  try {
+    await fetch(`/api/agenda/tarefas/${t.id}`, {
+      method: 'PUT',
+      headers: authHeader(),
+      body: JSON.stringify({
+        titulo: t.titulo, descricao: t.descricao,
+        data: t.data, hora: t.hora || null, cor: t.cor,
+        checklist: t.checklist,
+      }),
+    })
+    await fetchTarefas()
+  } catch (_) {}
 }
 
 // ── Insights ──────────────────────────────────────────────────────────────────
@@ -1094,5 +1224,85 @@ onUnmounted(() => {
   line-height: 1.6;
   margin: 0;
   white-space: pre-wrap;
+}
+
+/* ── Barra de progresso customizada ── */
+.checklist-bar-bg {
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(var(--v-theme-on-surface), 0.1);
+  overflow: hidden;
+}
+.checklist-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.checklist-bar--red   { background: #f87171; }
+.checklist-bar--green { background: #34d399; }
+
+/* ── Checklist no calendário ── */
+.cal-checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+.cal-checklist-count {
+  font-size: 0.65rem;
+  opacity: 0.75;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Checklist form ── */
+.checklist-empty {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+}
+.checklist-form-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  padding: 2px 4px;
+  background: rgba(var(--v-theme-on-surface), 0.03);
+}
+.checklist-check { flex-shrink: 0; }
+.checklist-input { flex: 1; }
+
+/* ── Checklist visualizar ── */
+.checklist-view-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background 0.12s;
+  margin-bottom: 2px;
+}
+.checklist-view-row:hover {
+  background: rgba(var(--v-theme-on-surface), 0.05);
+}
+.checklist-done {
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+.checklist-view-row--blocked {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.checklist-view-row--blocked:hover {
+  background: transparent;
+}
+.checklist-item-owner {
+  font-size: 0.65rem;
+  opacity: 0.45;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 </style>
