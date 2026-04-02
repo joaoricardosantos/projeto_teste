@@ -53,7 +53,7 @@
                 :class="{
                   'cal-cell--today':    cel.isToday,
                   'cal-cell--selected': cel.dateStr === diaSelecionado,
-                  'cal-cell--near':     cel.isNear,
+                  'cal-cell--near':     cel.isNear || cel.dateStr === diaSelecionado,
                 }"
                 @click="selecionarDia(cel)"
               >
@@ -65,16 +65,16 @@
                 </div>
 
                 <div class="cal-events">
-                  <template v-for="t in cel.tarefas.slice(0, cel.isNear ? 5 : 2)" :key="t.id">
+                  <template v-for="t in cel.tarefas.slice(0, (cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2)" :key="t.id">
                     <div class="cal-event" :class="`cal-event--${t.cor}`">
                       <span class="cal-event-title">{{ t.titulo }}</span>
-                      <span v-if="cel.isNear && t.descricao" class="cal-event-desc">
+                      <span v-if="(cel.isNear || cel.dateStr === diaSelecionado) && t.descricao" class="cal-event-desc">
                         {{ t.descricao }}
                       </span>
                     </div>
                   </template>
-                  <div v-if="cel.tarefas.length > (cel.isNear ? 5 : 2)" class="cal-event-more">
-                    +{{ cel.tarefas.length - (cel.isNear ? 5 : 2) }} mais
+                  <div v-if="cel.tarefas.length > ((cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2)" class="cal-event-more">
+                    +{{ cel.tarefas.length - ((cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2) }} mais
                   </div>
                 </div>
 
