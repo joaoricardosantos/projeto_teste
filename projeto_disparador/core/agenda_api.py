@@ -251,4 +251,12 @@ def get_insights(request):
             "historico": historico,
         },
         "inadimplencia": inadimplencia,
+        "workflow": {
+            "demandas_pendentes":    0,
+            "cadernos_pendentes":    0,
+            "condominios_sem_doc":   0,
+            "folhas_pendentes":      0,
+            "prestacao_pendentes":   0,
+            "boletos_gerados":        0,
+        },
     }

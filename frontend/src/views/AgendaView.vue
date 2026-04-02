@@ -181,15 +181,35 @@
                 </p>
                 <p class="kpi-sub">{{ formatBRL(insights.inadimplencia?.maior_condo_valor || 0) }}</p>
               </div>
+              <div class="kpi-card kpi-blue">
+                <p class="kpi-label">Demandas a Entregar</p>
+                <p class="kpi-value">{{ insights.workflow?.demandas_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
+              </div>
               <div class="kpi-card kpi-purple">
-                <p class="kpi-label">Despesas em Aberto</p>
-                <p class="kpi-value">{{ formatBRL(insights.despesas?.total_pendente || 0) }}</p>
-                <p class="kpi-sub">{{ insights.despesas?.vencidos_count || 0 }} vencida(s)</p>
+                <p class="kpi-label">Cadernos Pendentes</p>
+                <p class="kpi-value">{{ insights.workflow?.cadernos_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
+              </div>
+              <div class="kpi-card kpi-teal">
+                <p class="kpi-label">Cond. s/ Documentação</p>
+                <p class="kpi-value">{{ insights.workflow?.condominios_sem_doc ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
+              </div>
+              <div class="kpi-card kpi-amber">
+                <p class="kpi-label">Folhas de Pagamento</p>
+                <p class="kpi-value">{{ insights.workflow?.folhas_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
               </div>
               <div class="kpi-card kpi-green">
-                <p class="kpi-label">Pago este Mês</p>
-                <p class="kpi-value">{{ formatBRL(insights.despesas?.total_pago_mes || 0) }}</p>
-                <p class="kpi-sub">{{ insights.despesas?.vencendo_7d_count || 0 }} vence em 7d</p>
+                <p class="kpi-label">Prestação de Contas</p>
+                <p class="kpi-value">{{ insights.workflow?.prestacao_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
+              </div>
+              <div class="kpi-card kpi-indigo">
+                <p class="kpi-label">Boletos Gerados</p>
+                <p class="kpi-value">{{ insights.workflow?.boletos_gerados ?? '—' }}</p>
+                <p class="kpi-sub">gerados</p>
               </div>
             </div>
 
@@ -551,7 +571,7 @@ const excluirTarefa = async (id) => {
 }
 
 // ── Insights ──────────────────────────────────────────────────────────────────
-const insights        = ref({ despesas: {}, inadimplencia: {} })
+const insights        = ref({ despesas: {}, inadimplencia: {}, workflow: {} })
 const loadingInsights = ref(false)
 
 async function fetchInsights() {
@@ -887,6 +907,9 @@ onUnmounted(() => {
 .kpi-orange { background: rgba(251,146,60,0.07); border-color: rgba(251,146,60,0.15); }
 .kpi-blue   { background: rgba(99,102,241,0.07); border-color: rgba(99,102,241,0.15); }
 .kpi-purple { background: rgba(139,92,246,0.07); border-color: rgba(139,92,246,0.15); }
+.kpi-teal   { background: rgba(20,184,166,0.07); border-color: rgba(20,184,166,0.15); }
+.kpi-amber  { background: rgba(245,158,11,0.07); border-color: rgba(245,158,11,0.15); }
+.kpi-indigo { background: rgba(79,70,229,0.07);  border-color: rgba(79,70,229,0.15);  }
 
 .kpi-label { font-size: 0.7rem; opacity: 0.55; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
 .kpi-value { font-size: 1.15rem; font-weight: 700; margin: 0; line-height: 1.2; }

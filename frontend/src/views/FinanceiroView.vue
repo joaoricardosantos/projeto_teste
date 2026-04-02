@@ -72,7 +72,37 @@
               :hint="loadingCondominios ? 'Buscando condomínios disponíveis...' : ''"
               :persistent-hint="loadingCondominios"
               @update:model-value="filtroAtivoNome = null"
-            />
+            >
+              <template #item="{ props, item }">
+                <v-list-item v-bind="props" :title="item.raw.nome">
+                  <template #prepend>
+                    <span class="text-caption text-medium-emphasis mr-3" style="min-width:28px; text-align:right; font-variant-numeric: tabular-nums;">#{{ item.raw.id }}</span>
+                  </template>
+                </v-list-item>
+              </template>
+              <template #chip="{ props, item, index }">
+                <template v-if="filtroAtivoNome">
+                  <v-chip v-if="index === 0" color="primary" variant="flat" prepend-icon="mdi-bookmark">
+                    {{ filtroAtivoNome }}
+                    <span class="text-caption ml-1 opacity-70">({{ condominioSelecionado.length }})</span>
+                  </v-chip>
+                </template>
+                <template v-else>
+                  <v-chip v-bind="props">
+                    <span class="text-caption opacity-60 mr-1">#{{ item.raw.id }}</span>
+                    {{ item.raw.nome }}
+                  </v-chip>
+                </template>
+              </template>
+              <template #prepend-item>
+                <v-list-item
+                  :title="condominioSelecionado.length === condominios.length ? 'Desmarcar todas' : 'Selecionar todas'"
+                  :prepend-icon="condominioSelecionado.length === condominios.length ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'"
+                  @click="condominioSelecionado.length === condominios.length ? condominioSelecionado = [] : condominioSelecionado = condominios.map(c => c.id); filtroAtivoNome = null"
+                />
+                <v-divider class="mb-1" />
+              </template>
+            </v-autocomplete>
           </v-col>
 
           <v-col cols="12" sm="6" md="2">
@@ -287,7 +317,7 @@
               :items-per-page="15"
               density="compact"
               class="text-body-2"
-              :show-select="dialogFiltro === 'pendente'"
+              :show-select="dialogFiltro === 'pendente' || dialogModoCategoria"
               item-value="id"
               return-object
             >
@@ -310,7 +340,16 @@
             </v-data-table>
 
             <div class="d-flex align-center justify-space-between mt-3 flex-wrap gap-2">
-              <div v-if="dialogFiltro === 'pendente'">
+              <div v-if="dialogFiltro === 'pendente' || dialogModoCategoria" class="d-flex align-center gap-2 flex-wrap">
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  :color="selecionadasParaPagar.length === dialogItens.length ? 'grey' : 'indigo'"
+                  :prepend-icon="selecionadasParaPagar.length === dialogItens.length ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'"
+                  @click="selecionadasParaPagar = selecionadasParaPagar.length === dialogItens.length ? [] : [...dialogItens]"
+                >
+                  {{ selecionadasParaPagar.length === dialogItens.length ? 'Desmarcar tudo' : 'Selecionar tudo' }}
+                </v-btn>
                 <v-btn
                   v-if="selecionadasParaPagar.length"
                   color="warning"
@@ -325,7 +364,12 @@
                   Selecione despesas para encaminhar ao financeiro
                 </span>
               </div>
-              <strong class="ml-auto">Total: {{ brl(dialogItens.reduce((s, d) => s + d.valor, 0)) }}</strong>
+              <strong class="ml-auto">
+                <span v-if="selecionadasParaPagar.length" class="text-caption text-medium-emphasis mr-2">
+                  {{ selecionadasParaPagar.length }} selecionada(s) /
+                </span>
+                Total: {{ brl((selecionadasParaPagar.length ? selecionadasParaPagar : dialogItens).reduce((s, d) => s + (Number(d.valor) || 0), 0)) }}
+              </strong>
             </div>
           </v-card-text>
         </v-card>
@@ -343,7 +387,7 @@
             </div>
             <div class="pa-4">
               <div
-                v-for="(cat, i) in dados.resumo.por_categoria"
+                v-for="(cat, i) in categoriasDinamicas"
                 :key="cat.categoria"
                 class="ranking-item"
                 :class="{ 'mt-3': i > 0 }"
@@ -354,10 +398,22 @@
                     <span class="text-body-2 ml-1">{{ cat.categoria }}</span>
                     <v-chip size="x-small" color="indigo" variant="tonal" class="ml-2">{{ cat.quantidade }}x</v-chip>
                   </div>
-                  <span class="text-body-2 font-weight-bold">{{ brl(cat.total) }}</span>
+                  <div class="d-flex align-center gap-3">
+                    <span class="text-body-2 font-weight-bold">{{ brl(cat.total) }}</span>
+                    <v-btn
+                      size="x-small"
+                      variant="tonal"
+                      color="indigo"
+                      icon
+                      :title="`Enviar despesas de '${cat.categoria}' para fila`"
+                      @click="abrirDialogCategoria(cat.categoria)"
+                    >
+                      <v-icon size="14">mdi-send-outline</v-icon>
+                    </v-btn>
+                  </div>
                 </div>
                 <v-progress-linear
-                  :model-value="pct(cat.total, dados.resumo.total_geral)"
+                  :model-value="pct(cat.total, totalGeralDinamico)"
                   color="indigo"
                   height="6"
                   rounded
@@ -391,7 +447,12 @@
                       {{ forn.fornecedor || 'Sem fornecedor' }}
                     </span>
                   </div>
-                  <span class="text-body-2 font-weight-bold">{{ brl(forn.total) }}</span>
+                  <div class="d-flex align-center gap-3">
+                    <span class="text-body-2 font-weight-bold">{{ brl(forn.total) }}</span>
+                    <v-btn size="x-small" variant="tonal" color="teal" icon :title="`Enviar despesas de '${forn.fornecedor}' para fila`" @click="abrirDialogFornecedor(forn.fornecedor)">
+                      <v-icon size="14">mdi-send-outline</v-icon>
+                    </v-btn>
+                  </div>
                 </div>
                 <v-progress-linear
                   :model-value="pct(forn.total, dados.resumo.total_geral)"
@@ -555,6 +616,15 @@
             </tr>
           </tbody>
         </v-table>
+
+        <div v-if="filaPagamento.length" class="d-flex justify-end align-center mt-3 px-2">
+          <span class="text-caption text-medium-emphasis mr-3">
+            {{ filaPagamento.length }} item(s)
+          </span>
+          <strong style="font-size:1rem;">
+            Total: {{ brl(filaPagamento.reduce((s, i) => s + (Number(i.valor) || 0), 0)) }}
+          </strong>
+        </div>
       </div>
     </v-card>
 
@@ -1048,6 +1118,9 @@ const headersPendentes = [
 // Dialog KPI
 const dialogKpi = ref(false)
 const dialogFiltro = ref('todas')
+const dialogModoCategoria = ref(false)
+const dialogCategoria = ref('')
+const dialogFornecedor = ref('')
 const dialogConfig = ref({ titulo: '', cor: 'primary', icone: 'mdi-cash-multiple' })
 const selecionadasParaPagar = ref([])
 const marcandoPagamento = ref(false)
@@ -1070,9 +1143,13 @@ const diasAtraso = (vencimento) => {
 
 const dialogItens = computed(() => {
   if (!dados.value?.despesas) return []
-  let lista = dialogFiltro.value === 'todas'
-    ? dados.value.despesas
-    : dados.value.despesas.filter(d => d.status === dialogFiltro.value)
+  let lista = dialogModoCategoria.value
+    ? dialogFornecedor.value
+      ? dados.value.despesas.filter(d => d.fornecedor === dialogFornecedor.value)
+      : dados.value.despesas.filter(d => d.categoria === dialogCategoria.value)
+    : dialogFiltro.value === 'todas'
+      ? dados.value.despesas
+      : dados.value.despesas.filter(d => d.status === dialogFiltro.value)
   if (dialogFiltro.value === 'pendente') {
     lista = lista.map(d => ({ ...d, dias_atraso: diasAtraso(d.vencimento) }))
     lista = [...lista].sort((a, b) => b.dias_atraso - a.dias_atraso)
@@ -1082,8 +1159,33 @@ const dialogItens = computed(() => {
 
 const abrirDialog = (filtro) => {
   dialogFiltro.value = filtro
+  dialogModoCategoria.value = false
+  dialogCategoria.value = ''
+  dialogFornecedor.value = ''
   dialogConfig.value = configPorFiltro[filtro]
   selecionadasParaPagar.value = []
+  dialogKpi.value = true
+}
+
+const abrirDialogCategoria = (categoria) => {
+  dialogFiltro.value = 'todas'
+  dialogModoCategoria.value = true
+  dialogCategoria.value = categoria
+  dialogFornecedor.value = ''
+  dialogConfig.value = { titulo: `Categoria: ${categoria}`, cor: 'indigo', icone: 'mdi-tag-multiple-outline' }
+  const despesasCategoria = (dados.value?.despesas || []).filter(d => d.categoria === categoria)
+  selecionadasParaPagar.value = [...despesasCategoria]
+  dialogKpi.value = true
+}
+
+const abrirDialogFornecedor = (fornecedor) => {
+  dialogFiltro.value = 'todas'
+  dialogModoCategoria.value = true
+  dialogCategoria.value = ''
+  dialogFornecedor.value = fornecedor
+  dialogConfig.value = { titulo: `Fornecedor: ${fornecedor || 'Sem fornecedor'}`, cor: 'teal', icone: 'mdi-store-outline' }
+  const despesasForn = (dados.value?.despesas || []).filter(d => d.fornecedor === fornecedor)
+  selecionadasParaPagar.value = [...despesasForn]
   dialogKpi.value = true
 }
 
@@ -1147,13 +1249,34 @@ const despesasFiltradas = computed(() => {
   )
 })
 
+const categoriasDinamicas = computed(() => {
+  if (!dados.value?.despesas) return []
+  let lista = dados.value.despesas
+  if (comStatus.value === 'pendentes') lista = lista.filter(d => d.status === 'pendente')
+  else if (comStatus.value === 'liquidadas') lista = lista.filter(d => d.status === 'liquidada')
+  const mapa = {}
+  for (const d of lista) {
+    const cat = d.categoria || 'Sem categoria'
+    if (!mapa[cat]) mapa[cat] = { categoria: cat, total: 0, quantidade: 0 }
+    mapa[cat].total += Number(d.valor) || 0
+    mapa[cat].quantidade++
+  }
+  return Object.values(mapa).sort((a, b) => b.total - a.total)
+})
+
+const totalGeralDinamico = computed(() =>
+  categoriasDinamicas.value.reduce((s, c) => s + c.total, 0)
+)
+
+const IDS_LOJAS = new Set([84, 67, 78, 60, 58, 79, 82, 75, 73, 70, 74, 71, 72, 76, 77, 66, 69, 68, 83, 80])
+
 const fetchCondominios = async () => {
   loadingCondominios.value = true
   try {
     const res = await fetch('/api/admin/condominios', { headers: authHeader() })
     if (res.ok) {
       const lista = await res.json()
-      condominios.value = lista
+      condominios.value = lista.filter(c => IDS_LOJAS.has(Number(c.id)))
     }
   } catch { /* silencioso */ }
   finally { loadingCondominios.value = false }

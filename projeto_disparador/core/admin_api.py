@@ -44,8 +44,6 @@ _CACHE_TTL_MINUTES = 30
 
 # ── Jobs assíncronos do dashboard ─────────────────────────────────────────────
 import uuid as _uuid
-_JOBS: dict = {}   # job_id -> {status, result, error}
-_JOBS_LOCK = threading.Lock()
 
 def _proximas_8h():
     agora = datetime.now()
