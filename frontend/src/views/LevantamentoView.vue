@@ -133,9 +133,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useCondominios } from '../composables/useCondominios.js'
 
-const condominios            = ref([])
-const loadingCondominios     = ref(false)
+const { condominios, loadingCondominios, carregarCondominios } = useCondominios()
 const condominiosSelecionados = ref([])
 const loading                = ref(false)
 const exportando             = ref(false)
@@ -153,19 +153,6 @@ const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
 
-const carregarCondominios = async () => {
-  loadingCondominios.value = true
-  try {
-    const res = await fetch('/api/admin/condominios', { headers: authHeader() })
-    if (res.ok) {
-      const lista = await res.json()
-      condominios.value = lista
-        .map(c => ({ id: c.id, nome: c.nome, label: `[${c.id}] ${c.nome}` }))
-        .sort((a, b) => a.id - b.id)
-    }
-  } catch (_) {}
-  finally { loadingCondominios.value = false }
-}
 
 const buscar = async () => {
   loading.value  = true
@@ -202,7 +189,7 @@ const exportar = async (formato) => {
   }
 }
 
-onMounted(carregarCondominios)
+onMounted(() => carregarCondominios())
 </script>
 
 <style scoped>

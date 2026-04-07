@@ -203,27 +203,56 @@
                 <p class="kpi-label">Inadimplência Total</p>
                 <p class="kpi-value">{{ formatBRL(insights.inadimplencia?.total_a_receber || 0) }}</p>
                 <p class="kpi-sub">
-                  {{ insights.inadimplencia?.total_unidades || 0 }} unidade(s) ·
-                  {{ insights.inadimplencia?.total_condominios || 0 }} cond.
+                  <template v-if="insights.inadimplencia?.fonte === 'dashboard'">
+                    {{ insights.inadimplencia.total_unidades }} unidade(s) ·
+                    {{ insights.inadimplencia.total_condominios }} cond.
+                  </template>
+                  <template v-else-if="insights.inadimplencia?.total_a_receber > 0">
+                    <v-icon size="11" style="opacity:.5;">mdi-database-clock-outline</v-icon>
+                    Último snapshot · {{ insights.inadimplencia.ultima_atualizacao }}
+                  </template>
+                  <template v-else>Sem dados</template>
                 </p>
               </div>
-              <div class="kpi-card" :class="insights.inadimplencia?.variacao_valor == null ? 'kpi-orange' : insights.inadimplencia.variacao_valor > 0 ? 'kpi-red' : 'kpi-green'">
-                <p class="kpi-label">Variação Inadimplência</p>
-                <p class="kpi-value" style="font-size:1rem; line-height:1.3;">
-                  <template v-if="insights.inadimplencia?.variacao_valor != null">
-                    <v-icon size="16" class="mr-1">
-                      {{ insights.inadimplencia.variacao_valor > 0 ? 'mdi-trending-up' : insights.inadimplencia.variacao_valor < 0 ? 'mdi-trending-down' : 'mdi-trending-neutral' }}
-                    </v-icon>
-                    {{ insights.inadimplencia.variacao_pct > 0 ? '+' : '' }}{{ insights.inadimplencia.variacao_pct }}%
-                  </template>
-                  <template v-else>—</template>
-                </p>
-                <p class="kpi-sub">
-                  <template v-if="insights.inadimplencia?.variacao_valor != null">
-                    {{ insights.inadimplencia.variacao_valor > 0 ? '+' : '' }}{{ formatBRL(insights.inadimplencia.variacao_valor) }} desde última consulta
-                  </template>
-                  <template v-else>Sem dados anteriores</template>
-                </p>
+              <!-- Card de variações — ocupa 2 colunas -->
+              <div class="kpi-card kpi-variacoes" style="grid-column: span 2;">
+                <p class="kpi-label mb-3">Variação de Inadimplência</p>
+                <div class="variacoes-grid">
+                  <!-- Mensal -->
+                  <div class="variacao-item">
+                    <span class="variacao-item-label">Mensal</span>
+                    <span class="variacao-item-value"
+                      :class="insights.inadimplencia?.var_mensal_pct == null ? '' : insights.inadimplencia.var_mensal_pct > 0 ? 'var-red' : 'var-green'">
+                      <v-icon size="13">{{ insights.inadimplencia?.var_mensal_pct > 0 ? 'mdi-trending-up' : insights.inadimplencia?.var_mensal_pct < 0 ? 'mdi-trending-down' : 'mdi-minus' }}</v-icon>
+                      {{ insights.inadimplencia?.var_mensal_pct != null ? (insights.inadimplencia.var_mensal_pct > 0 ? '+' : '') + insights.inadimplencia.var_mensal_pct + '%' : '—' }}
+                    </span>
+                    <span class="variacao-item-sub">
+                      {{ insights.inadimplencia?.var_mensal_valor != null ? (insights.inadimplencia.var_mensal_valor > 0 ? '+' : '') + formatBRL(insights.inadimplencia.var_mensal_valor) : 'Sem dados' }}
+                    </span>
+                  </div>
+                  <div class="variacao-divider"></div>
+                  <!-- Anual -->
+                  <div class="variacao-item">
+                    <span class="variacao-item-label">Anual</span>
+                    <span class="variacao-item-value"
+                      :class="insights.inadimplencia?.var_anual_pct == null ? '' : insights.inadimplencia.var_anual_pct > 0 ? 'var-red' : 'var-green'">
+                      <v-icon size="13">{{ insights.inadimplencia?.var_anual_pct > 0 ? 'mdi-trending-up' : insights.inadimplencia?.var_anual_pct < 0 ? 'mdi-trending-down' : 'mdi-minus' }}</v-icon>
+                      {{ insights.inadimplencia?.var_anual_pct != null ? (insights.inadimplencia.var_anual_pct > 0 ? '+' : '') + insights.inadimplencia.var_anual_pct + '%' : '—' }}
+                    </span>
+                    <span class="variacao-item-sub">
+                      {{ insights.inadimplencia?.var_anual_valor != null ? (insights.inadimplencia.var_anual_valor > 0 ? '+' : '') + formatBRL(insights.inadimplencia.var_anual_valor) : 'Sem dados' }}
+                    </span>
+                  </div>
+                  <div class="variacao-divider"></div>
+                  <!-- Projeção -->
+                  <div class="variacao-item">
+                    <span class="variacao-item-label">Projeção</span>
+                    <span class="variacao-item-value" style="font-size:0.85rem;">
+                      {{ insights.inadimplencia?.projecao != null ? formatBRL(insights.inadimplencia.projecao) : '—' }}
+                    </span>
+                    <span class="variacao-item-sub">próximo mês</span>
+                  </div>
+                </div>
               </div>
               <div class="kpi-card kpi-blue">
                 <p class="kpi-label">Demandas a Entregar</p>
@@ -467,7 +496,7 @@
     </v-dialog>
 
     <!-- ── Dialog Visualizar Tarefa ── -->
-    <v-dialog v-model="dialogVerTarefa" max-width="500">
+    <v-dialog v-model="dialogVerTarefa" max-width="680">
       <v-card v-if="tarefaVisualizada" rounded="lg" class="tarefa-detail-card">
         <!-- Barra colorida no topo -->
         <div class="tarefa-detail-top" :class="`tarefa-cor--${tarefaVisualizada.cor}`"></div>
@@ -1114,6 +1143,51 @@ onUnmounted(() => {
 .kpi-value { font-size: 1.15rem; font-weight: 700; margin: 0; line-height: 1.2; }
 .kpi-sub   { font-size: 0.68rem; opacity: 0.45; margin: 3px 0 0; }
 
+/* ── Card variações ── */
+.kpi-variacoes {
+  background: rgba(99,102,241,0.06);
+  border-color: rgba(99,102,241,0.15);
+}
+.variacoes-grid {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.variacao-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 4px;
+}
+.variacao-divider {
+  width: 1px;
+  background: rgba(var(--v-border-color), 0.12);
+  margin: 0 8px;
+  align-self: stretch;
+}
+.variacao-item-label {
+  font-size: 0.65rem;
+  opacity: 0.45;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.variacao-item-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.variacao-item-sub {
+  font-size: 0.65rem;
+  opacity: 0.45;
+  line-height: 1.3;
+}
+.var-red   { color: #f87171; }
+.var-green { color: #34d399; }
+
 /* ── Insight rows ── */
 .insight-section-title {
   font-size: 0.78rem;
@@ -1305,4 +1379,5 @@ onUnmounted(() => {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
 </style>

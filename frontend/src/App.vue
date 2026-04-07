@@ -149,6 +149,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useCondominios } from './composables/useCondominios.js'
 import { useRouter, useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 
@@ -217,6 +218,7 @@ const allNavItems = [
   { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
   { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
   { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/execucao',     icon: 'mdi-file-document-edit-outline', label: 'Execução',     adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
   { to: '/agenda',       icon: 'mdi-calendar-month-outline', label: 'Agenda',           adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
   { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
 ]
@@ -236,12 +238,15 @@ const toggleTheme = () => {
   localStorage.setItem('theme', theme.value)
 }
 
+const { invalidarCondominios } = useCondominios()
+
 const logout = () => {
   localStorage.removeItem('access_token')
   localStorage.removeItem('is_admin')
   localStorage.removeItem('is_juridico')
   localStorage.removeItem('is_financeiro')
   localStorage.removeItem('user_name')
+  invalidarCondominios()
   sidebarOpen.value = false
   router.push('/')
 }

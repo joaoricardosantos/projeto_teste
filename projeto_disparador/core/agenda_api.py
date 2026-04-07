@@ -9,7 +9,7 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 
 from core.auth import JWTAuth
-from core.models import AgendaTarefa, DespesaLocal
+from core.models import AgendaTarefa, DespesaLocal, InadimplenciaSnapshot
 
 agenda_router = Router(auth=JWTAuth(), tags=["Agenda"])
 
@@ -212,15 +212,17 @@ def get_insights(request):
         .order_by("-total")[:5]
     )
 
-    # Histórico de pagamentos últimos 6 meses
+    # Histórico de pagamentos últimos 6 meses (DespesaLocal)
     historico = []
     for i in range(5, -1, -1):
-        ref = hoje.replace(day=1) - timedelta(days=i * 30)
-        ref_inicio = ref.replace(day=1)
-        if ref.month == 12:
-            ref_fim = ref.replace(year=ref.year + 1, month=1, day=1)
-        else:
-            ref_fim = ref.replace(month=ref.month + 1, day=1)
+        ref = hoje.replace(day=1)
+        mes_ref = ref.month - i
+        ano_ref = ref.year
+        while mes_ref <= 0:
+            mes_ref += 12
+            ano_ref -= 1
+        ref_inicio = date(ano_ref, mes_ref, 1)
+        ref_fim = date(ano_ref + 1, 1, 1) if mes_ref == 12 else date(ano_ref, mes_ref + 1, 1)
         pago = float(
             qs.filter(status="pago", data_pagamento__gte=ref_inicio, data_pagamento__lt=ref_fim)
             .aggregate(t=Sum("valor"))["t"] or 0
@@ -229,14 +231,85 @@ def get_insights(request):
             qs.filter(status="pendente", vencimento__gte=ref_inicio, vencimento__lt=ref_fim)
             .aggregate(t=Sum("valor"))["t"] or 0
         )
-        historico.append({
-            "mes": ref_inicio.strftime("%b/%y"),
-            "pago": pago,
-            "pendente": pendente,
-        })
+        historico.append({"mes": ref_inicio.strftime("%b/%y"), "pago": pago, "pendente": pendente})
+
+    # ── Variações baseadas nos snapshots persistidos ──────────────────────────
+    snapshots = list(InadimplenciaSnapshot.objects.order_by("ano", "mes"))
+    snap_map = {(s.ano, s.mes): float(s.total) for s in snapshots}
+
+    snap_atual = snap_map.get((hoje.year, hoje.month))
+
+    # Mês anterior
+    mes_ant = hoje.month - 1 or 12
+    ano_ant = hoje.year if hoje.month > 1 else hoje.year - 1
+    snap_mes_ant = snap_map.get((ano_ant, mes_ant))
+
+    # Mesmo mês ano anterior — usa o mais próximo disponível (±2 meses) se exato não existir
+    snap_ano_ant = snap_map.get((hoje.year - 1, hoje.month))
+    if snap_ano_ant is None:
+        for delta in [1, -1, 2, -2]:
+            m = hoje.month + delta
+            a = hoje.year - 1
+            if m <= 0: m += 12
+            if m > 12: m -= 12
+            snap_ano_ant = snap_map.get((a, m))
+            if snap_ano_ant is not None:
+                break
+
+    def _pct(valor, base):
+        raw = (valor / base) * 100
+        # Usa 2 casas decimais quando o valor absoluto é menor que 0.1%
+        casas = 2 if abs(raw) < 0.1 else 1
+        return round(raw, casas)
+
+    # Variação mensal
+    if snap_atual is not None and snap_mes_ant is not None and snap_mes_ant > 0:
+        var_mensal_valor = round(snap_atual - snap_mes_ant, 2)
+        var_mensal_pct   = _pct(var_mensal_valor, snap_mes_ant)
+    else:
+        var_mensal_valor = None
+        var_mensal_pct   = None
+
+    # Variação anual
+    if snap_atual is not None and snap_ano_ant is not None and snap_ano_ant > 0:
+        var_anual_valor = round(snap_atual - snap_ano_ant, 2)
+        var_anual_pct   = _pct(var_anual_valor, snap_ano_ant)
+    else:
+        var_anual_valor = None
+        var_anual_pct   = None
+
+    # Projeção: tendência média dos últimos 3 snapshots disponíveis
+    ultimos_snaps = [float(s.total) for s in snapshots[-3:]]
+    if len(ultimos_snaps) >= 2 and (snap_atual or 0) > 0:
+        deltas = [ultimos_snaps[i+1] - ultimos_snaps[i] for i in range(len(ultimos_snaps)-1)]
+        media_delta = sum(deltas) / len(deltas)
+        projecao = round((snap_atual or 0) + media_delta, 2)
+    else:
+        projecao = None
 
     # ── Cache do dashboard (inadimplência via Superlógica) ──
-    inadimplencia = {}
+    # Fallback: usa o snapshot mais recente do banco quando o cache em memória estiver vazio
+    snap_fallback = snapshots[-1] if snapshots else None
+    total_fallback = float(snap_fallback.total) if snap_fallback else 0.0
+
+    inadimplencia = {
+        "total_a_receber":    total_fallback,
+        "total_condominios":  0,
+        "total_unidades":     0,
+        "maior_condo_nome":   "",
+        "maior_condo_valor":  0.0,
+        "sem_numero":         0,
+        "top_condominios":    [],
+        "ultima_atualizacao": snap_fallback.capturado_em.strftime("%d/%m/%Y %H:%M") if snap_fallback else "",
+        "variacao_valor":     None,
+        "variacao_pct":       None,
+        "var_mensal_valor":   var_mensal_valor,
+        "var_mensal_pct":     var_mensal_pct,
+        "var_anual_valor":    var_anual_valor,
+        "var_anual_pct":      var_anual_pct,
+        "projecao":           projecao,
+        "fonte":              "snapshot",
+    }
     try:
         from core.admin_api import _DASHBOARD_CACHE, _CACHE_LOCK
         with _CACHE_LOCK:
@@ -245,30 +318,37 @@ def get_insights(request):
             mais_recente = max(caches, key=lambda c: c.get("expires_at", datetime.min))
             d = mais_recente.get("data", {})
             total_atual = float(d.get("total_inadimplencia", 0) or 0)
-            total_anterior = mais_recente.get("total_anterior")
-            if total_anterior is not None and total_anterior > 0:
-                variacao_valor = total_atual - total_anterior
-                variacao_pct   = round((variacao_valor / total_anterior) * 100, 1)
-            else:
-                variacao_valor = None
-                variacao_pct   = None
-            ranking_raw = d.get("condo_ranking") or []
-            top_condominios_inadimp = [
-                {"nome": c.get("nome", ""), "total": float(c.get("valor", 0))}
-                for c in ranking_raw[:5]
-            ]
-            inadimplencia = {
-                "total_a_receber":    total_atual,
-                "total_condominios":  int(d.get("total_condominios", 0) or 0),
-                "total_unidades":     int(d.get("total_unidades", 0) or 0),
-                "maior_condo_nome":   d.get("maior_condo_nome") or "",
-                "maior_condo_valor":  float(d.get("maior_condo_valor", 0) or 0),
-                "sem_numero":         int(d.get("sem_numero_count", 0) or 0),
-                "top_condominios":    top_condominios_inadimp,
-                "ultima_atualizacao": d.get("gerado_em", ""),
-                "variacao_valor":     variacao_valor,
-                "variacao_pct":       variacao_pct,
-            }
+            # Só usa o cache se tiver valor real (dashboard foi carregado)
+            if total_atual > 0:
+                total_anterior = mais_recente.get("total_anterior")
+                if total_anterior is not None and total_anterior > 0:
+                    variacao_valor = total_atual - total_anterior
+                    variacao_pct   = round((variacao_valor / total_anterior) * 100, 1)
+                else:
+                    variacao_valor = None
+                    variacao_pct   = None
+                ranking_raw = d.get("condo_ranking") or []
+                inadimplencia = {
+                    "total_a_receber":    total_atual,
+                    "total_condominios":  int(d.get("total_condominios", 0) or 0),
+                    "total_unidades":     int(d.get("total_unidades", 0) or 0),
+                    "maior_condo_nome":   d.get("maior_condo_nome") or "",
+                    "maior_condo_valor":  float(d.get("maior_condo_valor", 0) or 0),
+                    "sem_numero":         int(d.get("sem_numero_count", 0) or 0),
+                    "top_condominios":    [
+                        {"nome": c.get("nome", ""), "total": float(c.get("valor", 0))}
+                        for c in ranking_raw[:5]
+                    ],
+                    "ultima_atualizacao": d.get("gerado_em", ""),
+                    "variacao_valor":     variacao_valor,
+                    "variacao_pct":       variacao_pct,
+                    "var_mensal_valor":   var_mensal_valor,
+                    "var_mensal_pct":     var_mensal_pct,
+                    "var_anual_valor":    var_anual_valor,
+                    "var_anual_pct":      var_anual_pct,
+                    "projecao":           projecao,
+                    "fonte":              "dashboard",
+                }
     except Exception:
         pass
 

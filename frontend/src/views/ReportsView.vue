@@ -308,6 +308,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useCondominios } from '../composables/useCondominios.js'
 
 const isExporting        = ref(false)
 const exportFormat       = ref('xlsx')
@@ -318,8 +319,7 @@ const dataPosicao        = ref('')
 const ultimos5anos       = ref(false)
 const ordenarDesc        = ref(false)
 const progressMessage    = ref('Iniciando geração do relatório...')
-const condominios        = ref([])
-const loadingCondominios = ref(false)
+const { condominios, loadingCondominios, carregarCondominios } = useCondominios()
 let   pollingInterval    = null
 let   pollingSeconds     = 0
 
@@ -371,19 +371,6 @@ const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
 
-const carregarCondominios = async () => {
-  loadingCondominios.value = true
-  try {
-    const res = await fetch('/api/admin/condominios', { headers: authHeader() })
-    if (res.ok) {
-      const lista = await res.json()
-      condominios.value = lista
-        .map(c => ({ id: c.id, nome: c.nome, label: `[${c.id}] ${c.nome}` }))
-        .sort((a, b) => a.id - b.id)
-    }
-  } catch (_) {}
-  finally { loadingCondominios.value = false }
-}
 
 const startExport = async (formato) => {
   exportFormat.value    = formato
@@ -409,13 +396,13 @@ const startExport = async (formato) => {
 
     const query    = params.toString() ? `?${params.toString()}` : ''
     const startRes = await fetch(`${baseStart}${query}`, { method: 'POST', headers: authHeader() })
+    const startData = await startRes.json().catch(() => ({}))
     if (!startRes.ok) {
-      const d = await startRes.json().catch(() => ({}))
-      exportError.value = d.detail || 'Erro ao iniciar exportação.'
+      exportError.value = startData.detail || `Erro ${startRes.status} ao iniciar exportação.`
       isExporting.value = false
       return
     }
-    const { job_id } = await startRes.json()
+    const { job_id } = startData
 
     pollingInterval = setInterval(async () => {
       pollingSeconds += 3
@@ -505,7 +492,15 @@ const exportarRelatorioDisparo = async (formato) => {
     const res = await fetch(`/api/campanhas/${relatorioCampanhaId.value}/${endpoint}`, {
       headers: authHeader(),
     })
-    if (!res.ok) throw new Error('Erro ao gerar relatório')
+    if (!res.ok) {
+      const contentType = res.headers.get('Content-Type') || ''
+      if (contentType.includes('application/json')) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.detail || `Erro ${res.status} ao gerar relatório`)
+      } else {
+        throw new Error(`Erro ${res.status}: servidor indisponível ou sem permissão`)
+      }
+    }
     const blob = await res.blob()
     const a    = document.createElement('a')
     a.href     = URL.createObjectURL(blob)
@@ -523,6 +518,7 @@ const exportarRelatorioDisparo = async (formato) => {
 }
 
 onMounted(() => { carregarCondominios(); carregarCampanhas() })
+
 onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 </script>
 

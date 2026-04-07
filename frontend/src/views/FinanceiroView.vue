@@ -1003,10 +1003,11 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useCondominios } from '../composables/useCondominios.js'
 
-const condominios = ref([])
+const { condominios: _todosCondominios, loadingCondominios, carregarCondominios } = useCondominios()
+const condominios = computed(() => _todosCondominios.value.filter(c => IDS_LOJAS.has(Number(c.id))))
 const condominioSelecionado = ref([])
-const loadingCondominios = ref(false)
 const loading = ref(false)
 const erro = ref('')
 const dados = ref(null)
@@ -1270,17 +1271,7 @@ const totalGeralDinamico = computed(() =>
 
 const IDS_LOJAS = new Set([84, 67, 78, 60, 58, 79, 82, 75, 73, 70, 74, 71, 72, 76, 77, 66, 69, 68, 83, 80])
 
-const fetchCondominios = async () => {
-  loadingCondominios.value = true
-  try {
-    const res = await fetch('/api/admin/condominios', { headers: authHeader() })
-    if (res.ok) {
-      const lista = await res.json()
-      condominios.value = lista.filter(c => IDS_LOJAS.has(Number(c.id)))
-    }
-  } catch { /* silencioso */ }
-  finally { loadingCondominios.value = false }
-}
+const fetchCondominios = () => carregarCondominios()
 
 const buscar = async () => {
   if (!condominioSelecionado.value.length || !dtInicio.value || !dtFim.value) return
