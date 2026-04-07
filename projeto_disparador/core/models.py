@@ -284,6 +284,21 @@ class DespesaParaPagar(models.Model):
         return f"{self.descricao} — R$ {self.valor} ({self.status})"
 
 
+class ResponsavelPeticao(models.Model):
+    """Perfis de responsável pela petição para uso nos documentos de execução."""
+    nome     = models.CharField(max_length=255)
+    funcao   = models.CharField(max_length=255, blank=True, default="")
+    padrao   = models.BooleanField(default=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Responsável pela Petição"
+        ordering = ["-padrao", "nome"]
+
+    def __str__(self):
+        return f"{self.nome} ({self.funcao})"
+
+
 class PasswordResetToken(models.Model):
     """Token de redefinição de senha com expiração de 1 hora."""
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

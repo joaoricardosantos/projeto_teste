@@ -1,6 +1,54 @@
 <template>
   <div>
 
+    <!-- ── Modal: Escolha do Modelo ── -->
+    <v-dialog v-model="dialogModelo" max-width="500" persistent>
+      <v-card rounded="xl" elevation="8">
+        <div class="modelo-dialog-header">
+          <v-icon size="32" color="white" class="mb-3">mdi-file-document-multiple-outline</v-icon>
+          <p class="text-h6 font-weight-bold text-white mb-1">Modelo de Execução</p>
+          <p class="text-body-2 text-white" style="opacity:.75">Escolha o modelo antes de prosseguir</p>
+        </div>
+        <v-card-text class="pa-6">
+          <v-row>
+            <v-col cols="12" sm="6">
+              <div
+                class="modelo-card"
+                :class="{ 'modelo-card--active': modeloSelecionado === 'com_honorarios' }"
+                @click="modeloSelecionado = 'com_honorarios'"
+              >
+                <v-icon size="28" :color="modeloSelecionado === 'com_honorarios' ? 'primary' : 'grey'" class="mb-2">
+                  mdi-scale-balance
+                </v-icon>
+                <p class="text-body-2 font-weight-bold mb-1">Com Honorários</p>
+                <p class="text-caption text-medium-emphasis">Valor total da dívida incluindo honorários advocatícios</p>
+              </div>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <div
+                class="modelo-card"
+                :class="{ 'modelo-card--active': modeloSelecionado === 'sem_honorarios' }"
+                @click="modeloSelecionado = 'sem_honorarios'"
+              >
+                <v-icon size="28" :color="modeloSelecionado === 'sem_honorarios' ? 'warning' : 'grey'" class="mb-2">
+                  mdi-scale-unbalanced
+                </v-icon>
+                <p class="text-body-2 font-weight-bold mb-1">Sem Honorários</p>
+                <p class="text-caption text-medium-emphasis">Valor total subtraindo os honorários advocatícios</p>
+              </div>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="pa-5 pt-0 d-flex flex-column gap-2">
+          <v-btn
+            color="primary" block size="large"
+            :disabled="!modeloSelecionado"
+            @click="confirmarModelo"
+          >Confirmar e Prosseguir</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ── Cabeçalho ── -->
     <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-6">
       <div class="d-flex align-center gap-4">
@@ -12,6 +60,18 @@
           <p class="page-subtitle">Protocole ações de execução de taxas condominiais por unidade inadimplente</p>
         </div>
       </div>
+      <!-- Badge do modelo ativo -->
+      <v-chip
+        v-if="modeloConfirmado"
+        :color="modeloSelecionado === 'com_honorarios' ? 'primary' : 'warning'"
+        variant="tonal"
+        prepend-icon="mdi-check-circle"
+        @click="dialogModelo = true"
+        style="cursor:pointer"
+      >
+        {{ modeloSelecionado === 'com_honorarios' ? 'Com Honorários' : 'Sem Honorários' }}
+        <v-icon end size="14">mdi-pencil</v-icon>
+      </v-chip>
     </div>
 
     <v-row justify="center">
@@ -113,7 +173,7 @@
                 </div>
                 <div class="unit-right">
                   <div class="text-right">
-                    <p class="unit-valor">{{ u.valor }}</p>
+                    <p class="unit-valor">{{ modeloSelecionado === 'sem_honorarios' ? (u.valor_sem_honorarios || u.valor) : u.valor }}</p>
                     <p class="text-caption text-medium-emphasis">{{ u.qtd_inadimplencias }} parcela(s)</p>
                   </div>
                   <v-chip
@@ -216,14 +276,14 @@
           </v-card>
         </v-expand-transition>
 
-        <!-- ── Passo 4: Dados adicionais por unidade (CPF, e-mail) ── -->
+        <!-- ── Passo 4: Dados adicionais por unidade (CPF, e-mail) + Imagem Doc.06 ── -->
         <v-expand-transition>
           <v-card v-if="unidadesSelecionadas.size > 0" class="section-card mb-4" elevation="3">
             <div class="section-header">
               <div class="section-badge">4</div>
               <div>
                 <p class="section-title">Dados dos Executados</p>
-                <p class="section-subtitle">CPF e e-mail das partes executadas (preencha os que estiverem em falta)</p>
+                <p class="section-subtitle">CPF, e-mail e demonstrativo de débitos (Doc. 06)</p>
               </div>
             </div>
             <div class="pa-5">
@@ -236,7 +296,9 @@
                 <p class="text-body-2 font-weight-bold mb-3">
                   <v-icon size="15" class="mr-1" color="primary">mdi-home-outline</v-icon>
                   Unidade {{ u.unidade }}<span v-if="u.bloco"> ({{ u.bloco }})</span> — {{ u.nome }}
-                  <v-chip size="x-small" class="ml-2" color="error" variant="tonal">{{ u.valor }}</v-chip>
+                  <v-chip size="x-small" class="ml-2" color="error" variant="tonal">
+                    {{ modeloSelecionado === 'sem_honorarios' ? (u.valor_sem_honorarios || u.valor) : u.valor }}
+                  </v-chip>
                 </p>
                 <v-row dense>
                   <v-col cols="12" sm="4">
@@ -269,11 +331,207 @@
                       placeholder="exemplo@email.com"
                     />
                   </v-col>
+                  <v-col cols="12">
+                    <div class="doc06-upload mt-2">
+                      <div class="doc06-label">
+                        <v-icon size="16" color="primary" class="mr-1">mdi-image-outline</v-icon>
+                        <span class="text-caption font-weight-medium">Demonstrativo de Débitos — Doc. 06 (imagem)</span>
+                      </div>
+                      <div class="d-flex align-center gap-3 mt-1 flex-wrap">
+                        <v-btn
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          prepend-icon="mdi-upload"
+                          @click="abrirUpload(u.id_unidade)"
+                        >
+                          {{ dadosExtras[u.id_unidade].imagem_nome || 'Selecionar imagem' }}
+                        </v-btn>
+                        <input
+                          :id="'upload_' + u.id_unidade"
+                          type="file"
+                          accept="image/*"
+                          style="display:none"
+                          @change="onImagemSelecionada($event, u.id_unidade)"
+                        />
+                        <span v-if="dadosExtras[u.id_unidade].imagem_nome" class="text-caption text-success">
+                          <v-icon size="14" color="success">mdi-check-circle</v-icon>
+                          {{ dadosExtras[u.id_unidade].imagem_nome }}
+                        </span>
+                        <v-btn
+                          v-if="dadosExtras[u.id_unidade].imagem_base64"
+                          size="x-small" variant="text" color="error" icon
+                          @click="removerImagem(u.id_unidade)"
+                          title="Remover imagem"
+                        >
+                          <v-icon size="16">mdi-close</v-icon>
+                        </v-btn>
+                        <!-- Preview miniatura -->
+                        <v-img
+                          v-if="dadosExtras[u.id_unidade].imagem_base64"
+                          :src="dadosExtras[u.id_unidade].imagem_base64"
+                          max-height="60"
+                          max-width="120"
+                          cover
+                          rounded="sm"
+                          class="border"
+                        />
+                      </div>
+                    </div>
+                  </v-col>
                 </v-row>
               </div>
             </div>
           </v-card>
         </v-expand-transition>
+
+        <!-- ── Passo 5: Responsável pela Petição ── -->
+        <v-expand-transition>
+          <v-card v-if="unidadesSelecionadas.size > 0" class="section-card mb-4" elevation="3">
+            <div class="section-header d-flex align-center">
+              <div class="section-badge">5</div>
+              <div class="flex-grow-1">
+                <p class="section-title">Responsável pela Petição</p>
+                <p class="section-subtitle">Selecione ou cadastre o responsável que assina o documento</p>
+              </div>
+              <v-btn
+                size="x-small" variant="tonal" color="white"
+                prepend-icon="mdi-cog"
+                @click="dialogGerenciar = true"
+              >Gerenciar</v-btn>
+            </div>
+            <div class="pa-5">
+              <v-row align="center">
+                <v-col cols="12" sm="7" md="6">
+                  <v-select
+                    v-model="responsavelSelecionado"
+                    :items="responsaveis"
+                    item-title="label"
+                    item-value="id"
+                    label="Responsável pela Petição"
+                    variant="outlined"
+                    density="comfortable"
+                    clearable
+                    prepend-inner-icon="mdi-account-tie"
+                    no-data-text="Nenhum responsável cadastrado"
+                    hide-details
+                    return-object
+                  />
+                </v-col>
+                <v-col cols="12" sm="5" md="6">
+                  <div v-if="responsavelSelecionado" class="d-flex flex-column gap-1">
+                    <v-chip size="small" color="primary" variant="tonal" prepend-icon="mdi-account">
+                      {{ responsavelSelecionado.nome }}
+                    </v-chip>
+                    <v-chip v-if="responsavelSelecionado.funcao" size="small" color="secondary" variant="tonal" prepend-icon="mdi-briefcase-outline">
+                      {{ responsavelSelecionado.funcao }}
+                    </v-chip>
+                  </div>
+                  <p v-else class="text-caption text-medium-emphasis">Selecione um perfil ou deixe em branco</p>
+                </v-col>
+              </v-row>
+            </div>
+          </v-card>
+        </v-expand-transition>
+
+        <!-- ── Dialog: Gerenciar Responsáveis ── -->
+        <v-dialog v-model="dialogGerenciar" max-width="560" scrollable>
+          <v-card rounded="xl">
+            <v-card-title class="pa-5 pb-3 d-flex align-center justify-space-between">
+              <span class="text-h6 font-weight-bold">Responsáveis pela Petição</span>
+              <v-btn icon size="small" variant="text" @click="dialogGerenciar = false">
+                <v-icon>mdi-close</v-icon>
+              </v-btn>
+            </v-card-title>
+            <v-divider />
+            <v-card-text class="pa-5">
+
+              <!-- Form novo / editar -->
+              <div class="mb-4 pa-4 rounded-lg" style="background: rgba(0,0,0,0.03);">
+                <p class="text-body-2 font-weight-medium mb-3">
+                  {{ editandoId ? 'Editar Responsável' : 'Novo Responsável' }}
+                </p>
+                <v-row dense>
+                  <v-col cols="12" sm="6">
+                    <v-text-field
+                      v-model="formResp.nome"
+                      label="Nome *"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    />
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-text-field
+                      v-model="formResp.funcao"
+                      label="Função / Cargo"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    />
+                  </v-col>
+                  <v-col cols="12">
+                    <v-checkbox
+                      v-model="formResp.padrao"
+                      label="Definir como padrão (selecionado automaticamente)"
+                      density="compact"
+                      hide-details
+                      color="primary"
+                    />
+                  </v-col>
+                </v-row>
+                <div class="d-flex gap-2 mt-3">
+                  <v-btn
+                    color="primary" size="small"
+                    :loading="salvandoResp"
+                    :disabled="!formResp.nome.trim()"
+                    @click="salvarResponsavel"
+                  >{{ editandoId ? 'Salvar' : 'Adicionar' }}</v-btn>
+                  <v-btn
+                    v-if="editandoId"
+                    size="small" variant="tonal"
+                    @click="cancelarEdicao"
+                  >Cancelar</v-btn>
+                </div>
+              </div>
+
+              <!-- Lista -->
+              <div v-if="responsaveis.length === 0" class="text-center text-medium-emphasis py-4">
+                <v-icon size="40" class="mb-2">mdi-account-off-outline</v-icon>
+                <p class="text-body-2">Nenhum responsável cadastrado</p>
+              </div>
+              <div
+                v-for="r in responsaveis" :key="r.id"
+                class="d-flex align-center gap-2 py-2"
+                style="border-bottom: 1px solid rgba(0,0,0,0.06);"
+              >
+                <div class="flex-grow-1">
+                  <p class="text-body-2 font-weight-medium mb-0">
+                    {{ r.nome }}
+                    <v-chip v-if="r.padrao" size="x-small" color="primary" class="ml-1">padrão</v-chip>
+                  </p>
+                  <p v-if="r.funcao" class="text-caption text-medium-emphasis mb-0">{{ r.funcao }}</p>
+                </div>
+                <v-btn icon size="x-small" variant="text" @click="editarResponsavel(r)" title="Editar">
+                  <v-icon size="16">mdi-pencil</v-icon>
+                </v-btn>
+                <v-btn
+                  v-if="!r.padrao"
+                  icon size="x-small" variant="text" color="primary"
+                  @click="definirPadrao(r.id)" title="Definir como padrão"
+                >
+                  <v-icon size="16">mdi-star-outline</v-icon>
+                </v-btn>
+                <v-btn icon size="x-small" variant="text" color="error" @click="deletarResponsavel(r.id)" title="Excluir">
+                  <v-icon size="16">mdi-delete-outline</v-icon>
+                </v-btn>
+              </div>
+
+            </v-card-text>
+          </v-card>
+        </v-dialog>
 
         <!-- ── Ações ── -->
         <v-expand-transition>
@@ -340,6 +598,17 @@ const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
 
+// ── Modelo (com/sem honorários) ──
+const dialogModelo      = ref(true)   // abre ao entrar na tela
+const modeloSelecionado = ref('')
+const modeloConfirmado  = ref(false)
+
+const confirmarModelo = () => {
+  if (!modeloSelecionado.value) return
+  modeloConfirmado.value = true
+  dialogModelo.value     = false
+}
+
 // ── Estado ──
 const idCondominio       = ref(null)
 const { condominios, loadingCondominios, carregarCondominios } = useCondominios()
@@ -365,6 +634,77 @@ const dadosCondo = ref({
 
 const dadosExtras = ref({}) // id_unidade -> { cpf, telefone, email }
 
+// ── Responsáveis pela Petição ──
+const responsaveis          = ref([])
+const responsavelSelecionado = ref(null)
+const dialogGerenciar       = ref(false)
+const salvandoResp          = ref(false)
+const editandoId            = ref(null)
+const formResp              = ref({ nome: '', funcao: '', padrao: false })
+
+const carregarResponsaveis = async () => {
+  try {
+    const res = await fetch('/api/execucao/responsaveis-peticao', { headers: authHeader() })
+    if (!res.ok) return
+    const lista = await res.json()
+    responsaveis.value = lista.map(r => ({ ...r, label: r.funcao ? `${r.nome} (${r.funcao})` : r.nome }))
+    // Seleciona automaticamente o padrão se ainda não tiver selecionado
+    if (!responsavelSelecionado.value) {
+      const padrao = responsaveis.value.find(r => r.padrao)
+      if (padrao) responsavelSelecionado.value = padrao
+    }
+  } catch {}
+}
+
+const salvarResponsavel = async () => {
+  if (!formResp.value.nome.trim()) return
+  salvandoResp.value = true
+  try {
+    const url    = editandoId.value
+      ? `/api/execucao/responsaveis-peticao/${editandoId.value}`
+      : '/api/execucao/responsaveis-peticao'
+    const method = editandoId.value ? 'PUT' : 'POST'
+    const res = await fetch(url, {
+      method,
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(formResp.value),
+    })
+    if (!res.ok) return
+    await carregarResponsaveis()
+    cancelarEdicao()
+  } catch {}
+  finally { salvandoResp.value = false }
+}
+
+const editarResponsavel = (r) => {
+  editandoId.value  = r.id
+  formResp.value    = { nome: r.nome, funcao: r.funcao || '', padrao: r.padrao }
+}
+
+const cancelarEdicao = () => {
+  editandoId.value = null
+  formResp.value   = { nome: '', funcao: '', padrao: false }
+}
+
+const deletarResponsavel = async (id) => {
+  try {
+    await fetch(`/api/execucao/responsaveis-peticao/${id}`, {
+      method: 'DELETE', headers: authHeader(),
+    })
+    if (responsavelSelecionado.value?.id === id) responsavelSelecionado.value = null
+    await carregarResponsaveis()
+  } catch {}
+}
+
+const definirPadrao = async (id) => {
+  try {
+    await fetch(`/api/execucao/responsaveis-peticao/${id}/definir-padrao`, {
+      method: 'POST', headers: authHeader(),
+    })
+    await carregarResponsaveis()
+  } catch {}
+}
+
 // ── Computed ──
 const unidadesSelecionadasLista = computed(() =>
   unidades.value.filter(u => unidadesSelecionadas.value.has(u.id_unidade))
@@ -383,10 +723,70 @@ const dadosCondoValidos = computed(() =>
 watch(unidadesSelecionadasLista, (lista) => {
   lista.forEach(u => {
     if (!dadosExtras.value[u.id_unidade]) {
-      dadosExtras.value[u.id_unidade] = { cpf: u.cpf || '', telefone: u.telefone || '', email: '' }
+      dadosExtras.value[u.id_unidade] = { cpf: u.cpf || '', telefone: u.telefone || '', email: '', imagem_base64: '', imagem_nome: '' }
     }
   })
 })
+
+// ── Upload de imagem (Doc. 06) ──
+const abrirUpload = (id_unidade) => {
+  document.getElementById('upload_' + id_unidade)?.click()
+}
+
+const _redimensionarImagem = (file, maxWidth = 1400, quality = 0.85) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let w = img.width
+        let h = img.height
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w)
+          w = maxWidth
+        }
+        canvas.width  = w
+        canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+const onImagemSelecionada = async (event, id_unidade) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  event.target.value = ''
+
+  try {
+    const base64 = await _redimensionarImagem(file)
+    if (dadosExtras.value[id_unidade]) {
+      dadosExtras.value[id_unidade].imagem_base64 = base64
+      dadosExtras.value[id_unidade].imagem_nome   = file.name
+    }
+  } catch {
+    // fallback sem redimensionamento
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      if (dadosExtras.value[id_unidade]) {
+        dadosExtras.value[id_unidade].imagem_base64 = e.target.result
+        dadosExtras.value[id_unidade].imagem_nome   = file.name
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+}
+
+const removerImagem = (id_unidade) => {
+  if (dadosExtras.value[id_unidade]) {
+    dadosExtras.value[id_unidade].imagem_base64 = ''
+    dadosExtras.value[id_unidade].imagem_nome   = ''
+  }
+}
 
 // Nada — preenchimento automático ocorre dentro de buscarInadimplentes()
 
@@ -427,13 +827,15 @@ const buscarInadimplentes = async () => {
       cpf_sindico:     dc.cpf_sindico     || '',
     }
 
-    // Inicializa dados extras de cada unidade com CPF, telefone e e-mail da Superlógica
+    // Inicializa dados extras de cada unidade com CPF, telefone, e-mail e imagem vazia
     const extras = {}
     for (const u of unidades.value) {
       extras[u.id_unidade] = {
-        cpf:      u.cpf      || '',
-        telefone: u.telefone || '',
-        email:    u.email    || '',
+        cpf:           u.cpf      || '',
+        telefone:      u.telefone || '',
+        email:         u.email    || '',
+        imagem_base64: '',
+        imagem_nome:   '',
       }
     }
     dadosExtras.value = extras
@@ -450,17 +852,23 @@ const buscarInadimplentes = async () => {
 
 const _payload = () => ({
   condominio: dadosCondo.value,
+  modelo:     modeloSelecionado.value,
+  responsavel: responsavelSelecionado.value
+    ? { nome: responsavelSelecionado.value.nome, funcao: responsavelSelecionado.value.funcao || '' }
+    : null,
   unidades: unidadesSelecionadasLista.value.map(u => {
     const extra = dadosExtras.value[u.id_unidade] || {}
     return {
-      id_unidade: u.id_unidade,
-      unidade:    u.unidade,
-      bloco:      u.bloco || '',
-      nome:       u.nome,
-      valor:      u.valor,
-      cpf:        extra.cpf      || u.cpf      || '',
-      telefone:   extra.telefone || u.telefone || '',
-      email:      extra.email    || '',
+      id_unidade:            u.id_unidade,
+      unidade:               u.unidade,
+      bloco:                 u.bloco || '',
+      nome:                  u.nome,
+      valor:                 u.valor,
+      valor_sem_honorarios:  u.valor_sem_honorarios || u.valor,
+      cpf:                   extra.cpf           || u.cpf      || '',
+      telefone:              extra.telefone      || u.telefone || '',
+      email:                 extra.email         || '',
+      imagem_base64:         extra.imagem_base64 || '',
     }
   }),
 })
@@ -514,7 +922,10 @@ const gerarDocumentos = async (tipo) => {
   }
 }
 
-onMounted(() => carregarCondominios())
+onMounted(() => {
+  carregarCondominios()
+  carregarResponsaveis()
+})
 </script>
 
 <style scoped>
@@ -556,4 +967,34 @@ onMounted(() => carregarCondominios())
 .unit-name  { font-size: 0.875rem; }
 .unit-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .unit-valor { font-size: 0.85rem; font-weight: 700; color: rgb(var(--v-theme-error)); }
+
+.doc06-upload {
+  background: rgba(var(--v-theme-primary), 0.04);
+  border: 1px dashed rgba(var(--v-theme-primary), 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.doc06-label { display: flex; align-items: center; }
+
+/* Modal de escolha de modelo */
+.modelo-dialog-header {
+  background: linear-gradient(135deg, #059669 0%, #34d399 100%);
+  padding: 28px 24px 24px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+}
+.modelo-card {
+  border: 2px solid rgba(0,0,0,0.1);
+  border-radius: 12px;
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  height: 100%;
+}
+.modelo-card:hover { border-color: rgba(var(--v-theme-primary), 0.4); background: rgba(var(--v-theme-primary), 0.04); }
+.modelo-card--active {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.06);
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.15);
+}
 </style>

@@ -13,7 +13,11 @@ import zipfile
 import logging
 from datetime import date
 
-_MODELO_DOCX = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_execucao.docx")
+_MODELO_DOCX             = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_execucao.docx")
+_MODELO_DOCX_HONORARIOS  = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_execucao_honorarios.docx")
+
+def _modelo_path(modelo: str) -> str:
+    return _MODELO_DOCX_HONORARIOS if modelo == "com_honorarios" else _MODELO_DOCX
 
 from django.http import HttpResponse
 from ninja import Router
@@ -194,7 +198,18 @@ def _substituir(texto: str, variaveis: dict) -> str:
     return texto
 
 
-def _variaveis(dados_condo: dict, dados_unidade: dict) -> dict:
+def _valor_para_modelo(unidade: dict, modelo: str) -> str:
+    """
+    Retorna o valor formatado conforme o modelo:
+    - 'sem_honorarios': valor total menos honorários
+    - qualquer outro ('com_honorarios'): valor total
+    """
+    if modelo == "sem_honorarios":
+        return unidade.get("valor_sem_honorarios") or unidade.get("valor", "")
+    return unidade.get("valor", "")
+
+
+def _variaveis(dados_condo: dict, dados_unidade: dict, responsavel: dict | None = None, modelo: str = "com_honorarios") -> dict:
     return {
         # Condomínio
         "NOME DO CONDOMÍNIO": dados_condo.get("nome_condominio", ""),
@@ -212,7 +227,10 @@ def _variaveis(dados_condo: dict, dados_unidade: dict) -> dict:
         # Débito
         "nome do condomínio":       dados_condo.get("nome_condominio", ""),
         "nº do apartamento":        dados_unidade.get("unidade", ""),
-        "valor do débito":          dados_unidade.get("valor", ""),
+        "valor do débito":          _valor_para_modelo(dados_unidade, modelo),
+        # Responsável pela petição
+        "NOME DO RESPONSÁVEL PELA PETIÇÃO": (responsavel or {}).get("nome", ""),
+        "Função": (responsavel or {}).get("funcao", ""),
     }
 
 
@@ -220,12 +238,13 @@ def _variaveis(dados_condo: dict, dados_unidade: dict) -> dict:
 # Geração DOCX
 # ──────────────────────────────────────────────
 
-def _gerar_docx(variaveis: dict) -> bytes:
+def _gerar_docx(variaveis: dict, imagem_bytes: bytes | None = None, modelo_path: str | None = None) -> bytes:
     from docx import Document
+    from docx.shared import Inches, Pt
+    from docx.oxml.ns import qn
     import copy
 
-    MODELO = _MODELO_DOCX
-    doc = Document(MODELO)
+    doc = Document(modelo_path or _MODELO_DOCX)
 
     def _subst_para(para):
         if not para.runs:
@@ -297,21 +316,58 @@ def _gerar_docx(variaveis: dict) -> bytes:
             for cell in row.cells:
                 _processar_paragrafos(cell.paragraphs)
 
+    # Substitui parágrafo [printscreen do Doc. 06] por imagem (se fornecida)
+    if imagem_bytes:
+        _inserir_imagem_placeholder(doc, imagem_bytes)
+
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+def _inserir_imagem_placeholder(doc, imagem_bytes: bytes):
+    """
+    Encontra o parágrafo com texto '[printscreen do Doc. 06]' e substitui
+    todos os seus runs por uma imagem inline centralizada.
+    """
+    from docx.shared import Inches
+    from docx.oxml.ns import qn
+    import lxml.etree as etree
+
+    PLACEHOLDER = "[printscreen do Doc. 06]"
+
+    for para in doc.paragraphs:
+        # Texto completo do parágrafo (ignorando fragmentação de runs)
+        texto_full = "".join(r.text for r in para.runs)
+        if PLACEHOLDER not in texto_full:
+            continue
+
+        # Limpa todos os runs existentes
+        for run in para.runs:
+            run.text = ""
+
+        # Usa o primeiro run para inserir a imagem
+        run = para.runs[0] if para.runs else para.add_run()
+
+        # Calcula largura: ocupa a área de texto da página (aprox. 15 cm = 5.9")
+        img_buf = io.BytesIO(imagem_bytes)
+        try:
+            run.add_picture(img_buf, width=Inches(5.9))
+        except Exception as e:
+            # Fallback: insere como texto de erro
+            run.text = f"[Imagem não pôde ser inserida: {e}]"
+        break
 
 
 # ──────────────────────────────────────────────
 # Geração PDF via LibreOffice (converte DOCX preenchido)
 # ──────────────────────────────────────────────
 
-def _gerar_pdf(variaveis: dict, nome_condo: str = "", nome_unidade: str = "") -> bytes:
+def _gerar_pdf(variaveis: dict, nome_condo: str = "", nome_unidade: str = "", imagem_bytes: bytes | None = None, modelo_path: str | None = None) -> bytes:
     import subprocess
     import tempfile
 
-    # Gera o DOCX preenchido em arquivo temporário
-    docx_bytes = _gerar_docx(variaveis)
+    docx_bytes = _gerar_docx(variaveis, imagem_bytes=imagem_bytes, modelo_path=modelo_path)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         docx_path = os.path.join(tmpdir, "documento.docx")
@@ -385,8 +441,14 @@ def listar_inadimplentes(request, id_condominio: int):
 def _parse_body(request):
     import json
     try:
-        return json.loads(request.body)
-    except Exception:
+        body = request.body
+    except Exception as e:
+        logger.error(f"Erro ao ler body da requisição: {e}")
+        raise HttpError(400, f"Erro ao ler requisição: {e}")
+    try:
+        return json.loads(body)
+    except Exception as e:
+        logger.error(f"Erro ao fazer parse do JSON: {e} | primeiros 200 bytes: {body[:200]}")
         raise HttpError(400, "Corpo da requisição inválido")
 
 
@@ -394,6 +456,21 @@ def _nome_arquivo(u: dict) -> str:
     nome_safe    = re.sub(r"[^\w\s-]", "", u.get("nome", "desconhecido"))[:40].strip().replace(" ", "_")
     unidade_safe = re.sub(r"[^\w-]", "", u.get("unidade", "uni"))
     return f"{unidade_safe}_{nome_safe}_execucao"
+
+
+def _extrair_imagem(body: dict) -> bytes | None:
+    """Decodifica imagem base64 do campo 'imagem_base64' do body, se presente."""
+    import base64
+    raw = body.get("imagem_base64") or ""
+    if not raw:
+        return None
+    # Remove prefixo data:image/...;base64,
+    if "," in raw:
+        raw = raw.split(",", 1)[1]
+    try:
+        return base64.b64decode(raw)
+    except Exception:
+        return None
 
 
 @execucao_router.post("/gerar-docx")
@@ -410,11 +487,16 @@ def gerar_docx_endpoint(request):
     if not unidades_sel:
         raise HttpError(400, "Nenhuma unidade selecionada")
 
+    responsavel   = body.get("responsavel") or {}
+    modelo        = body.get("modelo") or "com_honorarios"
+    m_path        = _modelo_path(modelo)
+
     if len(unidades_sel) == 1:
-        u        = unidades_sel[0]
-        variaveis = _variaveis(dados_condo, u)
+        u            = unidades_sel[0]
+        imagem_bytes = _extrair_imagem(u)
+        variaveis    = _variaveis(dados_condo, u, responsavel, modelo)
         try:
-            conteudo = _gerar_docx(variaveis)
+            conteudo = _gerar_docx(variaveis, imagem_bytes=imagem_bytes, modelo_path=m_path)
         except Exception as e:
             logger.error(f"Erro ao gerar DOCX: {e}")
             raise HttpError(500, f"Erro ao gerar documento: {e}")
@@ -427,9 +509,10 @@ def gerar_docx_endpoint(request):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for u in unidades_sel:
-            variaveis = _variaveis(dados_condo, u)
+            imagem_bytes = _extrair_imagem(u)
+            variaveis    = _variaveis(dados_condo, u, responsavel, modelo)
             try:
-                zf.writestr(f"{_nome_arquivo(u)}.docx", _gerar_docx(variaveis))
+                zf.writestr(f"{_nome_arquivo(u)}.docx", _gerar_docx(variaveis, imagem_bytes=imagem_bytes, modelo_path=m_path))
             except Exception as e:
                 logger.error(f"Erro ao gerar DOCX para {u.get('unidade')}: {e}")
     buf.seek(0)
@@ -453,11 +536,16 @@ def gerar_pdf_endpoint(request):
     if not unidades_sel:
         raise HttpError(400, "Nenhuma unidade selecionada")
 
+    responsavel   = body.get("responsavel") or {}
+    modelo        = body.get("modelo") or "com_honorarios"
+    m_path        = _modelo_path(modelo)
+
     if len(unidades_sel) == 1:
-        u         = unidades_sel[0]
-        variaveis = _variaveis(dados_condo, u)
+        u            = unidades_sel[0]
+        imagem_bytes = _extrair_imagem(u)
+        variaveis    = _variaveis(dados_condo, u, responsavel, modelo)
         try:
-            conteudo = _gerar_pdf(variaveis, dados_condo.get("nome_condominio", ""), u.get("unidade", ""))
+            conteudo = _gerar_pdf(variaveis, dados_condo.get("nome_condominio", ""), u.get("unidade", ""), imagem_bytes=imagem_bytes, modelo_path=m_path)
         except Exception as e:
             logger.error(f"Erro ao gerar PDF: {e}")
             raise HttpError(500, f"Erro ao gerar documento: {e}")
@@ -470,11 +558,12 @@ def gerar_pdf_endpoint(request):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for u in unidades_sel:
-            variaveis = _variaveis(dados_condo, u)
+            imagem_bytes = _extrair_imagem(u)
+            variaveis    = _variaveis(dados_condo, u, responsavel, modelo)
             try:
                 zf.writestr(
                     f"{_nome_arquivo(u)}.pdf",
-                    _gerar_pdf(variaveis, dados_condo.get("nome_condominio", ""), u.get("unidade", ""))
+                    _gerar_pdf(variaveis, dados_condo.get("nome_condominio", ""), u.get("unidade", ""), imagem_bytes=imagem_bytes, modelo_path=m_path)
                 )
             except Exception as e:
                 logger.error(f"Erro ao gerar PDF para {u.get('unidade')}: {e}")
@@ -483,3 +572,85 @@ def gerar_pdf_endpoint(request):
     resp = HttpResponse(buf.read(), content_type="application/zip")
     resp["Content-Disposition"] = f'attachment; filename="{nome_zip}"'
     return resp
+
+
+# ──────────────────────────────────────────────
+# CRUD — Responsável pela Petição
+# ──────────────────────────────────────────────
+
+@execucao_router.get("/responsaveis-peticao", response={200: list})
+def listar_responsaveis(request):
+    from core.models import ResponsavelPeticao
+    qs = ResponsavelPeticao.objects.all()
+    return 200, [
+        {"id": r.id, "nome": r.nome, "funcao": r.funcao, "padrao": r.padrao}
+        for r in qs
+    ]
+
+
+@execucao_router.post("/responsaveis-peticao", response={201: dict})
+def criar_responsavel(request):
+    body = _parse_body(request)
+    nome   = (body.get("nome") or "").strip()
+    funcao = (body.get("funcao") or "").strip()
+    padrao = bool(body.get("padrao", False))
+    if not nome:
+        raise HttpError(400, "Nome é obrigatório")
+
+    from core.models import ResponsavelPeticao
+    from django.db import transaction
+    with transaction.atomic():
+        if padrao:
+            ResponsavelPeticao.objects.filter(padrao=True).update(padrao=False)
+        r = ResponsavelPeticao.objects.create(nome=nome, funcao=funcao, padrao=padrao)
+    return 201, {"id": r.id, "nome": r.nome, "funcao": r.funcao, "padrao": r.padrao}
+
+
+@execucao_router.put("/responsaveis-peticao/{id_resp}", response={200: dict})
+def atualizar_responsavel(request, id_resp: int):
+    from core.models import ResponsavelPeticao
+    from django.db import transaction
+    try:
+        r = ResponsavelPeticao.objects.get(pk=id_resp)
+    except ResponsavelPeticao.DoesNotExist:
+        raise HttpError(404, "Responsável não encontrado")
+    body = _parse_body(request)
+    nome   = (body.get("nome") or "").strip()
+    funcao = (body.get("funcao") or "").strip()
+    padrao = bool(body.get("padrao", False))
+    if not nome:
+        raise HttpError(400, "Nome é obrigatório")
+    with transaction.atomic():
+        if padrao and not r.padrao:
+            ResponsavelPeticao.objects.filter(padrao=True).update(padrao=False)
+        r.nome   = nome
+        r.funcao = funcao
+        r.padrao = padrao
+        r.save()
+    return 200, {"id": r.id, "nome": r.nome, "funcao": r.funcao, "padrao": r.padrao}
+
+
+@execucao_router.delete("/responsaveis-peticao/{id_resp}", response={204: None})
+def deletar_responsavel(request, id_resp: int):
+    from core.models import ResponsavelPeticao
+    try:
+        r = ResponsavelPeticao.objects.get(pk=id_resp)
+    except ResponsavelPeticao.DoesNotExist:
+        raise HttpError(404, "Responsável não encontrado")
+    r.delete()
+    return 204, None
+
+
+@execucao_router.post("/responsaveis-peticao/{id_resp}/definir-padrao", response={200: dict})
+def definir_padrao(request, id_resp: int):
+    from core.models import ResponsavelPeticao
+    from django.db import transaction
+    try:
+        r = ResponsavelPeticao.objects.get(pk=id_resp)
+    except ResponsavelPeticao.DoesNotExist:
+        raise HttpError(404, "Responsável não encontrado")
+    with transaction.atomic():
+        ResponsavelPeticao.objects.filter(padrao=True).update(padrao=False)
+        r.padrao = True
+        r.save()
+    return 200, {"id": r.id, "nome": r.nome, "funcao": r.funcao, "padrao": r.padrao}
