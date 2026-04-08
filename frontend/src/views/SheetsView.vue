@@ -1,7 +1,7 @@
 <template>
-  <v-container>
+  <v-container fluid class="pa-3 pa-sm-4">
     <!-- Cabeçalho -->
-    <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-6">
+    <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-4">
       <div class="d-flex align-center gap-4">
         <div class="page-icon">
           <v-icon size="20" color="white">mdi-google-spreadsheet</v-icon>
@@ -112,7 +112,7 @@
 
           <!-- Dashboard Cobranças -->
           <div v-else-if="dashboard && dashboard.tipo === 'cobrancas'" key="cobrancas">
-            <div class="d-flex align-center justify-space-between mb-4">
+            <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-3">
               <div>
                 <span class="text-h6 font-weight-bold">{{ dashboard.titulo }}</span>
                 <span class="text-caption text-medium-emphasis ml-3">
@@ -127,7 +127,7 @@
             </div>
 
             <!-- KPIs -->
-            <v-row class="mb-4">
+            <v-row class="mb-3">
               <v-col cols="12" sm="6" md="3">
                 <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
                   <div class="d-flex align-center justify-space-between mb-2">
@@ -139,42 +139,115 @@
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
+                <v-card
+                  elevation="4" class="kpi-card kpi-card--clickable"
+                  style="border-left: 4px solid #4CAF50;"
+                  @click="abrirKpi('pago')"
+                >
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Recebido</span>
                     <v-icon color="green" size="28">mdi-check-circle</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #4CAF50;">{{ brl(dashboard.resumo.total_recebido) }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pagos }} pagos</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pagos }} pagos · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
+                <v-card
+                  elevation="4" class="kpi-card kpi-card--clickable"
+                  style="border-left: 4px solid #F44336;"
+                  @click="abrirKpi('pendente')"
+                >
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Pendente</span>
                     <v-icon color="red" size="28">mdi-alert-circle</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #F44336;">{{ brl(dashboard.resumo.pendente) }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pendentes }} pendentes</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pendentes }} pendentes · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                <v-card
+                  elevation="4" class="kpi-card kpi-card--clickable"
+                  style="border-left: 4px solid #9C27B0;"
+                  @click="abrirKpi('antecipado')"
+                >
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">% Recebido</span>
                     <v-icon color="purple" size="28">mdi-percent</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #9C27B0;">{{ dashboard.resumo.percentual_recebido }}%</div>
-                  <div class="text-caption text-medium-emphasis mt-1">Antecipado: {{ brl(dashboard.resumo.total_antecipado) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">Antecipado: {{ brl(dashboard.resumo.total_antecipado) }} · clique para ver</div>
                 </v-card>
               </v-col>
             </v-row>
 
+            <!-- Dialog KPI -->
+            <v-dialog v-model="dialogKpi" max-width="700" scrollable>
+              <v-card rounded="xl">
+                <v-card-title class="pa-5 pb-3 d-flex align-center justify-space-between">
+                  <div class="d-flex align-center gap-3">
+                    <v-icon :color="kpiSelecionado.cor" size="24">{{ kpiSelecionado.icone }}</v-icon>
+                    <span class="text-h6 font-weight-bold">{{ kpiSelecionado.titulo }}</span>
+                    <v-chip size="small" :color="kpiSelecionado.cor" variant="tonal">
+                      {{ kpiSelecionado.itens.length }} registros
+                    </v-chip>
+                  </div>
+                  <v-btn icon size="small" variant="text" @click="dialogKpi = false">
+                    <v-icon>mdi-close</v-icon>
+                  </v-btn>
+                </v-card-title>
+                <v-divider />
+                <v-card-text class="pa-0">
+                  <v-list density="comfortable">
+                    <v-list-item
+                      v-for="(item, i) in kpiSelecionado.itens"
+                      :key="i"
+                      :style="i % 2 === 0 ? 'background: rgba(0,0,0,0.02)' : ''"
+                    >
+                      <template #prepend>
+                        <v-icon :color="kpiSelecionado.cor" size="18" class="mr-1">mdi-office-building-outline</v-icon>
+                      </template>
+                      <template #title>
+                        <span class="text-body-2 font-weight-medium">{{ item.condominio }}</span>
+                      </template>
+                      <template #subtitle>
+                        <span class="text-caption text-medium-emphasis">Venc: {{ item.vencimento }}</span>
+                      </template>
+                      <template #append>
+                        <div class="text-right">
+                          <p class="text-body-2 font-weight-bold mb-0" :class="`text-${kpiSelecionado.cor}`">
+                            {{ brl(item.valor_previsto) }}
+                          </p>
+                          <p v-if="item.valor_pago > 0" class="text-caption text-medium-emphasis mb-0">
+                            Pago: {{ brl(item.valor_pago) }}
+                          </p>
+                        </div>
+                      </template>
+                    </v-list-item>
+                    <v-list-item v-if="!kpiSelecionado.itens.length">
+                      <template #title>
+                        <span class="text-medium-emphasis">Nenhum registro encontrado</span>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </v-card-text>
+                <v-divider />
+                <v-card-actions class="pa-4">
+                  <span class="text-caption text-medium-emphasis">
+                    Total: <strong>{{ brl(kpiSelecionado.itens.reduce((s, i) => s + (i.valor_previsto || 0), 0)) }}</strong>
+                  </span>
+                  <v-spacer />
+                  <v-btn variant="tonal" @click="dialogKpi = false">Fechar</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
+
             <!-- Gráfico + Lista -->
-            <v-row class="mb-4">
+            <v-row class="mb-3">
               <v-col cols="12" md="8">
                 <v-card elevation="4">
-                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                  <v-card-title class="pa-3 pb-2 d-flex align-center">
                     <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
                     Previsto vs Recebido por Vencimento
                   </v-card-title>
@@ -187,7 +260,7 @@
               </v-col>
               <v-col cols="12" md="4">
                 <v-card elevation="4" height="100%">
-                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                  <v-card-title class="pa-3 pb-2 d-flex align-center">
                     <v-icon class="mr-2" color="primary">mdi-view-list</v-icon>
                     Por Vencimento
                   </v-card-title>
@@ -215,7 +288,7 @@
 
             <!-- Tabela -->
             <v-card elevation="4">
-              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
+              <v-card-title class="pa-3 pb-2 d-flex align-center justify-space-between flex-wrap gap-2">
                 <div class="d-flex align-center">
                   <v-icon class="mr-2" color="primary">mdi-office-building</v-icon>
                   Condomínios
@@ -227,7 +300,7 @@
                   placeholder="Buscar condomínio..."
                   prepend-inner-icon="mdi-magnify"
                   hide-details
-                  style="max-width: 260px;"
+                  style="min-width: 200px; max-width: 100%;"
                   clearable
                 />
               </v-card-title>
@@ -271,7 +344,7 @@
 
           <!-- Dashboard Advocacia -->
           <div v-else-if="dashboard && dashboard.tipo === 'advocacia'" key="advocacia">
-            <div class="d-flex align-center justify-space-between mb-4">
+            <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-3">
               <div>
                 <span class="text-h6 font-weight-bold">{{ dashboard.titulo }}</span>
                 <span class="text-caption text-medium-emphasis ml-3">
@@ -286,54 +359,115 @@
             </div>
 
             <!-- KPIs -->
-            <v-row class="mb-4">
+            <v-row class="mb-3">
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #2196F3;" @click="abrirKpiAdvocacia('taxa')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Taxa de Cobrança</span>
                     <v-icon color="blue" size="28">mdi-gavel</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #2196F3;">{{ brl(dashboard.resumo.total_taxa_cobranca) }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.total_unidades }} unidades</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.total_unidades }} unidades · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #4CAF50;" @click="abrirKpiAdvocacia('liquidado')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Creditado</span>
                     <v-icon color="green" size="28">mdi-check-circle</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #4CAF50;">{{ brl(dashboard.resumo.total_creditado) }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.liquidados }} liquidados</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.liquidados }} liquidados · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #FF9800;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #FF9800;" @click="abrirKpiAdvocacia('honorarios')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Honorários</span>
                     <v-icon color="orange" size="28">mdi-currency-usd</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #FF9800;">{{ brl(dashboard.resumo.total_honorarios) }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pendentes }} pendentes</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.pendentes }} pendentes · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #9C27B0;" @click="abrirKpiAdvocacia('pendente')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">% Liquidado</span>
                     <v-icon color="purple" size="28">mdi-percent</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #9C27B0;">{{ dashboard.resumo.percentual_liquidado }}%</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.liquidados }} de {{ dashboard.resumo.total_unidades }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.liquidados }} de {{ dashboard.resumo.total_unidades }} · clique para ver</div>
                 </v-card>
               </v-col>
             </v-row>
+
+            <!-- Dialog KPI Advocacia -->
+            <v-dialog v-model="dialogKpiAdvocacia" max-width="750" scrollable>
+              <v-card rounded="xl">
+                <v-card-title class="pa-5 pb-3 d-flex align-center justify-space-between">
+                  <div class="d-flex align-center gap-3">
+                    <v-icon :color="kpiAdvocaciaSelecionado.cor" size="24">{{ kpiAdvocaciaSelecionado.icone }}</v-icon>
+                    <span class="text-h6 font-weight-bold">{{ kpiAdvocaciaSelecionado.titulo }}</span>
+                    <v-chip size="small" :color="kpiAdvocaciaSelecionado.cor" variant="tonal">
+                      {{ kpiAdvocaciaSelecionado.itens.length }} registros
+                    </v-chip>
+                  </div>
+                  <v-btn icon size="small" variant="text" @click="dialogKpiAdvocacia = false">
+                    <v-icon>mdi-close</v-icon>
+                  </v-btn>
+                </v-card-title>
+                <v-divider />
+                <v-card-text class="pa-0">
+                  <v-list density="comfortable">
+                    <v-list-item
+                      v-for="(item, i) in kpiAdvocaciaSelecionado.itens"
+                      :key="i"
+                      :style="i % 2 === 0 ? 'background: rgba(0,0,0,0.02)' : ''"
+                    >
+                      <template #prepend>
+                        <v-icon :color="kpiAdvocaciaSelecionado.cor" size="18" class="mr-1">mdi-gavel</v-icon>
+                      </template>
+                      <template #title>
+                        <span class="text-body-2 font-weight-medium">{{ item.unidade }}</span>
+                      </template>
+                      <template #subtitle>
+                        <span class="text-caption text-medium-emphasis">{{ item.advogado }} · Venc: {{ item.vencimento }}</span>
+                      </template>
+                      <template #append>
+                        <div class="text-right">
+                          <p class="text-body-2 font-weight-bold mb-0" :class="`text-${kpiAdvocaciaSelecionado.cor}`">
+                            {{ brl(item[kpiAdvocaciaSelecionado.campo]) }}
+                          </p>
+                          <v-chip size="x-small" :color="item.status === 'liquidado' ? 'green' : 'orange'" variant="tonal">
+                            {{ item.status === 'liquidado' ? 'Liquidado' : 'Pendente' }}
+                          </v-chip>
+                        </div>
+                      </template>
+                    </v-list-item>
+                    <v-list-item v-if="!kpiAdvocaciaSelecionado.itens.length">
+                      <template #title>
+                        <span class="text-medium-emphasis">Nenhum registro encontrado</span>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </v-card-text>
+                <v-divider />
+                <v-card-actions class="pa-4">
+                  <span class="text-caption text-medium-emphasis">
+                    Total: <strong>{{ brl(kpiAdvocaciaSelecionado.itens.reduce((s, i) => s + (i[kpiAdvocaciaSelecionado.campo] || 0), 0)) }}</strong>
+                  </span>
+                  <v-spacer />
+                  <v-btn variant="tonal" @click="dialogKpiAdvocacia = false">Fechar</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
 
             <!-- Gráfico + Lista por Advogado -->
             <v-row class="mb-4">
               <v-col cols="12" md="8">
                 <v-card elevation="4">
-                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                  <v-card-title class="pa-3 pb-2 d-flex align-center">
                     <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
                     Taxa de Cobrança por Advogado
                   </v-card-title>
@@ -346,7 +480,7 @@
               </v-col>
               <v-col cols="12" md="4">
                 <v-card elevation="4" height="100%">
-                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                  <v-card-title class="pa-3 pb-2 d-flex align-center">
                     <v-icon class="mr-2" color="primary">mdi-account-group</v-icon>
                     Por Advogado
                   </v-card-title>
@@ -374,7 +508,7 @@
 
             <!-- Tabela -->
             <v-card elevation="4">
-              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
+              <v-card-title class="pa-3 pb-2 d-flex align-center justify-space-between flex-wrap gap-2">
                 <div class="d-flex align-center">
                   <v-icon class="mr-2" color="primary">mdi-office-building</v-icon>
                   Unidades
@@ -386,7 +520,7 @@
                   placeholder="Buscar unidade ou advogado..."
                   prepend-inner-icon="mdi-magnify"
                   hide-details
-                  style="max-width: 300px;"
+                  style="min-width: 200px; max-width: 100%;"
                   clearable
                 />
               </v-card-title>
@@ -421,7 +555,7 @@
 
           <!-- Dashboard Despesas por Unidade -->
           <div v-else-if="dashboard && dashboard.tipo === 'despesas'" key="despesas">
-            <div class="d-flex align-center justify-space-between mb-4">
+            <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-3">
               <div>
                 <span class="text-h6 font-weight-bold">{{ dashboard.titulo }}</span>
                 <span class="text-caption text-medium-emphasis ml-3">
@@ -436,54 +570,108 @@
             </div>
 
             <!-- KPIs -->
-            <v-row class="mb-4">
+            <v-row class="mb-3">
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #F44336;" @click="abrirKpiDespesas('total')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Despesas</span>
                     <v-icon color="red" size="28">mdi-cash-minus</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #F44336;">{{ brl(dashboard.resumo.total_geral) }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.total_registros }} lançamentos</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ dashboard.resumo.total_registros }} lançamentos · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #2196F3;" @click="abrirKpiDespesas('unidades')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Unidades</span>
                     <v-icon color="blue" size="28">mdi-store</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #2196F3;">{{ dashboard.resumo.total_unidades }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">unidades / lojas</div>
+                  <div class="text-caption text-medium-emphasis mt-1">unidades / lojas · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #FF9800;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #FF9800;" @click="abrirKpiDespesas('fornecedores')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Fornecedores</span>
                     <v-icon color="orange" size="28">mdi-truck</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #FF9800;">{{ dashboard.resumo.fornecedores_unicos }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">fornecedores únicos</div>
+                  <div class="text-caption text-medium-emphasis mt-1">fornecedores únicos · clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #9C27B0;" @click="abrirKpiDespesas('maior')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Maior Unidade</span>
                     <v-icon color="purple" size="28">mdi-trophy</v-icon>
                   </div>
                   <div class="text-subtitle-1 font-weight-bold text-truncate" style="color: #9C27B0;">{{ dashboard.resumo.maior_unidade }}</div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ brl(dashboard.resumo.maior_unidade_valor) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ brl(dashboard.resumo.maior_unidade_valor) }} · clique para ver</div>
                 </v-card>
               </v-col>
             </v-row>
 
+            <!-- Dialog KPI Despesas -->
+            <v-dialog v-model="dialogKpiDespesas" max-width="750" scrollable>
+              <v-card rounded="xl">
+                <v-card-title class="pa-5 pb-3 d-flex align-center justify-space-between">
+                  <div class="d-flex align-center gap-3">
+                    <v-icon :color="kpiDespesasSelecionado.cor" size="24">{{ kpiDespesasSelecionado.icone }}</v-icon>
+                    <span class="text-h6 font-weight-bold">{{ kpiDespesasSelecionado.titulo }}</span>
+                    <v-chip size="small" :color="kpiDespesasSelecionado.cor" variant="tonal">
+                      {{ kpiDespesasSelecionado.itens.length }} registros
+                    </v-chip>
+                  </div>
+                  <v-btn icon size="small" variant="text" @click="dialogKpiDespesas = false">
+                    <v-icon>mdi-close</v-icon>
+                  </v-btn>
+                </v-card-title>
+                <v-divider />
+                <v-card-text class="pa-0">
+                  <v-list density="comfortable">
+                    <v-list-item
+                      v-for="(item, i) in kpiDespesasSelecionado.itens"
+                      :key="i"
+                      :style="i % 2 === 0 ? 'background: rgba(0,0,0,0.02)' : ''"
+                    >
+                      <template #prepend>
+                        <v-icon :color="kpiDespesasSelecionado.cor" size="18" class="mr-1">mdi-store-minus</v-icon>
+                      </template>
+                      <template #title>
+                        <span class="text-body-2 font-weight-medium">{{ item._titulo }}</span>
+                      </template>
+                      <template #subtitle>
+                        <span class="text-caption text-medium-emphasis">{{ item._subtitulo }}</span>
+                      </template>
+                      <template #append>
+                        <p class="text-body-2 font-weight-bold mb-0" :class="`text-${kpiDespesasSelecionado.cor}`">
+                          {{ brl(item._valor) }}
+                        </p>
+                      </template>
+                    </v-list-item>
+                    <v-list-item v-if="!kpiDespesasSelecionado.itens.length">
+                      <template #title><span class="text-medium-emphasis">Nenhum registro encontrado</span></template>
+                    </v-list-item>
+                  </v-list>
+                </v-card-text>
+                <v-divider />
+                <v-card-actions class="pa-4">
+                  <span class="text-caption text-medium-emphasis">
+                    Total: <strong>{{ brl(kpiDespesasSelecionado.itens.reduce((s, i) => s + (i._valor || 0), 0)) }}</strong>
+                  </span>
+                  <v-spacer />
+                  <v-btn variant="tonal" @click="dialogKpiDespesas = false">Fechar</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
+
             <!-- Gráficos -->
-            <v-row class="mb-4">
+            <v-row class="mb-3">
               <v-col cols="12" md="7">
                 <v-card elevation="4">
-                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                  <v-card-title class="pa-3 pb-2 d-flex align-center">
                     <v-icon class="mr-2" color="primary">mdi-chart-bar</v-icon>
                     Total por Unidade
                   </v-card-title>
@@ -496,7 +684,7 @@
               </v-col>
               <v-col cols="12" md="5">
                 <v-card elevation="4">
-                  <v-card-title class="pa-4 pb-2 d-flex align-center">
+                  <v-card-title class="pa-3 pb-2 d-flex align-center">
                     <v-icon class="mr-2" color="primary">mdi-chart-donut</v-icon>
                     Top 10 Fornecedores
                   </v-card-title>
@@ -511,19 +699,19 @@
 
             <!-- Tabela -->
             <v-card elevation="4">
-              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between flex-wrap gap-2">
+              <v-card-title class="pa-3 pb-2 d-flex align-center justify-space-between flex-wrap gap-2">
                 <div class="d-flex align-center">
                   <v-icon class="mr-2" color="primary">mdi-format-list-bulleted</v-icon>
                   Lançamentos
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex flex-wrap gap-2" style="flex: 1; max-width: 100%;">
                   <v-select
                     v-model="filtroUnidade"
                     :items="['Todas', ...dashboard.por_unidade.map(u => u.unidade)]"
                     density="compact"
                     variant="outlined"
                     hide-details
-                    style="min-width: 200px; max-width: 260px;"
+                    style="min-width: 160px; flex: 1;"
                     label="Filtrar unidade"
                   />
                   <v-text-field
@@ -533,7 +721,7 @@
                     placeholder="Buscar fornecedor..."
                     prepend-inner-icon="mdi-magnify"
                     hide-details
-                    style="max-width: 240px;"
+                    style="min-width: 160px; flex: 1;"
                     clearable
                   />
                 </div>
@@ -558,7 +746,7 @@
 
           <!-- Dashboard Financeiro -->
           <div v-else-if="dashboard" key="financeiro">
-            <div class="d-flex align-center justify-space-between mb-4">
+            <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-3">
               <span class="text-caption text-medium-emphasis">
                 <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
                 Atualizado em {{ dashboard.atualizado_em }}
@@ -568,23 +756,25 @@
                 Conectado
               </v-chip>
             </div>
-            <v-row class="mb-4">
+            <v-row class="mb-3">
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #4CAF50;" @click="abrirKpiFinanceiro('receita')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Receitas</span>
                     <v-icon color="green" size="28">mdi-trending-up</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #4CAF50;">{{ brl(dashboard.resumo.total_receitas) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #F44336;" @click="abrirKpiFinanceiro('despesa')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Despesas</span>
                     <v-icon color="red" size="28">mdi-trending-down</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #F44336;">{{ brl(dashboard.resumo.total_despesas) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">clique para ver</div>
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
@@ -597,15 +787,80 @@
                 </v-card>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                <v-card elevation="4" class="kpi-card kpi-card--clickable" style="border-left: 4px solid #9C27B0;" @click="abrirKpiFinanceiro('todas')">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Transações</span>
                     <v-icon color="purple" size="28">mdi-swap-horizontal</v-icon>
                   </div>
                   <div class="text-h5 font-weight-bold" style="color: #9C27B0;">{{ dashboard.resumo.total_transacoes }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">clique para ver</div>
                 </v-card>
               </v-col>
             </v-row>
+
+            <!-- Dialog KPI Financeiro -->
+            <v-dialog v-model="dialogKpiFinanceiro" max-width="700" scrollable>
+              <v-card rounded="xl">
+                <v-card-title class="pa-5 pb-3 d-flex align-center justify-space-between">
+                  <div class="d-flex align-center gap-3">
+                    <v-icon :color="kpiFinanceiroSelecionado.cor" size="24">{{ kpiFinanceiroSelecionado.icone }}</v-icon>
+                    <span class="text-h6 font-weight-bold">{{ kpiFinanceiroSelecionado.titulo }}</span>
+                    <v-chip size="small" :color="kpiFinanceiroSelecionado.cor" variant="tonal">
+                      {{ kpiFinanceiroSelecionado.itens.length }} registros
+                    </v-chip>
+                  </div>
+                  <v-btn icon size="small" variant="text" @click="dialogKpiFinanceiro = false">
+                    <v-icon>mdi-close</v-icon>
+                  </v-btn>
+                </v-card-title>
+                <v-divider />
+                <v-card-text class="pa-0">
+                  <v-list density="comfortable">
+                    <v-list-item
+                      v-for="(item, i) in kpiFinanceiroSelecionado.itens"
+                      :key="i"
+                      :style="i % 2 === 0 ? 'background: rgba(0,0,0,0.02)' : ''"
+                    >
+                      <template #prepend>
+                        <v-icon :color="item.tipo === 'receita' ? 'green' : 'red'" size="18" class="mr-1">
+                          {{ item.tipo === 'receita' ? 'mdi-trending-up' : 'mdi-trending-down' }}
+                        </v-icon>
+                      </template>
+                      <template #title>
+                        <span class="text-body-2 font-weight-medium">{{ item.descricao }}</span>
+                      </template>
+                      <template #subtitle>
+                        <span class="text-caption text-medium-emphasis">{{ item.data }} · {{ item.categoria }}</span>
+                      </template>
+                      <template #append>
+                        <div class="text-right">
+                          <p class="text-body-2 font-weight-bold mb-0" :class="item.tipo === 'receita' ? 'text-green' : 'text-red'">
+                            {{ item.tipo === 'receita' ? '+' : '-' }} {{ brl(Math.abs(item.valor)) }}
+                          </p>
+                          <v-chip size="x-small" :color="item.tipo === 'receita' ? 'green' : 'red'" variant="tonal">
+                            {{ item.tipo === 'receita' ? 'Receita' : 'Despesa' }}
+                          </v-chip>
+                        </div>
+                      </template>
+                    </v-list-item>
+                    <v-list-item v-if="!kpiFinanceiroSelecionado.itens.length">
+                      <template #title>
+                        <span class="text-medium-emphasis">Nenhum registro encontrado</span>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </v-card-text>
+                <v-divider />
+                <v-card-actions class="pa-4">
+                  <span class="text-caption text-medium-emphasis">
+                    Total: <strong>{{ brl(kpiFinanceiroSelecionado.itens.reduce((s, i) => s + Math.abs(i.valor || 0), 0)) }}</strong>
+                  </span>
+                  <v-spacer />
+                  <v-btn variant="tonal" @click="dialogKpiFinanceiro = false">Fechar</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
+
             <v-row class="mb-4">
               <v-col cols="12" md="8">
                 <v-card elevation="4">
@@ -627,9 +882,9 @@
               </v-col>
             </v-row>
             <v-card elevation="4">
-              <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
+              <v-card-title class="pa-3 pb-2 d-flex align-center justify-space-between flex-wrap gap-2">
                 <div><v-icon class="mr-2" color="primary">mdi-format-list-bulleted</v-icon>Últimas Transações</div>
-                <v-text-field v-model="buscaTransacao" density="compact" variant="outlined" placeholder="Buscar..." prepend-inner-icon="mdi-magnify" hide-details style="max-width: 250px;" clearable />
+                <v-text-field v-model="buscaTransacao" density="compact" variant="outlined" placeholder="Buscar..." prepend-inner-icon="mdi-magnify" hide-details style="min-width: 180px; max-width: 100%;" clearable />
               </v-card-title>
               <v-card-text class="pa-0">
                 <v-data-table :headers="headersTransacoes" :items="transacoesFiltradas" :items-per-page="10" density="comfortable" class="elevation-0">
@@ -816,6 +1071,8 @@ const dashboard = ref(null)
 
 const buscaTransacao = ref('')
 const buscaCobranca = ref('')
+const dialogKpi = ref(false)
+const kpiSelecionado = ref({ titulo: '', status: '', cor: '', itens: [] })
 const buscaAdvocacia = ref('')
 const buscaDespesa = ref('')
 const filtroUnidade = ref('Todas')
@@ -895,6 +1152,88 @@ const cobrancasFiltradas = computed(() => {
     r.condominio.toLowerCase().includes(q) || r.vencimento.toLowerCase().includes(q) || r.status.toLowerCase().includes(q)
   )
 })
+
+const abrirKpi = (status) => {
+  const map = {
+    pago:       { titulo: 'Pagos',       cor: 'green',  icone: 'mdi-check-circle' },
+    pendente:   { titulo: 'Pendentes',   cor: 'red',    icone: 'mdi-alert-circle' },
+    antecipado: { titulo: 'Antecipados', cor: 'purple', icone: 'mdi-clock-fast' },
+  }
+  const cfg = map[status]
+  const itens = (dashboard.value?.registros || []).filter(r => r.status === status)
+  kpiSelecionado.value = { ...cfg, status, itens }
+  dialogKpi.value = true
+}
+
+const dialogKpiDespesas = ref(false)
+const kpiDespesasSelecionado = ref({ titulo: '', cor: '', icone: '', itens: [] })
+
+const abrirKpiDespesas = (tipo) => {
+  const registros = dashboard.value?.registros || []
+  const porUnidade = dashboard.value?.por_unidade || []
+  const porFornecedor = dashboard.value?.por_fornecedor || []
+  const maiorUnidade = dashboard.value?.resumo?.maior_unidade || ''
+
+  const cfgMap = {
+    total:       { titulo: 'Todos os Lançamentos',          cor: 'red',    icone: 'mdi-cash-minus'  },
+    unidades:    { titulo: 'Total por Unidade',             cor: 'blue',   icone: 'mdi-store'       },
+    fornecedores:{ titulo: 'Top Fornecedores',              cor: 'orange', icone: 'mdi-truck'       },
+    maior:       { titulo: `Lançamentos — ${maiorUnidade}`, cor: 'purple', icone: 'mdi-trophy'      },
+  }
+
+  let itens = []
+  if (tipo === 'total') {
+    itens = registros.map(r => ({ _titulo: r.fornecedor, _subtitulo: `${r.unidade} · Venc: ${r.vencimento}`, _valor: r.valor }))
+  } else if (tipo === 'unidades') {
+    itens = [...porUnidade].sort((a, b) => b.total - a.total)
+      .map(u => ({ _titulo: u.unidade, _subtitulo: `${u.quantidade ?? ''} lançamentos`, _valor: u.total }))
+  } else if (tipo === 'fornecedores') {
+    itens = porFornecedor.map(f => ({ _titulo: f.fornecedor, _subtitulo: `${f.quantidade ?? ''} lançamentos`, _valor: f.total }))
+  } else if (tipo === 'maior') {
+    itens = registros.filter(r => r.unidade === maiorUnidade)
+      .map(r => ({ _titulo: r.fornecedor, _subtitulo: `Venc: ${r.vencimento}`, _valor: r.valor }))
+  }
+
+  kpiDespesasSelecionado.value = { ...cfgMap[tipo], itens }
+  dialogKpiDespesas.value = true
+}
+
+const dialogKpiFinanceiro = ref(false)
+const kpiFinanceiroSelecionado = ref({ titulo: '', cor: '', icone: '', itens: [] })
+
+const abrirKpiFinanceiro = (tipo) => {
+  const map = {
+    receita:   { titulo: 'Receitas',       cor: 'green',  icone: 'mdi-trending-up'    },
+    despesa:   { titulo: 'Despesas',       cor: 'red',    icone: 'mdi-trending-down'  },
+    todas:     { titulo: 'Todas Transações', cor: 'purple', icone: 'mdi-swap-horizontal' },
+  }
+  const cfg = map[tipo] || map.todas
+  const todos = dashboard.value?.ultimas_transacoes || []
+  const itens = tipo === 'todas' ? todos : todos.filter(t => t.tipo === tipo)
+  kpiFinanceiroSelecionado.value = { ...cfg, itens }
+  dialogKpiFinanceiro.value = true
+}
+
+const dialogKpiAdvocacia = ref(false)
+const kpiAdvocaciaSelecionado = ref({ titulo: '', cor: '', icone: '', campo: '', itens: [] })
+
+const abrirKpiAdvocacia = (tipo) => {
+  const map = {
+    taxa:      { titulo: 'Taxa de Cobrança — Todas as Unidades', cor: 'blue',   icone: 'mdi-gavel',        campo: 'taxa_cobranca' },
+    liquidado: { titulo: 'Unidades Liquidadas',                  cor: 'green',  icone: 'mdi-check-circle', campo: 'creditado'     },
+    honorarios:{ titulo: 'Honorários Pendentes',                 cor: 'orange', icone: 'mdi-currency-usd', campo: 'honorarios'    },
+    pendente:  { titulo: 'Unidades Pendentes',                   cor: 'purple', icone: 'mdi-percent',      campo: 'taxa_cobranca' },
+  }
+  const cfg = map[tipo]
+  const todos = dashboard.value?.registros || []
+  const itens = tipo === 'liquidado'
+    ? todos.filter(r => r.status === 'liquidado')
+    : tipo === 'pendente'
+      ? todos.filter(r => r.status !== 'liquidado')
+      : todos
+  kpiAdvocaciaSelecionado.value = { ...cfg, itens }
+  dialogKpiAdvocacia.value = true
+}
 
 const headersTransacoes = [
   { title: 'Data', key: 'data', width: 110 },
@@ -1094,8 +1433,39 @@ const destroyCharts = () => {
   if (chartDespesasFornecedorInstance) { chartDespesasFornecedorInstance.destroy(); chartDespesasFornecedorInstance = null }
 }
 
+// Cores dinâmicas baseadas no tema atual (lê direto do localStorage, igual ao App.vue)
+const isDark = () => (localStorage.getItem('theme') || 'pratikaLight') === 'pratikaDark'
+const tickColor   = () => isDark() ? '#c0c0c0' : '#444444'
+const gridColor   = () => isDark() ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+const legendColor = () => isDark() ? '#e0e0e0' : '#333333'
+
+// Aplica defaults globais do Chart.js para o tema atual
+const aplicarDefaultsChart = () => {
+  const tc = tickColor()
+  const lc = legendColor()
+  Chart.defaults.color = tc
+  Chart.defaults.borderColor = gridColor()
+  Chart.defaults.plugins.legend.labels.color = lc
+  Chart.defaults.scale.ticks.color = tc
+  Chart.defaults.scale.grid.color = gridColor()
+}
+
+const chartScaleX = (extraTick = {}) => ({
+  grid: { color: gridColor() },
+  ticks: { color: tickColor(), ...extraTick },
+})
+const chartScaleY = (extraTick = {}) => ({
+  grid: { color: gridColor() },
+  ticks: { color: tickColor(), ...extraTick },
+})
+const chartLegend = (position = 'top', extra = {}) => ({
+  position,
+  labels: { color: legendColor(), boxWidth: 14, padding: 12, ...extra },
+})
+
 const renderizarGraficos = () => {
   if (!dashboard.value || !chartMensal.value) return
+  aplicarDefaultsChart()
   destroyCharts()
 
   if (dashboard.value.por_mes?.length) {
@@ -1106,12 +1476,20 @@ const renderizarGraficos = () => {
       data: {
         labels,
         datasets: [
-          { label: 'Receitas', data: dashboard.value.por_mes.map(m => m.receitas), borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.1)', fill: true, tension: 0.3 },
-          { label: 'Despesas', data: dashboard.value.por_mes.map(m => m.despesas), borderColor: '#F44336', backgroundColor: 'rgba(244,67,54,0.1)', fill: true, tension: 0.3 },
-          { label: 'Saldo', data: dashboard.value.por_mes.map(m => m.saldo), borderColor: '#2196F3', backgroundColor: 'transparent', borderDash: [5, 5], tension: 0.3 },
+          { label: 'Receitas', data: dashboard.value.por_mes.map(m => m.receitas), borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.15)', fill: true, tension: 0.3, pointBackgroundColor: '#4CAF50' },
+          { label: 'Despesas', data: dashboard.value.por_mes.map(m => m.despesas), borderColor: '#F44336', backgroundColor: 'rgba(244,67,54,0.15)', fill: true, tension: 0.3, pointBackgroundColor: '#F44336' },
+          { label: 'Saldo', data: dashboard.value.por_mes.map(m => m.saldo), borderColor: '#64B5F6', backgroundColor: 'transparent', borderDash: [5, 5], tension: 0.3, pointBackgroundColor: '#64B5F6' },
         ],
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(0)}k` } } } },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: chartLegend('top') },
+        scales: {
+          x: chartScaleX(),
+          y: { ...chartScaleY({ callback: v => `R$ ${(v/1000).toFixed(0)}k` }), beginAtZero: true },
+        },
+      },
     })
   }
 
@@ -1121,14 +1499,19 @@ const renderizarGraficos = () => {
     const cores = ['#4CAF50','#2196F3','#FF9800','#9C27B0','#F44336','#00BCD4','#795548','#607D8B','#E91E63','#3F51B5']
     chartCategoriaInstance = new Chart(ctx, {
       type: 'doughnut',
-      data: { labels: cats.map(([k]) => k), datasets: [{ data: cats.map(([,v]) => v.despesas + v.receitas), backgroundColor: cores }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } },
+      data: { labels: cats.map(([k]) => k), datasets: [{ data: cats.map(([,v]) => v.despesas + v.receitas), backgroundColor: cores, borderWidth: 2, borderColor: 'transparent', hoverOffset: 6 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: chartLegend('right', { boxWidth: 12, font: { size: 11 } }) },
+      },
     })
   }
 }
 
 const renderizarGraficoCobrancas = () => {
   if (!dashboard.value?.por_vencimento?.length || !chartCobrancas.value) return
+  aplicarDefaultsChart()
   destroyCharts()
 
   const pv = dashboard.value.por_vencimento
@@ -1137,23 +1520,31 @@ const renderizarGraficoCobrancas = () => {
     data: {
       labels: pv.map(p => p.vencimento),
       datasets: [
-        { label: 'Previsto', data: pv.map(p => p.previsto), backgroundColor: 'rgba(33,150,243,0.6)', borderColor: '#2196F3', borderWidth: 1 },
-        { label: 'Recebido', data: pv.map(p => p.recebido), backgroundColor: 'rgba(76,175,80,0.7)', borderColor: '#4CAF50', borderWidth: 1 },
+        { label: 'Previsto', data: pv.map(p => p.previsto), backgroundColor: 'rgba(33,150,243,0.7)', borderColor: '#2196F3', borderWidth: 1, borderRadius: 4 },
+        { label: 'Recebido', data: pv.map(p => p.recebido), backgroundColor: 'rgba(76,175,80,0.8)', borderColor: '#4CAF50', borderWidth: 1, borderRadius: 4 },
       ],
     },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(1)}k` } } } },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: chartLegend('top') },
+      scales: {
+        x: chartScaleX(),
+        y: { ...chartScaleY({ callback: v => `R$ ${(v/1000).toFixed(1)}k` }), beginAtZero: true },
+      },
+    },
   })
 }
 
 const renderizarGraficosDespesas = () => {
   if (!dashboard.value?.por_unidade?.length) return
+  aplicarDefaultsChart()
   destroyCharts()
 
-  const cores = ['#F44336','#E91E63','#9C27B0','#673AB7','#3F51B5','#2196F3','#00BCD4','#009688','#4CAF50','#FF9800','#FF5722','#795548','#607D8B','#263238']
+  const cores = ['#F44336','#E91E63','#9C27B0','#673AB7','#3F51B5','#2196F3','#00BCD4','#009688','#4CAF50','#FF9800','#FF5722','#795548','#607D8B','#26C6DA']
 
-  // Gráfico horizontal de barras por unidade
   if (chartDespesasUnidade.value) {
-    const pu = [...dashboard.value.por_unidade].reverse() // menor → maior (eixo Y de baixo p/ cima)
+    const pu = [...dashboard.value.por_unidade].reverse()
     chartDespesasUnidadeInstance = new Chart(chartDespesasUnidade.value.getContext('2d'), {
       type: 'bar',
       data: {
@@ -1172,26 +1563,25 @@ const renderizarGraficosDespesas = () => {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(0)}k` } },
-          y: { ticks: { font: { size: 11 } } },
+          x: chartScaleX({ callback: v => `R$ ${(v/1000).toFixed(0)}k` }),
+          y: { ...chartScaleY({ font: { size: 11 } }), grid: { display: false } },
         },
       },
     })
   }
 
-  // Donut top 10 fornecedores
   if (chartDespesasFornecedor.value && dashboard.value.por_fornecedor?.length) {
     const pf = dashboard.value.por_fornecedor
     chartDespesasFornecedorInstance = new Chart(chartDespesasFornecedor.value.getContext('2d'), {
       type: 'doughnut',
       data: {
         labels: pf.map(f => f.fornecedor.length > 25 ? f.fornecedor.slice(0, 25) + '…' : f.fornecedor),
-        datasets: [{ data: pf.map(f => f.total), backgroundColor: cores.slice(0, pf.length), borderWidth: 1 }],
+        datasets: [{ data: pf.map(f => f.total), backgroundColor: cores.slice(0, pf.length), borderWidth: 2, borderColor: 'transparent', hoverOffset: 6 }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } } },
+        plugins: { legend: chartLegend('bottom', { font: { size: 10 }, boxWidth: 12, padding: 8 }) },
       },
     })
   }
@@ -1199,6 +1589,7 @@ const renderizarGraficosDespesas = () => {
 
 const renderizarGraficoAdvocacia = () => {
   if (!dashboard.value?.por_advogado?.length || !chartAdvocacia.value) return
+  aplicarDefaultsChart()
   destroyCharts()
 
   const pa = dashboard.value.por_advogado
@@ -1207,15 +1598,18 @@ const renderizarGraficoAdvocacia = () => {
     data: {
       labels: pa.map(p => p.advogado),
       datasets: [
-        { label: 'Taxa de Cobrança', data: pa.map(p => p.taxa_total), backgroundColor: 'rgba(33,150,243,0.6)', borderColor: '#2196F3', borderWidth: 1 },
-        { label: 'Creditado', data: pa.map(p => p.creditado_total), backgroundColor: 'rgba(76,175,80,0.7)', borderColor: '#4CAF50', borderWidth: 1 },
+        { label: 'Taxa de Cobrança', data: pa.map(p => p.taxa_total), backgroundColor: 'rgba(33,150,243,0.7)', borderColor: '#2196F3', borderWidth: 1, borderRadius: 4 },
+        { label: 'Creditado', data: pa.map(p => p.creditado_total), backgroundColor: 'rgba(76,175,80,0.8)', borderColor: '#4CAF50', borderWidth: 1, borderRadius: 4 },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
-      scales: { y: { beginAtZero: true, ticks: { callback: v => `R$ ${(v/1000).toFixed(1)}k` } } },
+      plugins: { legend: chartLegend('top') },
+      scales: {
+        x: chartScaleX(),
+        y: { ...chartScaleY({ callback: v => `R$ ${(v/1000).toFixed(1)}k` }), beginAtZero: true },
+      },
     },
   })
 }
@@ -1242,25 +1636,175 @@ watch([chartMensal, chartCategoria], ([mensal]) => {
   if (mensal && dashboard.value && dashboard.value.tipo !== 'cobrancas') renderizarGraficos()
 })
 
+// Re-renderiza gráficos ao trocar tema — destrói e recria com cores corretas
+const recriarGraficosComTema = async () => {
+  if (!dashboard.value) return
+  aplicarDefaultsChart()
+  await nextTick()
+  const tipo = dashboard.value.tipo
+  // Salva referências dos canvas antes de destruir
+  const canvasMensal     = chartMensalInstance?.canvas
+  const canvasCategoria  = chartCategoriaInstance?.canvas
+  const canvasCobrancas  = chartCobrancasInstance?.canvas
+  const canvasAdvocacia  = chartAdvocaciaInstance?.canvas
+  const canvasDespUnid   = chartDespesasUnidadeInstance?.canvas
+  const canvasDespForn   = chartDespesasFornecedorInstance?.canvas
+
+  destroyCharts()
+  await nextTick()
+
+  if (tipo === 'cobrancas' && canvasCobrancas) {
+    const pv = dashboard.value.por_vencimento
+    chartCobrancasInstance = new Chart(canvasCobrancas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: pv.map(p => p.vencimento),
+        datasets: [
+          { label: 'Previsto', data: pv.map(p => p.previsto), backgroundColor: 'rgba(33,150,243,0.7)', borderColor: '#2196F3', borderWidth: 1, borderRadius: 4 },
+          { label: 'Recebido', data: pv.map(p => p.recebido), backgroundColor: 'rgba(76,175,80,0.8)', borderColor: '#4CAF50', borderWidth: 1, borderRadius: 4 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: chartLegend('top') },
+        scales: {
+          x: chartScaleX(),
+          y: { ...chartScaleY({ callback: v => `R$ ${(v/1000).toFixed(1)}k` }), beginAtZero: true },
+        },
+      },
+    })
+  } else if (tipo === 'advocacia' && canvasAdvocacia) {
+    const pa = dashboard.value.por_advogado
+    chartAdvocaciaInstance = new Chart(canvasAdvocacia.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: pa.map(p => p.advogado),
+        datasets: [
+          { label: 'Taxa de Cobrança', data: pa.map(p => p.taxa_total), backgroundColor: 'rgba(33,150,243,0.7)', borderColor: '#2196F3', borderWidth: 1, borderRadius: 4 },
+          { label: 'Creditado', data: pa.map(p => p.creditado_total), backgroundColor: 'rgba(76,175,80,0.8)', borderColor: '#4CAF50', borderWidth: 1, borderRadius: 4 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: chartLegend('top') },
+        scales: {
+          x: chartScaleX(),
+          y: { ...chartScaleY({ callback: v => `R$ ${(v/1000).toFixed(1)}k` }), beginAtZero: true },
+        },
+      },
+    })
+  } else if (tipo === 'despesas') {
+    const cores = ['#F44336','#E91E63','#9C27B0','#673AB7','#3F51B5','#2196F3','#00BCD4','#009688','#4CAF50','#FF9800','#FF5722','#795548','#607D8B','#26C6DA']
+    if (canvasDespUnid) {
+      const pu = [...dashboard.value.por_unidade].reverse()
+      chartDespesasUnidadeInstance = new Chart(canvasDespUnid.getContext('2d'), {
+        type: 'bar',
+        data: { labels: pu.map(u => u.unidade), datasets: [{ label: 'Total (R$)', data: pu.map(u => u.total), backgroundColor: cores.slice(0, pu.length).reverse(), borderWidth: 0, borderRadius: 4 }] },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: chartScaleX({ callback: v => `R$ ${(v/1000).toFixed(0)}k` }),
+            y: { ...chartScaleY({ font: { size: 11 } }), grid: { display: false } },
+          },
+        },
+      })
+    }
+    if (canvasDespForn && dashboard.value.por_fornecedor?.length) {
+      const pf = dashboard.value.por_fornecedor
+      chartDespesasFornecedorInstance = new Chart(canvasDespForn.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: pf.map(f => f.fornecedor.length > 25 ? f.fornecedor.slice(0, 25) + '…' : f.fornecedor),
+          datasets: [{ data: pf.map(f => f.total), backgroundColor: cores.slice(0, pf.length), borderWidth: 2, borderColor: 'transparent', hoverOffset: 6 }],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: chartLegend('bottom', { font: { size: 10 }, boxWidth: 12, padding: 8 }) } },
+      })
+    }
+  } else {
+    // financeiro
+    if (canvasMensal && dashboard.value.por_mes?.length) {
+      const labels = dashboard.value.por_mes.map(m => { const [a, ms] = m.mes.split('-'); return `${ms}/${a.slice(2)}` })
+      chartMensalInstance = new Chart(canvasMensal.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Receitas', data: dashboard.value.por_mes.map(m => m.receitas), borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.15)', fill: true, tension: 0.3, pointBackgroundColor: '#4CAF50' },
+            { label: 'Despesas', data: dashboard.value.por_mes.map(m => m.despesas), borderColor: '#F44336', backgroundColor: 'rgba(244,67,54,0.15)', fill: true, tension: 0.3, pointBackgroundColor: '#F44336' },
+            { label: 'Saldo', data: dashboard.value.por_mes.map(m => m.saldo), borderColor: '#64B5F6', backgroundColor: 'transparent', borderDash: [5,5], tension: 0.3, pointBackgroundColor: '#64B5F6' },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: chartLegend('top') },
+          scales: {
+            x: chartScaleX(),
+            y: { ...chartScaleY({ callback: v => `R$ ${(v/1000).toFixed(0)}k` }), beginAtZero: true },
+          },
+        },
+      })
+    }
+    if (canvasCategoria && Object.keys(dashboard.value.por_categoria || {}).length) {
+      const cats = Object.entries(dashboard.value.por_categoria)
+      const cores2 = ['#4CAF50','#2196F3','#FF9800','#9C27B0','#F44336','#00BCD4','#795548','#607D8B','#E91E63','#3F51B5']
+      chartCategoriaInstance = new Chart(canvasCategoria.getContext('2d'), {
+        type: 'doughnut',
+        data: { labels: cats.map(([k]) => k), datasets: [{ data: cats.map(([,v]) => v.despesas + v.receitas), backgroundColor: cores2, borderWidth: 2, borderColor: 'transparent', hoverOffset: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: chartLegend('right', { boxWidth: 12, font: { size: 11 } }) } },
+      })
+    }
+  }
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
+
+let themeObserver = null
 
 onMounted(async () => {
   await verificarStatus()
   if (statusConexao.value.conectado) await carregarSetores()
+
+  // Observa troca de tema pelo atributo de classe no <html>
+  themeObserver = new MutationObserver(() => {
+    recriarGraficosComTema()
+  })
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
 })
 
-onUnmounted(() => { destroyCharts() })
+onUnmounted(() => {
+  destroyCharts()
+  themeObserver?.disconnect()
+})
 </script>
 
 <style scoped>
 .kpi-card {
-  padding: 20px !important;
-  height: 130px;
+  padding: 16px !important;
+  min-height: 95px;
+  height: auto;
   display: flex;
   flex-direction: column;
 }
-.chart-container { height: 300px; position: relative; }
-.chart-container-pie { height: 280px; position: relative; }
+.kpi-card--clickable {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.kpi-card--clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
+}
+.kpi-card--active {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  opacity: 1 !important;
+}
+.chart-container { height: 260px; position: relative; }
+.chart-container-pie { height: 240px; position: relative; }
+@media (max-width: 600px) {
+  .chart-container { height: 200px; }
+  .chart-container-pie { height: 180px; }
+}
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

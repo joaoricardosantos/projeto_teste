@@ -44,8 +44,8 @@ _ESTADOS_SL = {
 }
 
 
-def _buscar_emails_por_unidade(id_condominio: int) -> dict:
-    """Retorna mapa {id_unidade: email} buscando todos os responsáveis do condomínio."""
+def _buscar_responsaveis_por_unidade(id_condominio: int) -> dict:
+    """Retorna mapa {id_unidade: {email, endereco}} buscando todos os responsáveis do condomínio."""
     mapa = {}
     pagina = 1
     while True:
@@ -64,10 +64,32 @@ def _buscar_emails_por_unidade(id_condominio: int) -> dict:
                 dados = [dados]
             for item in dados:
                 id_uni = item.get("id_unidade_uni")
-                email  = (item.get("st_email_con") or "").strip()
-                if id_uni and email:
-                    # Pega o primeiro e-mail se houver múltiplos separados por ";"
-                    mapa[id_uni] = email.split(";")[0].strip()
+                if not id_uni:
+                    continue
+                # só preenche se ainda não tiver (prioriza primeiro responsável)
+                if id_uni in mapa:
+                    continue
+                email = (item.get("st_email_con") or "").strip()
+                # Monta endereço completo
+                partes = [
+                    (item.get("st_endereco_con") or "").strip(),
+                    (item.get("st_complemento_con") or "").strip(),
+                    (item.get("st_bairro_con") or "").strip(),
+                ]
+                endereco = ", ".join(p for p in partes if p)
+                cidade = (item.get("st_cidade_con") or "").strip()
+                uf     = _ESTADOS_SL.get(str(item.get("st_estado_con", "")), "")
+                cep    = (item.get("st_cep_con") or "").strip()
+                if cidade and uf:
+                    endereco += f", {cidade}/{uf}"
+                elif cidade:
+                    endereco += f", {cidade}"
+                if cep:
+                    endereco += f" - CEP {cep[:5]}-{cep[5:]}" if len(cep) == 8 else f" - CEP {cep}"
+                mapa[id_uni] = {
+                    "email":    email.split(";")[0].strip() if email else "",
+                    "endereco": endereco.strip(", "),
+                }
             if len(dados) < 50:
                 break
             pagina += 1
@@ -218,10 +240,11 @@ def _variaveis(dados_condo: dict, dados_unidade: dict, responsavel: dict | None 
         "nome do síndico":    dados_condo.get("nome_sindico", ""),
         "CPF do síndico":     dados_condo.get("cpf_sindico", ""),
         "NOME DA COMARCA":    dados_condo.get("comarca", "Natal"),
+        "NOME DA CIDADE":     dados_condo.get("comarca", "Natal"),
         # Executado
         "NOME DA PARTE EXECUTADA":  dados_unidade.get("nome", ""),
         "CPF da parte executada":   dados_unidade.get("cpf", ""),
-        "endereço":                 dados_condo.get("endereco", ""),  # mesmo end. do condo
+        "endereço":                 dados_unidade.get("endereco") or dados_condo.get("endereco", ""),
         "telefone":                 dados_unidade.get("telefone", ""),
         "endereço de e-mail":       dados_unidade.get("email", ""),
         # Débito
@@ -411,18 +434,20 @@ def listar_inadimplentes(request, id_condominio: int):
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
             f_condo  = ex.submit(_buscar_dados_condominio, id_condominio)
             f_inadim = ex.submit(get_unidades_inadimplentes, id_condominio)
-            f_emails = ex.submit(_buscar_emails_por_unidade, id_condominio)
+            f_resp   = ex.submit(_buscar_responsaveis_por_unidade, id_condominio)
             f_mapa   = ex.submit(buscar_unidades, id_condominio)
             dados_condo  = f_condo.result()
             unidades     = f_inadim.result()
-            emails_mapa  = f_emails.result()
+            resp_mapa    = f_resp.result()
             mapa         = f_mapa.result() or {}
 
         mapa.pop("__nome_cond__", None)
         for u in unidades:
             uid = u.get("id_unidade")
-            u["cpf"]          = mapa.get(uid, {}).get("cpf", "")
-            u["email"]        = emails_mapa.get(uid, "")
+            resp_uni       = resp_mapa.get(uid, {})
+            u["cpf"]       = mapa.get(uid, {}).get("cpf", "")
+            u["email"]     = resp_uni.get("email", "")
+            u["endereco"]  = resp_uni.get("endereco", "")
             u["condominio_id"] = id_condominio
 
     except ValueError as e:

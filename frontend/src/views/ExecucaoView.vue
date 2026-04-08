@@ -332,6 +332,17 @@
                     />
                   </v-col>
                   <v-col cols="12">
+                    <v-text-field
+                      v-model="dadosExtras[u.id_unidade].endereco"
+                      label="Endereço do Executado"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      placeholder="Rua Exemplo, 123, Bairro, Natal/RN"
+                      prepend-inner-icon="mdi-map-marker-outline"
+                    />
+                  </v-col>
+                  <v-col cols="12">
                     <div class="doc06-upload mt-2">
                       <div class="doc06-label">
                         <v-icon size="16" color="primary" class="mr-1">mdi-image-outline</v-icon>
@@ -723,7 +734,7 @@ const dadosCondoValidos = computed(() =>
 watch(unidadesSelecionadasLista, (lista) => {
   lista.forEach(u => {
     if (!dadosExtras.value[u.id_unidade]) {
-      dadosExtras.value[u.id_unidade] = { cpf: u.cpf || '', telefone: u.telefone || '', email: '', imagem_base64: '', imagem_nome: '' }
+      dadosExtras.value[u.id_unidade] = { cpf: u.cpf || '', telefone: u.telefone || '', email: '', endereco: '', imagem_base64: '', imagem_nome: '' }
     }
   })
 })
@@ -834,6 +845,7 @@ const buscarInadimplentes = async () => {
         cpf:           u.cpf      || '',
         telefone:      u.telefone || '',
         email:         u.email    || '',
+        endereco:      u.endereco || '',
         imagem_base64: '',
         imagem_nome:   '',
       }
@@ -868,6 +880,7 @@ const _payload = () => ({
       cpf:                   extra.cpf           || u.cpf      || '',
       telefone:              extra.telefone      || u.telefone || '',
       email:                 extra.email         || '',
+      endereco:              extra.endereco      || '',
       imagem_base64:         extra.imagem_base64 || '',
     }
   }),
