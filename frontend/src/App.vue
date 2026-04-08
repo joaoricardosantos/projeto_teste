@@ -149,6 +149,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useCondominios } from './composables/useCondominios.js'
 import { useRouter, useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 
@@ -209,30 +210,35 @@ const userRole = computed(() => {
 })
 
 const allNavItems = [
-  { to: '/dashboard',    icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true  },
-  { to: '/painel',       icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false, financeiroAllowed: false },
-  { to: '/templates',    icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false, financeiroAllowed: false },
-  { to: '/sheets',       icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false, financeiroAllowed: true  },
-  { to: '/financeiro',   icon: 'mdi-currency-usd',           label: 'Financeiro',       adminOnly: true,  juridicoAllowed: false, financeiroAllowed: true  },
-  { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
-  { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
-  { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false },
-  { to: '/agenda',       icon: 'mdi-calendar-month-outline', label: 'Agenda',           adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true  },
-  { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
+  { to: '/dashboard',    icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: false },
+  { to: '/painel',       icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/templates',    icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/sheets',       icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
+  { to: '/financeiro',   icon: 'mdi-currency-usd',           label: 'Financeiro',       adminOnly: true,  juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
+  { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/execucao',     icon: 'mdi-file-document-edit-outline', label: 'Execução',     adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/agenda',       icon: 'mdi-calendar-month-outline', label: 'Agenda',           adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
+  { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
 ]
 
-const navItems = computed(() =>
-  allNavItems.filter(item => {
-    if (isJuridico.value) return item.juridicoAllowed
+const navItems = computed(() => {
+  const isUsuario = !isAdmin.value && !isJuridico.value && !isFinanceiro.value
+  return allNavItems.filter(item => {
+    if (isUsuario)          return item.usuarioAllowed
+    if (isJuridico.value)   return item.juridicoAllowed
     if (isFinanceiro.value) return item.financeiroAllowed
     return !item.adminOnly || isAdmin.value
   })
-)
+})
 
 const toggleTheme = () => {
   theme.value = theme.value === 'pratikaLight' ? 'pratikaDark' : 'pratikaLight'
   localStorage.setItem('theme', theme.value)
 }
+
+const { invalidarCondominios } = useCondominios()
 
 const logout = () => {
   localStorage.removeItem('access_token')
@@ -240,6 +246,7 @@ const logout = () => {
   localStorage.removeItem('is_juridico')
   localStorage.removeItem('is_financeiro')
   localStorage.removeItem('user_name')
+  invalidarCondominios()
   sidebarOpen.value = false
   router.push('/')
 }

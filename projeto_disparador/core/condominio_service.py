@@ -168,6 +168,13 @@ def get_unidades_inadimplentes(id_condominio: int) -> list:
         except Exception:
             valor_fmt = str(total)
 
+        honorarios  = resumo.get("honorarios", 0)
+        total_sem   = max(float(total) - float(honorarios), 0)
+        try:
+            valor_sem_fmt = f"R$ {total_sem:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            valor_sem_fmt = valor_fmt
+
         telefone_principal = next((t for t in telefones if t and t.strip()), "")
         unidades.append({
             "id_unidade":         id_unidade,
@@ -175,6 +182,8 @@ def get_unidades_inadimplentes(id_condominio: int) -> list:
             "unidade":            unidade,
             "nome":               nome,
             "valor":              valor_fmt,
+            "valor_sem_honorarios": valor_sem_fmt,
+            "honorarios":         float(honorarios),
             "tem_numero":         bool(telefones),
             "vencimento":         resumo.get("vencimento", ""),
             "qtd_inadimplencias": contagem.get(id_unidade, 1),
