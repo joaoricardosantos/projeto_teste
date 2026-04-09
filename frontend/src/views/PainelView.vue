@@ -339,6 +339,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useCondominios } from '../composables/useCondominios.js'
 
 const loading              = ref(false)
 const errorMessage         = ref('')
@@ -347,8 +348,7 @@ const resultDetails        = ref(null)
 const lastEnvioData        = ref(null)
 const dialogConfirmar      = ref(false)
 
-const condominios           = ref([])
-const loadingCondominios    = ref(false)
+const { condominios, loadingCondominios, carregarCondominios } = useCondominios()
 const selectedCondominioIds = ref([])
 
 const templates            = ref([])
@@ -421,19 +421,7 @@ const fetchTemplates = async () => {
   finally { loadingTemplates.value = false }
 }
 
-const fetchCondominios = async () => {
-  loadingCondominios.value = true
-  try {
-    const res = await fetch('/api/admin/condominios', { headers: authHeader() })
-    if (res.ok) {
-      const lista = await res.json()
-      condominios.value = lista
-        .map(c => ({ id: c.id, label: `[${c.id}] ${c.nome}` }))
-        .sort((a, b) => a.id - b.id)
-    }
-  } catch (_) {}
-  finally { loadingCondominios.value = false }
-}
+const fetchCondominios = () => carregarCondominios()
 
 const fetchUnidades = async (ids) => {
   if (!ids || !ids.length) { unidades.value = []; selectedUnidades.value = []; return }
@@ -528,14 +516,60 @@ const handleEnvio = async () => {
     const resultadoAgregado = { success: 0, failures: [], sem_numero: [] }
     const todoContatos = []
 
-    for (const [cidStr, ids] of Object.entries(porCondo)) {
-      let url = `/api/messages/send-selected?id_condominio=${cidStr}`
-      if (selectedTemplateId.value) url += `&template_id=${selectedTemplateId.value}`
-      url += `&unidades_ids=${ids.join(',')}`
+    const nomesCondos = selectedCondominioIds.value
+      .map(id => condominios.value.find(c => c.id === id)?.label || String(id))
+      .join(', ')
+    const templateSelecionado = templates.value.find(t => t.id === selectedTemplateId.value)
 
-      const res  = await fetch(url, { method: 'POST', headers: authHeader() })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Erro ao enviar mensagens')
+    let erroEnvio = null
+
+    for (const [cidStr, ids] of Object.entries(porCondo)) {
+      // 1. Inicia o job em background
+      let startUrl = `/api/messages/send-selected/start?id_condominio=${cidStr}`
+      if (selectedTemplateId.value) startUrl += `&template_id=${selectedTemplateId.value}`
+      startUrl += `&unidades_ids=${ids.join(',')}`
+
+      let data
+      try {
+        const startRes  = await fetch(startUrl, { method: 'POST', headers: authHeader() })
+        const startText = await startRes.text()
+        let startData = {}
+        try { startData = JSON.parse(startText) } catch (_) {}
+        if (!startRes.ok) throw new Error(startData.detail || `Erro ${startRes.status}: servidor indisponível.`)
+
+        const { job_id } = startData
+
+        // 2. Polling até terminar
+        successMessage.value = `Enviando mensagens... (${ids.length} unidades)`
+        data = await new Promise((resolve, reject) => {
+          const interval = setInterval(async () => {
+            try {
+              const statusRes = await fetch(`/api/messages/send-selected/status/${job_id}`, { headers: authHeader() })
+              const statusData = await statusRes.json().catch(() => ({}))
+              if (statusData.status === 'done') {
+                clearInterval(interval)
+                resolve(statusData)
+              } else if (statusData.status === 'error') {
+                clearInterval(interval)
+                reject(new Error(statusData.error || 'Erro ao enviar mensagens'))
+              }
+            } catch (e) {
+              clearInterval(interval)
+              reject(e)
+            }
+          }, 3000)
+        })
+      } catch (e) {
+        erroEnvio = e
+        // Registra falha do condomínio inteiro e continua para os próximos
+        const condoUnidadesFalha = unidades.value.filter(
+          u => u.condominio_id === Number(cidStr) && ids.includes(u.id_unidade)
+        )
+        resultadoAgregado.failures.push(
+          ...condoUnidadesFalha.map(u => ({ phone: u.telefone || '-', unidade: u.unidade, nome: u.nome, error: e.message }))
+        )
+        continue
+      }
 
       const d = data.details
       resultadoAgregado.success += d.success || 0
@@ -548,18 +582,19 @@ const handleEnvio = async () => {
       todoContatos.push(...condoUnidades.map(u => ({ ...u, telefone: u.telefone || '' })))
     }
 
-    successMessage.value = 'Envio concluído!'
-    resultDetails.value  = resultadoAgregado
-
-    const nomesCondos = selectedCondominioIds.value
-      .map(id => condominios.value.find(c => c.id === id)?.label || String(id))
-      .join(', ')
-    const templateSelecionado = templates.value.find(t => t.id === selectedTemplateId.value)
+    // Sempre salva os dados para o relatório, mesmo com erro parcial
+    resultDetails.value = resultadoAgregado
     lastEnvioData.value = {
       condominioNome: nomesCondos,
       templateNome:   templateSelecionado?.name || null,
       details:        resultadoAgregado,
       contatos:       todoContatos,
+    }
+
+    if (erroEnvio) {
+      errorMessage.value = erroEnvio.message + ' — Os dados disponíveis foram salvos para o relatório.'
+    } else {
+      successMessage.value = 'Envio concluído!'
     }
   } catch (e) {
     errorMessage.value = e.message

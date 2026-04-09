@@ -53,7 +53,7 @@
                 :class="{
                   'cal-cell--today':    cel.isToday,
                   'cal-cell--selected': cel.dateStr === diaSelecionado,
-                  'cal-cell--near':     cel.isNear,
+                  'cal-cell--near':     cel.isNear || cel.dateStr === diaSelecionado,
                 }"
                 @click="selecionarDia(cel)"
               >
@@ -65,16 +65,34 @@
                 </div>
 
                 <div class="cal-events">
-                  <template v-for="t in cel.tarefas.slice(0, cel.isNear ? 5 : 2)" :key="t.id">
-                    <div class="cal-event" :class="`cal-event--${t.cor}`">
+                  <template v-for="t in cel.tarefas.slice(0, (cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2)" :key="t.id">
+                    <div class="cal-event"
+                      :class="t.checklist?.length ? (t.checklist.every(i => i.concluido) ? 'cal-event--success' : 'cal-event--error') : `cal-event--${t.cor}`"
+                      style="cursor:pointer;"
+                      @click.stop="cel.dateStr === diaSelecionado ? verTarefa(t) : selecionarDia(cel)"
+                    >
                       <span class="cal-event-title">{{ t.titulo }}</span>
-                      <span v-if="cel.isNear && t.descricao" class="cal-event-desc">
+                      <span v-if="(cel.isNear || cel.dateStr === diaSelecionado) && t.descricao" class="cal-event-desc">
                         {{ t.descricao }}
                       </span>
+                      <template v-if="(cel.isNear || cel.dateStr === diaSelecionado) && t.checklist?.length">
+                        <div class="cal-checklist-row">
+                          <div class="checklist-bar-bg" style="flex:1;">
+                            <div
+                              class="checklist-bar-fill"
+                              :class="t.checklist.every(i => i.concluido) ? 'checklist-bar--green' : 'checklist-bar--red'"
+                              :style="{ width: (t.checklist.filter(i => i.concluido).length / t.checklist.length * 100) + '%' }"
+                            ></div>
+                          </div>
+                          <span class="cal-checklist-count">
+                            {{ t.checklist.filter(i => i.concluido).length }}/{{ t.checklist.length }}
+                          </span>
+                        </div>
+                      </template>
                     </div>
                   </template>
-                  <div v-if="cel.tarefas.length > (cel.isNear ? 5 : 2)" class="cal-event-more">
-                    +{{ cel.tarefas.length - (cel.isNear ? 5 : 2) }} mais
+                  <div v-if="cel.tarefas.length > ((cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2)" class="cal-event-more">
+                    +{{ cel.tarefas.length - ((cel.isNear || cel.dateStr === diaSelecionado) ? 5 : 2) }} mais
                   </div>
                 </div>
 
@@ -120,16 +138,16 @@
               <p style="font-size:0.85rem;">Nenhuma tarefa para este dia.</p>
             </div>
 
-            <div v-for="t in tarefasDoDia" :key="t.id" class="tarefa-item mb-3">
-              <div class="tarefa-cor" :class="`tarefa-cor--${t.cor}`"></div>
+            <div v-for="t in tarefasDoDia" :key="t.id" class="tarefa-item mb-3" style="cursor:pointer;" @click="verTarefa(t)">
+              <div class="tarefa-cor" :class="t.checklist?.length ? (t.checklist.every(i => i.concluido) ? 'tarefa-cor--success' : 'tarefa-cor--error') : `tarefa-cor--${t.cor}`"></div>
               <div class="tarefa-body">
                 <div class="d-flex align-center justify-space-between">
                   <span class="tarefa-titulo">{{ t.titulo }}</span>
                   <div class="d-flex gap-1">
-                    <v-btn icon size="x-small" variant="text" @click="abrirEditarTarefa(t)">
+                    <v-btn icon size="x-small" variant="text" @click.stop="abrirEditarTarefa(t)">
                       <v-icon size="14">mdi-pencil-outline</v-icon>
                     </v-btn>
-                    <v-btn icon size="x-small" variant="text" color="error" @click="excluirTarefa(t.id)">
+                    <v-btn icon size="x-small" variant="text" color="error" @click.stop="excluirTarefa(t.id)">
                       <v-icon size="14">mdi-delete-outline</v-icon>
                     </v-btn>
                   </div>
@@ -138,6 +156,21 @@
                   <v-icon size="12">mdi-clock-outline</v-icon> {{ t.hora }}
                 </p>
                 <p v-if="t.descricao" class="tarefa-desc">{{ t.descricao }}</p>
+                <div v-if="t.checklist?.length" class="d-flex align-center mt-2" style="gap:10px;">
+                  <div class="checklist-bar-bg" style="flex:1;">
+                    <div
+                      class="checklist-bar-fill"
+                      :class="t.checklist.every(i => i.concluido) ? 'checklist-bar--green' : 'checklist-bar--red'"
+                      :style="{ width: (t.checklist.filter(i => i.concluido).length / t.checklist.length * 100) + '%' }"
+                    ></div>
+                  </div>
+                  <span style="font-size:0.68rem;opacity:.5;white-space:nowrap;">
+                    {{ t.checklist.filter(i => i.concluido).length }}/{{ t.checklist.length }}
+                  </span>
+                </div>
+                <p v-if="t.criado_por" class="tarefa-hora">
+                  <v-icon size="12">mdi-account-outline</v-icon> {{ t.criado_por }}
+                </p>
               </div>
             </div>
           </div>
@@ -170,26 +203,86 @@
                 <p class="kpi-label">Inadimplência Total</p>
                 <p class="kpi-value">{{ formatBRL(insights.inadimplencia?.total_a_receber || 0) }}</p>
                 <p class="kpi-sub">
-                  {{ insights.inadimplencia?.total_unidades || 0 }} unidade(s) ·
-                  {{ insights.inadimplencia?.total_condominios || 0 }} cond.
+                  <template v-if="insights.inadimplencia?.fonte === 'dashboard'">
+                    {{ insights.inadimplencia.total_unidades }} unidade(s) ·
+                    {{ insights.inadimplencia.total_condominios }} cond.
+                  </template>
+                  <template v-else-if="insights.inadimplencia?.total_a_receber > 0">
+                    <v-icon size="11" style="opacity:.5;">mdi-database-clock-outline</v-icon>
+                    Último snapshot · {{ insights.inadimplencia.ultima_atualizacao }}
+                  </template>
+                  <template v-else>Sem dados</template>
                 </p>
               </div>
-              <div class="kpi-card kpi-orange">
-                <p class="kpi-label">Maior Devedor</p>
-                <p class="kpi-value" style="font-size:0.82rem;line-height:1.3;">
-                  {{ insights.inadimplencia?.maior_condo_nome || '—' }}
-                </p>
-                <p class="kpi-sub">{{ formatBRL(insights.inadimplencia?.maior_condo_valor || 0) }}</p>
+              <!-- Card de variações — ocupa 2 colunas -->
+              <div class="kpi-card kpi-variacoes" style="grid-column: span 2;">
+                <p class="kpi-label mb-3">Variação de Inadimplência</p>
+                <div class="variacoes-grid">
+                  <!-- Mensal -->
+                  <div class="variacao-item">
+                    <span class="variacao-item-label">Mensal</span>
+                    <span class="variacao-item-value"
+                      :class="insights.inadimplencia?.var_mensal_pct == null ? '' : insights.inadimplencia.var_mensal_pct > 0 ? 'var-red' : 'var-green'">
+                      <v-icon size="13">{{ insights.inadimplencia?.var_mensal_pct > 0 ? 'mdi-trending-up' : insights.inadimplencia?.var_mensal_pct < 0 ? 'mdi-trending-down' : 'mdi-minus' }}</v-icon>
+                      {{ insights.inadimplencia?.var_mensal_pct != null ? (insights.inadimplencia.var_mensal_pct > 0 ? '+' : '') + insights.inadimplencia.var_mensal_pct + '%' : '—' }}
+                    </span>
+                    <span class="variacao-item-sub">
+                      {{ insights.inadimplencia?.var_mensal_valor != null ? (insights.inadimplencia.var_mensal_valor > 0 ? '+' : '') + formatBRL(insights.inadimplencia.var_mensal_valor) : 'Sem dados' }}
+                    </span>
+                  </div>
+                  <div class="variacao-divider"></div>
+                  <!-- Anual -->
+                  <div class="variacao-item">
+                    <span class="variacao-item-label">Anual</span>
+                    <span class="variacao-item-value"
+                      :class="insights.inadimplencia?.var_anual_pct == null ? '' : insights.inadimplencia.var_anual_pct > 0 ? 'var-red' : 'var-green'">
+                      <v-icon size="13">{{ insights.inadimplencia?.var_anual_pct > 0 ? 'mdi-trending-up' : insights.inadimplencia?.var_anual_pct < 0 ? 'mdi-trending-down' : 'mdi-minus' }}</v-icon>
+                      {{ insights.inadimplencia?.var_anual_pct != null ? (insights.inadimplencia.var_anual_pct > 0 ? '+' : '') + insights.inadimplencia.var_anual_pct + '%' : '—' }}
+                    </span>
+                    <span class="variacao-item-sub">
+                      {{ insights.inadimplencia?.var_anual_valor != null ? (insights.inadimplencia.var_anual_valor > 0 ? '+' : '') + formatBRL(insights.inadimplencia.var_anual_valor) : 'Sem dados' }}
+                    </span>
+                  </div>
+                  <div class="variacao-divider"></div>
+                  <!-- Projeção -->
+                  <div class="variacao-item">
+                    <span class="variacao-item-label">Projeção</span>
+                    <span class="variacao-item-value" style="font-size:0.85rem;">
+                      {{ insights.inadimplencia?.projecao != null ? formatBRL(insights.inadimplencia.projecao) : '—' }}
+                    </span>
+                    <span class="variacao-item-sub">próximo mês</span>
+                  </div>
+                </div>
+              </div>
+              <div class="kpi-card kpi-blue">
+                <p class="kpi-label">Demandas a Entregar</p>
+                <p class="kpi-value">{{ insights.workflow?.demandas_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
               </div>
               <div class="kpi-card kpi-purple">
-                <p class="kpi-label">Despesas em Aberto</p>
-                <p class="kpi-value">{{ formatBRL(insights.despesas?.total_pendente || 0) }}</p>
-                <p class="kpi-sub">{{ insights.despesas?.vencidos_count || 0 }} vencida(s)</p>
+                <p class="kpi-label">Cadernos Pendentes</p>
+                <p class="kpi-value">{{ insights.workflow?.cadernos_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
+              </div>
+              <div class="kpi-card kpi-teal">
+                <p class="kpi-label">Cond. s/ Documentação</p>
+                <p class="kpi-value">{{ insights.workflow?.condominios_sem_doc ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
+              </div>
+              <div class="kpi-card kpi-amber">
+                <p class="kpi-label">Folhas de Pagamento</p>
+                <p class="kpi-value">{{ insights.workflow?.folhas_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
               </div>
               <div class="kpi-card kpi-green">
-                <p class="kpi-label">Pago este Mês</p>
-                <p class="kpi-value">{{ formatBRL(insights.despesas?.total_pago_mes || 0) }}</p>
-                <p class="kpi-sub">{{ insights.despesas?.vencendo_7d_count || 0 }} vence em 7d</p>
+                <p class="kpi-label">Prestação de Contas</p>
+                <p class="kpi-value">{{ insights.workflow?.prestacao_pendentes ?? '—' }}</p>
+                <p class="kpi-sub">pendentes</p>
+              </div>
+              <div class="kpi-card kpi-indigo">
+                <p class="kpi-label">Boletos Gerados</p>
+                <p class="kpi-value">{{ insights.workflow?.boletos_gerados ?? '—' }}</p>
+                <p class="kpi-sub">gerados</p>
               </div>
             </div>
 
@@ -280,7 +373,7 @@
     </v-row>
 
     <!-- ── Dialog: Nova/Editar Tarefa ── -->
-    <v-dialog v-model="dialogTarefa" max-width="480" persistent eager>
+    <v-dialog v-model="dialogTarefa" max-width="480" eager>
       <v-card rounded="xl">
         <div class="dialog-header d-flex align-center gap-3">
           <div class="page-icon" style="width:36px;height:36px;border-radius:9px;flex-shrink:0;">
@@ -350,6 +443,42 @@
                 </div>
               </div>
             </v-col>
+
+            <!-- Checklist -->
+            <v-col cols="12">
+              <div class="d-flex align-center justify-space-between mb-2">
+                <p style="font-size:0.8rem;opacity:.6;margin:0;">Checklist</p>
+                <v-btn size="x-small" variant="tonal" color="primary" prepend-icon="mdi-plus"
+                  @click="adicionarItemChecklist">
+                  Adicionar item
+                </v-btn>
+              </div>
+              <div v-if="formTarefa.checklist.length === 0" class="checklist-empty">
+                <v-icon size="14" class="mr-1" style="opacity:.4;">mdi-checkbox-blank-outline</v-icon>
+                <span style="font-size:0.75rem;opacity:.4;">Nenhum item. Clique em "Adicionar item".</span>
+              </div>
+              <div v-for="(item, idx) in formTarefa.checklist" :key="idx" class="checklist-form-row">
+                <v-checkbox
+                  v-model="item.concluido"
+                  density="compact"
+                  hide-details
+                  color="primary"
+                  class="checklist-check"
+                />
+                <v-text-field
+                  v-model="item.texto"
+                  placeholder="Descreva o item..."
+                  variant="plain"
+                  density="compact"
+                  hide-details
+                  class="checklist-input"
+                  @keydown.enter.prevent="adicionarItemChecklist"
+                />
+                <v-btn icon size="x-small" variant="text" color="error" @click="removerItemChecklist(idx)">
+                  <v-icon size="14">mdi-close</v-icon>
+                </v-btn>
+              </div>
+            </v-col>
           </v-row>
 
           <v-alert v-if="erroTarefa" type="error" density="compact" class="mt-3">{{ erroTarefa }}</v-alert>
@@ -365,6 +494,83 @@
         </div>
       </v-card>
     </v-dialog>
+
+    <!-- ── Dialog Visualizar Tarefa ── -->
+    <v-dialog v-model="dialogVerTarefa" max-width="680">
+      <v-card v-if="tarefaVisualizada" rounded="lg" class="tarefa-detail-card">
+        <!-- Barra colorida no topo -->
+        <div class="tarefa-detail-top" :class="`tarefa-cor--${tarefaVisualizada.cor}`"></div>
+
+        <div class="pa-5">
+          <div class="d-flex align-start justify-space-between gap-3 mb-4">
+            <h2 class="tarefa-detail-titulo">{{ tarefaVisualizada.titulo }}</h2>
+            <v-btn icon size="small" variant="text" @click="dialogVerTarefa = false">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
+          </div>
+
+          <div class="d-flex flex-wrap gap-3 mb-4">
+            <v-chip size="small" prepend-icon="mdi-calendar-outline" variant="tonal" color="primary">
+              {{ formatarDataLabel(tarefaVisualizada.data) }}
+            </v-chip>
+            <v-chip v-if="tarefaVisualizada.hora" size="small" prepend-icon="mdi-clock-outline" variant="tonal" color="secondary">
+              {{ tarefaVisualizada.hora }}
+            </v-chip>
+          </div>
+
+          <div v-if="tarefaVisualizada.descricao" class="tarefa-detail-desc mb-4">
+            <p class="tarefa-detail-desc-label">Descrição</p>
+            <p class="tarefa-detail-desc-body">{{ tarefaVisualizada.descricao }}</p>
+          </div>
+
+          <!-- Checklist no visualizar -->
+          <div v-if="tarefaVisualizada.checklist?.length" class="mb-4">
+            <p class="tarefa-detail-desc-label mb-2">
+              Checklist
+              <span style="opacity:.45;font-weight:400;">
+                ({{ tarefaVisualizada.checklist.filter(i => i.concluido).length }}/{{ tarefaVisualizada.checklist.length }})
+              </span>
+            </p>
+            <!-- barra de progresso -->
+            <div class="checklist-bar-bg mb-3">
+              <div
+                class="checklist-bar-fill"
+                :class="tarefaVisualizada.checklist.every(i => i.concluido) ? 'checklist-bar--green' : 'checklist-bar--red'"
+                :style="{ width: (tarefaVisualizada.checklist.filter(i => i.concluido).length / tarefaVisualizada.checklist.length * 100) + '%' }"
+              ></div>
+            </div>
+            <div v-for="(item, idx) in tarefaVisualizada.checklist" :key="idx"
+              class="checklist-view-row"
+              :class="{ 'checklist-view-row--blocked': item.criado_por && item.criado_por !== usuarioAtual && !isAdmin }"
+              @click="item.criado_por && item.criado_por !== usuarioAtual && !isAdmin ? null : (item.concluido = !item.concluido, salvarChecklistVisualizado())"
+            >
+              <v-icon size="18" :color="item.concluido ? 'primary' : (item.criado_por && item.criado_por !== usuarioAtual ? '' : '')">
+                {{ item.concluido ? 'mdi-checkbox-marked-circle' : 'mdi-checkbox-blank-circle-outline' }}
+              </v-icon>
+              <span :class="item.concluido ? 'checklist-done' : ''" style="flex:1;">{{ item.texto }}</span>
+              <span v-if="item.criado_por && item.criado_por !== usuarioAtual" class="checklist-item-owner">
+                <v-icon size="11">mdi-lock-outline</v-icon> {{ item.criado_por }}
+              </span>
+            </div>
+          </div>
+
+          <v-divider class="mb-3" />
+          <p v-if="tarefaVisualizada.criado_por" style="font-size:0.8rem;opacity:.55;">
+            <v-icon size="14">mdi-account-outline</v-icon>
+            Criado por <strong>{{ tarefaVisualizada.criado_por }}</strong>
+          </p>
+        </div>
+
+        <v-divider />
+        <div class="d-flex justify-end gap-2 pa-3">
+          <v-btn variant="text" color="grey" @click="dialogVerTarefa = false">Fechar</v-btn>
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-pencil-outline"
+            @click="dialogVerTarefa = false; abrirEditarTarefa(tarefaVisualizada)">
+            Editar
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -376,6 +582,8 @@ const authHeader = () => ({
   'Content-Type': 'application/json',
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
+const usuarioAtual = localStorage.getItem('user_name') || ''
+const isAdmin      = localStorage.getItem('is_admin') === 'true'
 
 // ── Estado do calendário ──────────────────────────────────────────────────────
 const inicioRef    = ref((() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d })())
@@ -492,6 +700,7 @@ const formTarefaVazio = (dateStr = null) => ({
   data:      dateStr || new Date().toISOString().split('T')[0],
   hora:      '',
   cor:       'primary',
+  checklist: [],
 })
 const formTarefa = ref(formTarefaVazio())
 
@@ -511,8 +720,20 @@ const abrirNovaTarefa = (dateStr) => {
 
 const abrirEditarTarefa = (t) => {
   erroTarefa.value = ''
-  formTarefa.value = { id: t.id, titulo: t.titulo, descricao: t.descricao, data: t.data, hora: t.hora || '', cor: t.cor }
+  formTarefa.value = {
+    id: t.id, titulo: t.titulo, descricao: t.descricao,
+    data: t.data, hora: t.hora || '', cor: t.cor,
+    checklist: (t.checklist || []).map(i => ({ ...i })),
+  }
   dialogTarefa.value = true
+}
+
+const adicionarItemChecklist = () => {
+  formTarefa.value.checklist.push({ texto: '', concluido: false, criado_por: usuarioAtual })
+}
+
+const removerItemChecklist = (idx) => {
+  formTarefa.value.checklist.splice(idx, 1)
 }
 
 const salvarTarefa = async () => {
@@ -529,6 +750,7 @@ const salvarTarefa = async () => {
       data:      formTarefa.value.data,
       hora:      formTarefa.value.hora || null,
       cor:       formTarefa.value.cor,
+      checklist: formTarefa.value.checklist.filter(i => i.texto.trim()),
     }
     const res = await fetch(url, { method, headers: authHeader(), body: JSON.stringify(body) })
     const data = await res.json()
@@ -550,8 +772,34 @@ const excluirTarefa = async (id) => {
   } catch (_) {}
 }
 
+// ── Visualizar Tarefa ─────────────────────────────────────────────────────────
+const dialogVerTarefa   = ref(false)
+const tarefaVisualizada = ref(null)
+
+const verTarefa = (t) => {
+  tarefaVisualizada.value = { ...t, checklist: (t.checklist || []).map(i => ({ ...i })) }
+  dialogVerTarefa.value = true
+}
+
+const salvarChecklistVisualizado = async () => {
+  const t = tarefaVisualizada.value
+  if (!t) return
+  try {
+    await fetch(`/api/agenda/tarefas/${t.id}`, {
+      method: 'PUT',
+      headers: authHeader(),
+      body: JSON.stringify({
+        titulo: t.titulo, descricao: t.descricao,
+        data: t.data, hora: t.hora || null, cor: t.cor,
+        checklist: t.checklist,
+      }),
+    })
+    await fetchTarefas()
+  } catch (_) {}
+}
+
 // ── Insights ──────────────────────────────────────────────────────────────────
-const insights        = ref({ despesas: {}, inadimplencia: {} })
+const insights        = ref({ despesas: {}, inadimplencia: {}, workflow: {} })
 const loadingInsights = ref(false)
 
 async function fetchInsights() {
@@ -887,10 +1135,58 @@ onUnmounted(() => {
 .kpi-orange { background: rgba(251,146,60,0.07); border-color: rgba(251,146,60,0.15); }
 .kpi-blue   { background: rgba(99,102,241,0.07); border-color: rgba(99,102,241,0.15); }
 .kpi-purple { background: rgba(139,92,246,0.07); border-color: rgba(139,92,246,0.15); }
+.kpi-teal   { background: rgba(20,184,166,0.07); border-color: rgba(20,184,166,0.15); }
+.kpi-amber  { background: rgba(245,158,11,0.07); border-color: rgba(245,158,11,0.15); }
+.kpi-indigo { background: rgba(79,70,229,0.07);  border-color: rgba(79,70,229,0.15);  }
 
 .kpi-label { font-size: 0.7rem; opacity: 0.55; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
 .kpi-value { font-size: 1.15rem; font-weight: 700; margin: 0; line-height: 1.2; }
 .kpi-sub   { font-size: 0.68rem; opacity: 0.45; margin: 3px 0 0; }
+
+/* ── Card variações ── */
+.kpi-variacoes {
+  background: rgba(99,102,241,0.06);
+  border-color: rgba(99,102,241,0.15);
+}
+.variacoes-grid {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.variacao-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 4px;
+}
+.variacao-divider {
+  width: 1px;
+  background: rgba(var(--v-border-color), 0.12);
+  margin: 0 8px;
+  align-self: stretch;
+}
+.variacao-item-label {
+  font-size: 0.65rem;
+  opacity: 0.45;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.variacao-item-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.variacao-item-sub {
+  font-size: 0.65rem;
+  opacity: 0.45;
+  line-height: 1.3;
+}
+.var-red   { color: #f87171; }
+.var-green { color: #34d399; }
 
 /* ── Insight rows ── */
 .insight-section-title {
@@ -970,4 +1266,118 @@ onUnmounted(() => {
   background: rgb(var(--v-theme-surface));
   border-left: 3px solid #818cf8;
 }
+
+/* ── Dialog Visualizar Tarefa ── */
+.tarefa-detail-card {
+  overflow: hidden;
+}
+.tarefa-detail-top {
+  height: 5px;
+  width: 100%;
+}
+.tarefa-detail-titulo {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.tarefa-detail-desc {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.tarefa-detail-desc-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  opacity: 0.45;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 6px;
+}
+.tarefa-detail-desc-body {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ── Barra de progresso customizada ── */
+.checklist-bar-bg {
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(var(--v-theme-on-surface), 0.1);
+  overflow: hidden;
+}
+.checklist-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.checklist-bar--red   { background: #f87171; }
+.checklist-bar--green { background: #34d399; }
+
+/* ── Checklist no calendário ── */
+.cal-checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+.cal-checklist-count {
+  font-size: 0.65rem;
+  opacity: 0.75;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Checklist form ── */
+.checklist-empty {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+}
+.checklist-form-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  padding: 2px 4px;
+  background: rgba(var(--v-theme-on-surface), 0.03);
+}
+.checklist-check { flex-shrink: 0; }
+.checklist-input { flex: 1; }
+
+/* ── Checklist visualizar ── */
+.checklist-view-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background 0.12s;
+  margin-bottom: 2px;
+}
+.checklist-view-row:hover {
+  background: rgba(var(--v-theme-on-surface), 0.05);
+}
+.checklist-done {
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+.checklist-view-row--blocked {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.checklist-view-row--blocked:hover {
+  background: transparent;
+}
+.checklist-item-owner {
+  font-size: 0.65rem;
+  opacity: 0.45;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 </style>

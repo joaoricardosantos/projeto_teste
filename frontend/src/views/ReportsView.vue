@@ -303,125 +303,12 @@
       </div>
     </v-card>
 
-    <!-- ── Seção 4: Disparar pelo Excel ── -->
-    <v-card class="section-card" elevation="3">
-      <div class="section-header">
-        <div class="section-badge">4</div>
-        <div>
-          <p class="section-title">Disparar WhatsApp pelo Excel</p>
-          <p class="section-subtitle">Faça upload do relatório (aba Resumo) para enviar mensagens em lote</p>
-        </div>
-      </div>
-
-      <div class="pa-6">
-        <v-select
-          v-model="dispatchTemplateId"
-          :items="templates"
-          item-title="name"
-          item-value="id"
-          label="Template de mensagem (opcional)"
-          variant="outlined"
-          density="comfortable"
-          clearable
-          prepend-inner-icon="mdi-message-text"
-          class="mb-4"
-          :loading="loadingTemplates"
-          no-data-text="Nenhum template cadastrado"
-          hint="Se não selecionado, será usada a mensagem padrão"
-          persistent-hint
-        />
-
-        <v-expand-transition>
-          <v-sheet
-            v-if="selectedTemplate"
-            color="grey-lighten-4"
-            rounded="lg"
-            class="pa-4 mb-4"
-            style="font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; border-left: 3px solid #34d399;"
-          >
-            <p class="text-caption text-medium-emphasis mb-2 font-weight-bold text-uppercase" style="letter-spacing:.05em;">
-              <v-icon size="13" class="mr-1" color="primary">mdi-eye-outline</v-icon>Pré-visualização
-            </p>
-            {{ renderPreview(selectedTemplate.body) }}
-          </v-sheet>
-        </v-expand-transition>
-
-        <v-file-input
-          v-model="dispatchFile"
-          accept=".csv,.xlsx"
-          label="Selecione o arquivo (.csv ou .xlsx)"
-          variant="outlined"
-          density="comfortable"
-          prepend-icon=""
-          prepend-inner-icon="mdi-file-excel"
-          show-size
-          class="mb-4"
-        />
-
-        <v-btn
-          color="success" size="large" prepend-icon="mdi-whatsapp"
-          :loading="isDispatching"
-          :disabled="!dispatchFile"
-          @click="dispatchMessages"
-        >Enviar mensagens</v-btn>
-
-        <v-alert v-if="dispatchError" type="error" class="mt-5" closable @click:close="dispatchError = ''">
-          {{ dispatchError }}
-        </v-alert>
-
-        <v-card v-if="dispatchResult" class="result-card mt-5" elevation="2">
-          <div class="result-header">
-            <v-icon color="white" size="18" class="mr-2">mdi-check-circle-outline</v-icon>
-            Disparo concluído!
-          </div>
-          <div class="pa-5">
-            <v-row>
-              <v-col cols="4">
-                <div class="stat-box stat-box--success">
-                  <p class="stat-num">{{ dispatchResult.success }}</p>
-                  <p class="stat-label">Enviados</p>
-                </div>
-              </v-col>
-              <v-col cols="4">
-                <div class="stat-box stat-box--error">
-                  <p class="stat-num">{{ envioFailures(dispatchResult).length }}</p>
-                  <p class="stat-label">Falhas</p>
-                </div>
-              </v-col>
-              <v-col cols="4">
-                <div class="stat-box stat-box--warn">
-                  <p class="stat-num">{{ dispatchResult.sem_numero?.length || 0 }}</p>
-                  <p class="stat-label">Sem número</p>
-                </div>
-              </v-col>
-            </v-row>
-
-            <div v-if="dispatchResult.sem_numero?.length" class="mt-4">
-              <p class="text-caption font-weight-bold text-medium-emphasis mb-2">Unidades sem número:</p>
-              <v-sheet color="orange-lighten-5" rounded="lg" class="pa-3">
-                <div v-for="(f, i) in dispatchResult.sem_numero" :key="i" class="text-caption py-1"
-                  :style="i < dispatchResult.sem_numero.length - 1 ? 'border-bottom: 1px solid rgba(0,0,0,0.07)' : ''">
-                  <strong>{{ f.unidade }}</strong><span v-if="f.nome"> — {{ f.nome }}</span>
-                </div>
-              </v-sheet>
-            </div>
-
-            <div v-if="envioFailures(dispatchResult).length" class="mt-3">
-              <p class="text-caption font-weight-bold text-medium-emphasis mb-2">Falhas no envio:</p>
-              <div v-for="f in envioFailures(dispatchResult)" :key="f.phone" class="text-caption">
-                {{ f.phone }} — {{ f.error }}
-              </div>
-            </div>
-          </div>
-        </v-card>
-      </div>
-    </v-card>
-
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useCondominios } from '../composables/useCondominios.js'
 
 const isExporting        = ref(false)
 const exportFormat       = ref('xlsx')
@@ -432,8 +319,7 @@ const dataPosicao        = ref('')
 const ultimos5anos       = ref(false)
 const ordenarDesc        = ref(false)
 const progressMessage    = ref('Iniciando geração do relatório...')
-const condominios        = ref([])
-const loadingCondominios = ref(false)
+const { condominios, loadingCondominios, carregarCondominios } = useCondominios()
 let   pollingInterval    = null
 let   pollingSeconds     = 0
 
@@ -481,55 +367,10 @@ const exportarSemNumero = async (format) => {
   }
 }
 
-const isDispatching      = ref(false)
-const dispatchError      = ref('')
-const dispatchResult     = ref(null)
-const dispatchFile       = ref(null)
-const dispatchTemplateId = ref(null)
-
-const templates        = ref([])
-const loadingTemplates = ref(false)
-
-const selectedTemplate = computed(() =>
-  templates.value.find((t) => t.id === dispatchTemplateId.value) || null
-)
-
 const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem('access_token')}`,
 })
 
-const renderPreview = (body) =>
-  body
-    .replace(/\{\{condominio\}\}/g, 'Residencial Acácias')
-    .replace(/\{\{unidade\}\}/g, '315 SALA')
-    .replace(/\{\{nome\}\}/g, 'João Silva')
-    .replace(/\{\{qtd\}\}/g, '5')
-    .replace(/\{\{competencia\}\}/g, '10/2025')
-    .replace(/\{\{vencimento\}\}/g, '01/11/2025')
-    .replace(/\{\{valor\}\}/g, 'R$ 1.250,00')
-
-const fetchTemplates = async () => {
-  loadingTemplates.value = true
-  try {
-    const res = await fetch('/api/templates', { headers: authHeader() })
-    if (res.ok) templates.value = await res.json()
-  } catch (_) {}
-  finally { loadingTemplates.value = false }
-}
-
-const carregarCondominios = async () => {
-  loadingCondominios.value = true
-  try {
-    const res = await fetch('/api/admin/condominios', { headers: authHeader() })
-    if (res.ok) {
-      const lista = await res.json()
-      condominios.value = lista
-        .map(c => ({ id: c.id, nome: c.nome, label: `[${c.id}] ${c.nome}` }))
-        .sort((a, b) => a.id - b.id)
-    }
-  } catch (_) {}
-  finally { loadingCondominios.value = false }
-}
 
 const startExport = async (formato) => {
   exportFormat.value    = formato
@@ -555,13 +396,13 @@ const startExport = async (formato) => {
 
     const query    = params.toString() ? `?${params.toString()}` : ''
     const startRes = await fetch(`${baseStart}${query}`, { method: 'POST', headers: authHeader() })
+    const startData = await startRes.json().catch(() => ({}))
     if (!startRes.ok) {
-      const d = await startRes.json().catch(() => ({}))
-      exportError.value = d.detail || 'Erro ao iniciar exportação.'
+      exportError.value = startData.detail || `Erro ${startRes.status} ao iniciar exportação.`
       isExporting.value = false
       return
     }
-    const { job_id } = await startRes.json()
+    const { job_id } = startData
 
     pollingInterval = setInterval(async () => {
       pollingSeconds += 3
@@ -614,34 +455,6 @@ const downloadJob = async (jobId, filename, baseDownload) => {
   }
 }
 
-const dispatchMessages = async () => {
-  if (!dispatchFile.value) return
-  isDispatching.value  = true
-  dispatchError.value  = ''
-  dispatchResult.value = null
-  try {
-    const formData = new FormData()
-    formData.append('file', dispatchFile.value)
-    let url = '/api/messages/dispatch-excel'
-    if (dispatchTemplateId.value) url += `?template_id=${dispatchTemplateId.value}`
-    const response = await fetch(url, { method: 'POST', headers: authHeader(), body: formData })
-    const text = await response.text()
-    let data = {}
-    try { data = JSON.parse(text) } catch (_) { data = { detail: text } }
-    if (!response.ok) throw new Error(data.detail || 'Erro ao disparar mensagens')
-    dispatchResult.value = data.details
-    dispatchFile.value   = null
-  } catch (error) {
-    dispatchError.value = error.message
-  } finally {
-    isDispatching.value = false
-  }
-}
-
-const envioFailures = (result) => {
-  if (!result?.failures) return []
-  return result.failures.filter(f => f.phone !== '—')
-}
 
 // ── Relatório de disparo ──────────────────────────────────────────────────────
 const campanhasRelatorio  = ref([])
@@ -679,7 +492,15 @@ const exportarRelatorioDisparo = async (formato) => {
     const res = await fetch(`/api/campanhas/${relatorioCampanhaId.value}/${endpoint}`, {
       headers: authHeader(),
     })
-    if (!res.ok) throw new Error('Erro ao gerar relatório')
+    if (!res.ok) {
+      const contentType = res.headers.get('Content-Type') || ''
+      if (contentType.includes('application/json')) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.detail || `Erro ${res.status} ao gerar relatório`)
+      } else {
+        throw new Error(`Erro ${res.status}: servidor indisponível ou sem permissão`)
+      }
+    }
     const blob = await res.blob()
     const a    = document.createElement('a')
     a.href     = URL.createObjectURL(blob)
@@ -696,7 +517,8 @@ const exportarRelatorioDisparo = async (formato) => {
   }
 }
 
-onMounted(() => { fetchTemplates(); carregarCondominios(); carregarCampanhas() })
+onMounted(() => { carregarCondominios(); carregarCampanhas() })
+
 onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 </script>
 

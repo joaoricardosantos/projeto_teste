@@ -197,6 +197,7 @@ class AgendaTarefa(models.Model):
     data          = models.DateField()
     hora          = models.TimeField(null=True, blank=True)
     cor           = models.CharField(max_length=20, choices=COR_CHOICES, default='primary')
+    checklist     = models.JSONField(default=list, blank=True)
     criado_por    = models.CharField(max_length=255, blank=True)
     criado_em     = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
@@ -208,6 +209,45 @@ class AgendaTarefa(models.Model):
 
     def __str__(self):
         return f"{self.data} — {self.titulo}"
+
+
+class CondominioIdValido(models.Model):
+    """
+    Cache dos IDs de condomínio que realmente existem na Superlógica.
+    Evita varrer IDs inexistentes a cada consulta do dashboard.
+    """
+    id_condominio  = models.IntegerField(unique=True)
+    nome           = models.CharField(max_length=255, blank=True)
+    atualizado_em  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['id_condominio']
+        verbose_name = 'ID de Condomínio Válido'
+        verbose_name_plural = 'IDs de Condomínios Válidos'
+
+    def __str__(self):
+        return f"#{self.id_condominio} {self.nome}"
+
+
+class InadimplenciaSnapshot(models.Model):
+    """
+    Snapshot mensal do total de inadimplência (Superlógica).
+    Salvo automaticamente a cada geração do dashboard.
+    Apenas um registro por mês (ano + mês).
+    """
+    ano        = models.PositiveSmallIntegerField()
+    mes        = models.PositiveSmallIntegerField()       # 1-12
+    total      = models.DecimalField(max_digits=16, decimal_places=2)
+    capturado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('ano', 'mes')
+        ordering = ['ano', 'mes']
+        verbose_name = 'Snapshot de Inadimplência'
+        verbose_name_plural = 'Snapshots de Inadimplência'
+
+    def __str__(self):
+        return f"{self.mes:02d}/{self.ano} — R$ {self.total}"
 
 
 class DespesaParaPagar(models.Model):
@@ -242,6 +282,21 @@ class DespesaParaPagar(models.Model):
 
     def __str__(self):
         return f"{self.descricao} — R$ {self.valor} ({self.status})"
+
+
+class ResponsavelPeticao(models.Model):
+    """Perfis de responsável pela petição para uso nos documentos de execução."""
+    nome     = models.CharField(max_length=255)
+    funcao   = models.CharField(max_length=255, blank=True, default="")
+    padrao   = models.BooleanField(default=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Responsável pela Petição"
+        ordering = ["-padrao", "nome"]
+
+    def __str__(self):
+        return f"{self.nome} ({self.funcao})"
 
 
 class PasswordResetToken(models.Model):

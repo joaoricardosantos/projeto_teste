@@ -9,8 +9,14 @@ from core.services import (
     process_defaulters_with_template,
     process_excel_report_dispatch,
 )
+import threading
+import uuid as _uuid
 
 message_router = Router(auth=JWTAuth())
+
+# ── Jobs de envio em background ───────────────────────────────────────────────
+_SEND_JOBS: dict = {}
+_SEND_JOBS_LOCK = threading.Lock()
 
 ALLOWED_EXTENSIONS = (".csv", ".xlsx")
 
@@ -101,6 +107,49 @@ def get_unidades_inadimplentes(request, id_condominio: str):
         raise HttpError(500, str(e))
 
 
+@message_router.post("/send-selected/start", response={202: dict})
+def send_selected_start(
+    request,
+    id_condominio: int,
+    template_id: Optional[str] = None,
+    unidades_ids: str = "",
+):
+    """Inicia envio de mensagens em background e retorna job_id."""
+    from core.condominio_service import send_messages_by_condominio
+    ids = [u.strip() for u in unidades_ids.split(",") if u.strip()] if unidades_ids else None
+    job_id = str(_uuid.uuid4())
+
+    def _executar():
+        try:
+            result = send_messages_by_condominio(
+                id_condominio=id_condominio,
+                template_id=str(template_id) if template_id else None,
+                unidades_ids=ids,
+            )
+            with _SEND_JOBS_LOCK:
+                _SEND_JOBS[job_id] = {"status": "done", "details": result}
+        except Exception as e:
+            with _SEND_JOBS_LOCK:
+                _SEND_JOBS[job_id] = {"status": "error", "error": str(e)}
+
+    with _SEND_JOBS_LOCK:
+        _SEND_JOBS[job_id] = {"status": "processing"}
+
+    threading.Thread(target=_executar, daemon=True).start()
+    return 202, {"job_id": job_id}
+
+
+@message_router.get("/send-selected/status/{job_id}", response={200: dict})
+def send_selected_status(request, job_id: str):
+    """Verifica o status de um job de envio."""
+    with _SEND_JOBS_LOCK:
+        job = _SEND_JOBS.get(job_id)
+    if not job:
+        raise HttpError(404, "Job_not_found")
+    return 200, job
+
+
+# Mantém o endpoint síncrono para compatibilidade (sem remoção brusca)
 @message_router.post("/send-selected", response={200: dict})
 def send_selected(
     request,
@@ -108,10 +157,7 @@ def send_selected(
     template_id: Optional[str] = None,
     unidades_ids: str = "",
 ):
-    """
-    Envia mensagens para unidades selecionadas.
-    unidades_ids: IDs separados por vírgula
-    """
+    """Envia mensagens de forma síncrona (legado — prefira /send-selected/start)."""
     try:
         from core.condominio_service import send_messages_by_condominio
         ids = [u.strip() for u in unidades_ids.split(",") if u.strip()] if unidades_ids else None
