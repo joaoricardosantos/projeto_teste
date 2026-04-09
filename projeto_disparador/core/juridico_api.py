@@ -135,7 +135,14 @@ def _parse_valor(valor: str) -> float:
         return 0.0
     try:
         if "," in valor and "." in valor:
-            valor = valor.replace(".", "").replace(",", ".")
+            last_comma = valor.rfind(",")
+            last_dot = valor.rfind(".")
+            if last_dot > last_comma:
+                # Formato americano: 119,759.36 → vírgula é milhar, ponto é decimal
+                valor = valor.replace(",", "")
+            else:
+                # Formato brasileiro: 119.759,36 → ponto é milhar, vírgula é decimal
+                valor = valor.replace(".", "").replace(",", ".")
         elif "," in valor:
             valor = valor.replace(",", ".")
         return float(valor)

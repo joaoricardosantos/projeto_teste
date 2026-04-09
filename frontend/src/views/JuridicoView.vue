@@ -187,7 +187,7 @@
             </v-avatar>
             <div>
               <div class="section-title font-weight-bold" style="font-size:0.95rem">Por Condominio</div>
-              <div class="section-subtitle" style="font-size:0.78rem">Divida e processos por condominio</div>
+              <div class="section-subtitle" style="font-size:0.78rem">Divida e inadimplentes por condominio</div>
             </div>
           </div>
           <v-card-text>
@@ -195,7 +195,7 @@
               <thead>
                 <tr>
                   <th style="font-size:0.78rem; font-weight:700">Condominio</th>
-                  <th style="font-size:0.78rem; font-weight:700" class="text-center">Processos</th>
+                  <th style="font-size:0.78rem; font-weight:700" class="text-center">Inadimplentes</th>
                   <th style="font-size:0.78rem; font-weight:700" class="text-end">Total Divida</th>
                   <th style="font-size:0.78rem; font-weight:700; width:40%"></th>
                 </tr>
