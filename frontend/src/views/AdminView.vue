@@ -448,7 +448,18 @@ const handleCreateUser = async () => {
       body: JSON.stringify({ name: newUser.name, email: newUser.email, password: newUser.password }),
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data.detail || 'Erro ao criar usuário')
+    if (!response.ok) {
+      const detail = data.detail
+      let msg = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+          : 'Erro ao criar usuário'
+      // Traduz erros comuns de validação
+      if (msg.includes('not a valid email')) msg = 'O email informado não é válido. Verifique se contém um domínio correto (ex: usuario@dominio.com).'
+      if (msg === 'Email_already_registered') msg = 'Este email já está cadastrado.'
+      throw new Error(msg)
+    }
     createUserSuccess.value = 'Usuário criado com sucesso. Aguarde aprovação.'
     newUser.name = ''; newUser.email = ''; newUser.password = ''
     await fetchUsers()
