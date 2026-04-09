@@ -218,6 +218,7 @@ const allNavItems = [
   { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false },
   { to: '/agenda',       icon: 'mdi-calendar-month-outline', label: 'Agenda',           adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true  },
+  { to: '/sindicos',     icon: 'mdi-account-group-outline',  label: 'Sindicos',         adminOnly: false, juridicoAllowed: false, financeiroAllowed: true  },
   { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false },
 ]
 
