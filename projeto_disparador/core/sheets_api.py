@@ -419,6 +419,121 @@ def dashboard_despesas(request, spreadsheet_id: str, aba: str = "Sheet1", force:
         raise HttpError(400, str(e))
 
 
+@sheets_router.get("/dashboard/recebimentos/{spreadsheet_id}")
+def dashboard_recebimentos(request, spreadsheet_id: str, aba: str = "RECEBIMOS", force: bool = False):
+    """
+    Dashboard de recebimentos no formato multi-bloco lado a lado.
+    Blocos: Geral (A-D), COSERN Loja 71 (F-J), COSERN Loja 114 (L-P), Diversos (R-V).
+    """
+    import re
+    from datetime import datetime
+
+    try:
+        range_name = f"{aba}!A1:V200"
+        dados = buscar_dados_planilha(spreadsheet_id, range_name, use_cache=not force)
+        if not dados or len(dados) < 3:
+            raise HttpError(404, "Planilha vazia")
+
+        def cell(row, idx):
+            try:
+                return (row[idx] or "").strip()
+            except (IndexError, AttributeError):
+                return ""
+
+        def parse_valor(txt):
+            txt = txt.replace("R$", "").replace("\xa0", "").strip()
+            if not txt:
+                return 0.0
+            try:
+                return float(txt.replace(".", "").replace(",", "."))
+            except ValueError:
+                return 0.0
+
+        # Titulos dos blocos (linha 0)
+        titulos_raw = dados[0] if dados else []
+
+        # Cada bloco: nome, venc, valor, recebido, kw (ou None), obs (ou None)
+        blocos_config = [
+            {"titulo": "Geral",
+             "c_nome": 0, "c_venc": 1, "c_valor": 2, "c_recebido": 3, "c_kw": None, "c_obs": None},
+            {"titulo": cell(titulos_raw, 5) or "COSERN Loja 71",
+             "c_nome": 5, "c_venc": 6, "c_valor": 8, "c_recebido": 9, "c_kw": 7, "c_obs": None},
+            {"titulo": cell(titulos_raw, 11) or "COSERN Loja 114",
+             "c_nome": 11, "c_venc": 12, "c_valor": 14, "c_recebido": 15, "c_kw": 13, "c_obs": None},
+            {"titulo": cell(titulos_raw, 17) or "Diversos",
+             "c_nome": 17, "c_venc": 18, "c_valor": 19, "c_recebido": 20, "c_kw": None, "c_obs": 21},
+        ]
+
+        blocos = []
+        for cfg in blocos_config:
+            itens = []
+            total_previsto = 0.0
+            total_recebido = 0.0
+
+            for row in dados[2:]:  # pula titulo e cabecalho
+                nome = cell(row, cfg["c_nome"])
+                if not nome:
+                    continue
+
+                venc = cell(row, cfg["c_venc"])
+                valor = parse_valor(cell(row, cfg["c_valor"]))
+                recebido = parse_valor(cell(row, cfg["c_recebido"]))
+                status = "recebido" if recebido > 0 else "pendente"
+                obs = cell(row, cfg["c_obs"]) if cfg["c_obs"] is not None else ""
+
+                item = {
+                    "nome": nome,
+                    "vencimento": venc,
+                    "valor": valor,
+                    "recebido": recebido,
+                    "status": status,
+                    "obs": obs,
+                }
+
+                if cfg["c_kw"] is not None:
+                    item["kw"] = cell(row, cfg["c_kw"])
+
+                itens.append(item)
+                total_previsto += valor
+                total_recebido += recebido
+
+            total_pendente = total_previsto - total_recebido
+            qtd_recebidos = sum(1 for i in itens if i["status"] == "recebido")
+            qtd_pendentes = sum(1 for i in itens if i["status"] == "pendente")
+
+            blocos.append({
+                "titulo": cfg["titulo"],
+                "total_previsto": round(total_previsto, 2),
+                "total_recebido": round(total_recebido, 2),
+                "total_pendente": round(total_pendente, 2),
+                "qtd_recebidos": qtd_recebidos,
+                "qtd_pendentes": qtd_pendentes,
+                "itens": itens,
+            })
+
+        # Totais gerais
+        total_geral_previsto = sum(b["total_previsto"] for b in blocos)
+        total_geral_recebido = sum(b["total_recebido"] for b in blocos)
+        percentual = round((total_geral_recebido / total_geral_previsto * 100), 1) if total_geral_previsto else 0
+
+        return {
+            "tipo": "recebimentos",
+            "blocos": blocos,
+            "resumo": {
+                "total_previsto": round(total_geral_previsto, 2),
+                "total_recebido": round(total_geral_recebido, 2),
+                "total_pendente": round(total_geral_previsto - total_geral_recebido, 2),
+                "percentual_recebido": percentual,
+            },
+            "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        }
+
+    except HttpError:
+        raise
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
 @sheets_router.get("/preview/{spreadsheet_id}")
 def preview_planilha(request, spreadsheet_id: str, aba: str = "Sheet1", linhas: int = 10):
     """

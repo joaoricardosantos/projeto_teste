@@ -71,7 +71,10 @@
                       style="cursor:pointer;"
                       @click.stop="cel.dateStr === diaSelecionado ? verTarefa(t) : selecionarDia(cel)"
                     >
-                      <span class="cal-event-title">{{ t.titulo }}</span>
+                      <span class="cal-event-title">
+                        <span v-if="t.hora" class="cal-event-hora">{{ t.hora }}</span>
+                        {{ t.titulo }}
+                      </span>
                       <span v-if="(cel.isNear || cel.dateStr === diaSelecionado) && t.descricao" class="cal-event-desc">
                         {{ t.descricao }}
                       </span>
@@ -421,12 +424,15 @@
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field
-                v-model="formTarefa.hora"
+                :model-value="formTarefa.hora"
+                @update:model-value="onHoraInput"
                 label="Hora (opcional)"
                 variant="outlined"
                 density="comfortable"
-                type="time"
+                placeholder="HH:MM"
+                maxlength="5"
                 hide-details
+                prepend-inner-icon="mdi-clock-outline"
               />
             </v-col>
             <v-col cols="12">
@@ -703,6 +709,19 @@ const formTarefaVazio = (dateStr = null) => ({
   checklist: [],
 })
 const formTarefa = ref(formTarefaVazio())
+
+const onHoraInput = (val) => {
+  // Remove tudo que nao e digito
+  let nums = val.replace(/\D/g, '')
+  // Limita a 4 digitos
+  if (nums.length > 4) nums = nums.slice(0, 4)
+  // Insere ':' apos os 2 primeiros digitos
+  if (nums.length >= 3) {
+    formTarefa.value.hora = nums.slice(0, 2) + ':' + nums.slice(2)
+  } else {
+    formTarefa.value.hora = nums
+  }
+}
 
 const coresDisponiveis = [
   { value: 'primary', label: 'Azul'    },
@@ -1040,6 +1059,12 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.cal-event-hora {
+  font-weight: 700;
+  opacity: 0.85;
+  margin-right: 4px;
+  font-size: 0.7rem;
 }
 .cal-event-desc {
   display: block;

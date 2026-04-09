@@ -97,7 +97,7 @@
             :value="setor.id"
           >
             <v-icon size="small" class="mr-2">
-              {{ { cobrancas: 'mdi-cash-clock', advocacia: 'mdi-gavel', despesas: 'mdi-store-minus' }[setor.tipo_dashboard] || 'mdi-chart-line' }}
+              {{ { cobrancas: 'mdi-cash-clock', advocacia: 'mdi-gavel', despesas: 'mdi-store-minus', recebimentos: 'mdi-cash-check' }[setor.tipo_dashboard] || 'mdi-chart-line' }}
             </v-icon>
             {{ setor.nome }}
           </v-tab>
@@ -744,6 +744,135 @@
             </v-card>
           </div>
 
+          <!-- Dashboard Recebimentos -->
+          <div v-else-if="dashboard && dashboard.tipo === 'recebimentos'" key="recebimentos">
+            <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-3">
+              <div>
+                <span class="text-h6 font-weight-bold">Recebimentos</span>
+                <span class="text-caption text-medium-emphasis ml-3">
+                  <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+                  Atualizado em {{ dashboard.atualizado_em }}
+                </span>
+              </div>
+              <v-chip size="small" color="green" variant="tonal">
+                <v-icon size="small" class="mr-1">mdi-check-circle</v-icon>
+                Conectado
+              </v-chip>
+            </div>
+
+            <!-- KPIs Gerais -->
+            <v-row class="mb-3">
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #2196F3;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Previsto</span>
+                    <v-icon color="blue" size="28">mdi-cash-multiple</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #2196F3;">{{ brl(dashboard.resumo.total_previsto) }}</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #4CAF50;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Total Recebido</span>
+                    <v-icon color="green" size="28">mdi-check-circle</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #4CAF50;">{{ brl(dashboard.resumo.total_recebido) }}</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #F44336;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">Pendente</span>
+                    <v-icon color="red" size="28">mdi-alert-circle</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #F44336;">{{ brl(dashboard.resumo.total_pendente) }}</div>
+                </v-card>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-card elevation="4" class="kpi-card" style="border-left: 4px solid #9C27B0;">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <span class="text-caption text-uppercase font-weight-bold text-medium-emphasis">% Recebido</span>
+                    <v-icon color="purple" size="28">mdi-percent</v-icon>
+                  </div>
+                  <div class="text-h5 font-weight-bold" style="color: #9C27B0;">{{ dashboard.resumo.percentual_recebido }}%</div>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- Blocos por categoria -->
+            <v-row>
+              <v-col
+                v-for="(bloco, bi) in dashboard.blocos"
+                :key="bi"
+                cols="12"
+                md="6"
+              >
+                <v-card elevation="4" class="mb-4">
+                  <v-card-title class="pa-3 pb-2 d-flex align-center justify-space-between">
+                    <div class="d-flex align-center">
+                      <v-icon class="mr-2" color="primary">
+                        {{ bi === 0 ? 'mdi-account-cash' : bi === 3 ? 'mdi-dots-horizontal-circle' : 'mdi-flash' }}
+                      </v-icon>
+                      {{ bloco.titulo }}
+                    </div>
+                    <div class="d-flex gap-2">
+                      <v-chip size="x-small" color="green" variant="tonal">{{ bloco.qtd_recebidos }} recebidos</v-chip>
+                      <v-chip size="x-small" color="red" variant="tonal">{{ bloco.qtd_pendentes }} pendentes</v-chip>
+                    </div>
+                  </v-card-title>
+                  <v-divider />
+
+                  <!-- Mini KPIs do bloco -->
+                  <div class="pa-3 d-flex gap-3 flex-wrap">
+                    <div>
+                      <span class="text-caption text-medium-emphasis">Previsto</span>
+                      <p class="text-body-2 font-weight-bold mb-0" style="color: #2196F3;">{{ brl(bloco.total_previsto) }}</p>
+                    </div>
+                    <div>
+                      <span class="text-caption text-medium-emphasis">Recebido</span>
+                      <p class="text-body-2 font-weight-bold mb-0" style="color: #4CAF50;">{{ brl(bloco.total_recebido) }}</p>
+                    </div>
+                    <div>
+                      <span class="text-caption text-medium-emphasis">Pendente</span>
+                      <p class="text-body-2 font-weight-bold mb-0" style="color: #F44336;">{{ brl(bloco.total_pendente) }}</p>
+                    </div>
+                  </div>
+
+                  <v-divider />
+
+                  <!-- Tabela do bloco -->
+                  <v-data-table
+                    :headers="bloco.itens[0]?.kw !== undefined ? headersRecebCosern : (bloco.itens[0]?.obs !== undefined && bi === 3 ? headersRecebDiversos : headersRecebGeral)"
+                    :items="bloco.itens"
+                    :items-per-page="10"
+                    density="compact"
+                    class="elevation-0"
+                    no-data-text="Nenhum registro"
+                  >
+                    <template #item.valor="{ item }">
+                      {{ item.valor ? brl(item.valor) : '-' }}
+                    </template>
+                    <template #item.recebido="{ item }">
+                      <span :class="item.recebido > 0 ? 'text-green' : 'text-red'">
+                        {{ item.recebido > 0 ? brl(item.recebido) : '-' }}
+                      </span>
+                    </template>
+                    <template #item.status="{ item }">
+                      <v-chip
+                        :color="item.status === 'recebido' ? 'green' : 'red'"
+                        size="x-small"
+                        variant="tonal"
+                      >
+                        {{ item.status === 'recebido' ? 'Recebido' : 'Pendente' }}
+                      </v-chip>
+                    </template>
+                  </v-data-table>
+                </v-card>
+              </v-col>
+            </v-row>
+          </div>
+
           <!-- Dashboard Financeiro -->
           <div v-else-if="dashboard" key="financeiro">
             <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-3">
@@ -991,6 +1120,7 @@
               { title: 'Cobranças / Vencimentos', value: 'cobrancas' },
               { title: 'Honorários Advocatícios', value: 'advocacia' },
               { title: 'Despesas por Unidade', value: 'despesas' },
+              { title: 'Recebimentos', value: 'recebimentos' },
               { title: 'Financeiro', value: 'financeiro' },
             ]"
             item-title="title"
@@ -1272,6 +1402,32 @@ const headersCobrancas = [
   { title: 'Status', key: 'status', width: 110 },
 ]
 
+const headersRecebGeral = [
+  { title: 'Nome', key: 'nome' },
+  { title: 'Vencimento', key: 'vencimento', width: 120 },
+  { title: 'Valor', key: 'valor', width: 130 },
+  { title: 'Recebido', key: 'recebido', width: 130 },
+  { title: 'Status', key: 'status', width: 100 },
+]
+
+const headersRecebCosern = [
+  { title: 'Nome', key: 'nome' },
+  { title: 'Vencimento', key: 'vencimento', width: 110 },
+  { title: 'KW', key: 'kw', width: 110 },
+  { title: 'Valor', key: 'valor', width: 130 },
+  { title: 'Recebido', key: 'recebido', width: 130 },
+  { title: 'Status', key: 'status', width: 100 },
+]
+
+const headersRecebDiversos = [
+  { title: 'Nome', key: 'nome' },
+  { title: 'Vencimento', key: 'vencimento', width: 110 },
+  { title: 'Valor', key: 'valor', width: 130 },
+  { title: 'Recebido', key: 'recebido', width: 130 },
+  { title: 'Status', key: 'status', width: 100 },
+  { title: 'Obs', key: 'obs' },
+]
+
 // ── Utils ───────────────────────────────────────────────────────────────────
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` })
@@ -1285,6 +1441,7 @@ const tipoDashboardLabel = (tipo) => ({
   cobrancas: 'Cobranças / Vencimentos',
   advocacia: 'Honorários Advocatícios',
   despesas: 'Despesas por Unidade',
+  recebimentos: 'Recebimentos',
   financeiro: 'Financeiro',
   fluxo_caixa: 'Fluxo de Caixa',
 }[tipo] || tipo)
@@ -1337,6 +1494,7 @@ const carregarDashboard = async (force = false) => {
     cobrancas: 'cobrancas',
     advocacia: 'advocacia',
     despesas: 'despesas',
+    recebimentos: 'recebimentos',
   }
   const path = endpointMap[setor.tipo_dashboard] || 'rapido'
   const endpoint = `/api/sheets/dashboard/${path}/${setor.spreadsheet_id}${q}`
