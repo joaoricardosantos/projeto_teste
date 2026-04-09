@@ -52,7 +52,7 @@
                 </div>
                 <div>
                   <div class="kpi-value">{{ dash.resumo.total_processos }}</div>
-                  <div class="kpi-label">Total de Processos</div>
+                  <div class="kpi-label">Total de Inadimplentes</div>
                 </div>
               </v-card-text>
             </v-card>
@@ -60,12 +60,12 @@
           <v-col cols="12" sm="6" md="3">
             <v-card class="kpi-card" elevation="1">
               <v-card-text class="d-flex align-center" style="gap:14px">
-                <div class="kpi-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706)">
-                  <v-icon color="white" size="22">mdi-scale-balance</v-icon>
+                <div class="kpi-icon" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9)">
+                  <v-icon color="white" size="22">mdi-folder-text-outline</v-icon>
                 </div>
                 <div>
                   <div class="kpi-value">{{ dash.resumo.com_processo }}</div>
-                  <div class="kpi-label">Ajuizados</div>
+                  <div class="kpi-label">Total de Processos</div>
                 </div>
               </v-card-text>
             </v-card>
