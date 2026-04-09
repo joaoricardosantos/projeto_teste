@@ -44,8 +44,6 @@ _CACHE_TTL_MINUTES = 30
 
 # ── Jobs assíncronos do dashboard ─────────────────────────────────────────────
 import uuid as _uuid
-_JOBS: dict = {}   # job_id -> {status, result, error}
-_JOBS_LOCK = threading.Lock()
 
 def _proximas_8h():
     agora = datetime.now()
@@ -524,12 +522,18 @@ def _calcular_dashboard(
             if cached and cached["expires_at"] > datetime.now():
                 return cached["data"]
 
-    ids_range = [id_condominio] if id_condominio else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
+    if id_condominio:
+        ids_range = [id_condominio]
+    else:
+        from core.models import CondominioIdValido
+        ids_salvos = list(CondominioIdValido.objects.values_list("id_condominio", flat=True))
+        ids_range = ids_salvos if ids_salvos else range(1, getattr(settings, "SUPERLOGICA_MAX_ID", 100) + 1)
 
-    total_geral   = Decimal("0")
-    condo_valores = {}
-    sem_numero    = []
+    total_geral    = Decimal("0")
+    condo_valores  = {}
+    sem_numero     = []
     total_unidades = 0
+    ids_validos    = {}  # condo_id → nome (para salvar no banco)
 
     def _processar(condo_id):
         _MAX_TENTATIVAS = 3
@@ -544,7 +548,8 @@ def _calcular_dashboard(
                 except TypeError:
                     resumo, _ = buscar_inadimplentes_condominio(condo_id, data_posicao_fmt, mapa)
                 if not resumo:
-                    return None
+                    # Condomínio existe mas sem inadimplência — ainda é válido
+                    return (condo_id, nome, 0.0, 0, [])
 
                 condo_total   = Decimal("0")
                 sem_num_local = []
@@ -564,7 +569,7 @@ def _calcular_dashboard(
                             "nome":       dados_uni.get("sacado", ""),
                         })
 
-                return nome, float(condo_total.quantize(Decimal("0.01"))), len(resumo), sem_num_local
+                return (condo_id, nome, float(condo_total.quantize(Decimal("0.01"))), len(resumo), sem_num_local)
 
             except _requests.exceptions.RequestException as net_err:
                 if tentativa < _MAX_TENTATIVAS - 1:
@@ -580,13 +585,26 @@ def _calcular_dashboard(
             try:
                 result = future.result()
                 if result:
-                    nome_c, val_c, qtd_c, sem_c = result
-                    total_geral += Decimal(str(val_c))
-                    condo_valores[nome_c] = condo_valores.get(nome_c, 0) + val_c
-                    total_unidades += qtd_c
-                    sem_numero.extend(sem_c)
+                    cid_r, nome_c, val_c, qtd_c, sem_c = result
+                    ids_validos[cid_r] = nome_c
+                    if val_c > 0:
+                        total_geral += Decimal(str(val_c))
+                        condo_valores[nome_c] = condo_valores.get(nome_c, 0) + val_c
+                        total_unidades += qtd_c
+                        sem_numero.extend(sem_c)
             except Exception as e:
                 _log.error(f"Dashboard _processar erro inesperado: {e}", exc_info=True)
+
+    # Persiste IDs válidos no banco (apenas em consulta geral)
+    if not id_condominio and ids_validos:
+        try:
+            from core.models import CondominioIdValido
+            for cid, nome in ids_validos.items():
+                CondominioIdValido.objects.update_or_create(
+                    id_condominio=cid, defaults={"nome": nome or ""}
+                )
+        except Exception:
+            pass
 
     maior_condo = max(condo_valores, key=condo_valores.get) if condo_valores else None
     maior_valor = condo_valores.get(maior_condo, 0) if maior_condo else 0
@@ -611,12 +629,105 @@ def _calcular_dashboard(
     }
 
     with _CACHE_LOCK:
+        anterior = _DASHBOARD_CACHE.get(cache_key)
+        total_anterior = float(anterior["data"].get("total_inadimplencia", 0)) if anterior else None
         _DASHBOARD_CACHE[cache_key] = {
-            "data":       {**resultado, "cache": True},
-            "expires_at": _proximas_8h(),
+            "data":           {**resultado, "cache": True},
+            "expires_at":     _proximas_8h(),
+            "total_anterior": total_anterior,
         }
 
+    # ── Persiste snapshot mensal de inadimplência ──────────────────────────────
+    # Salva apenas quando é consulta geral (sem filtro de condomínio) para refletir o total real
+    if not id_condominio:
+        try:
+            from core.models import InadimplenciaSnapshot
+            from datetime import datetime as _dt
+            _agora = _dt.now()
+            InadimplenciaSnapshot.objects.update_or_create(
+                ano=_agora.year,
+                mes=_agora.month,
+                defaults={"total": resultado["total_inadimplencia"]},
+            )
+        except Exception:
+            pass
+
     return resultado
+
+
+# ── Endpoints de Snapshots de Inadimplência ──────────────────────────────────
+
+class SnapshotIn(Schema):
+    ano:   int
+    mes:   int   # 1-12
+    total: float
+
+
+@admin_router.post("/snapshots/inadimplencia", response={200: dict})
+def upsert_snapshot(request, payload: SnapshotIn):
+    """Insere ou atualiza um snapshot histórico de inadimplência (somente admin)."""
+    _require_approved(request.auth)
+    from core.models import InadimplenciaSnapshot
+    obj, created = InadimplenciaSnapshot.objects.update_or_create(
+        ano=payload.ano,
+        mes=payload.mes,
+        defaults={"total": payload.total},
+    )
+    return 200, {"ano": obj.ano, "mes": obj.mes, "total": float(obj.total), "criado": created}
+
+
+@admin_router.get("/snapshots/inadimplencia", response={200: list})
+def listar_snapshots(request):
+    """Lista todos os snapshots de inadimplência salvos."""
+    _require_approved(request.auth)
+    from core.models import InadimplenciaSnapshot
+    return 200, [
+        {"ano": s.ano, "mes": s.mes, "total": float(s.total),
+         "capturado_em": s.capturado_em.strftime("%d/%m/%Y %H:%M")}
+        for s in InadimplenciaSnapshot.objects.all()
+    ]
+
+
+@admin_router.delete("/snapshots/inadimplencia/{ano}/{mes}", response={200: dict})
+def deletar_snapshot(request, ano: int, mes: int):
+    _require_approved(request.auth)
+    from core.models import InadimplenciaSnapshot
+    deleted, _ = InadimplenciaSnapshot.objects.filter(ano=ano, mes=mes).delete()
+    return 200, {"deleted": deleted}
+
+
+@admin_router.post("/snapshots/inadimplencia/capturar", response={200: dict})
+def capturar_snapshot_historico(request, data_posicao: str, ano: int, mes: int):
+    """
+    Busca o total de inadimplência na data informada (YYYY-MM-DD) via Superlógica
+    e salva como snapshot do ano/mês indicados. Roda em background.
+    Retorna job_id para acompanhar via /jobs/{job_id}.
+    """
+    _require_approved(request.auth)
+    job_id = str(_uuid.uuid4())
+
+    def _executar():
+        try:
+            r = _calcular_dashboard(data_posicao=data_posicao, forcar=True)
+            total = r.get("total_inadimplencia", 0)
+            from core.models import InadimplenciaSnapshot
+            obj, created = InadimplenciaSnapshot.objects.update_or_create(
+                ano=ano, mes=mes, defaults={"total": total}
+            )
+            with _JOBS_LOCK:
+                _JOBS[job_id] = {
+                    "status": "pronto",
+                    "result": {"ano": obj.ano, "mes": obj.mes, "total": float(obj.total), "criado": created},
+                }
+        except Exception as e:
+            with _JOBS_LOCK:
+                _JOBS[job_id] = {"status": "erro", "error": str(e)}
+
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {"status": "processando", "result": None}
+
+    threading.Thread(target=_executar, daemon=True).start()
+    return 200, {"job_id": job_id, "message": f"Buscando inadimplência de {data_posicao} para {mes:02d}/{ano}..."}
 
 
 # ── Endpoint de Dashboard (síncrono — mantido para compatibilidade) ───────────

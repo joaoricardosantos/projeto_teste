@@ -11,6 +11,9 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
 APPEND_SLASH = False
 
+# Permite uploads de imagens base64 maiores (padrão Django é 2.5MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB
+
 INSTALLED_APPS =[
     "django.contrib.admin",
     "django.contrib.auth",

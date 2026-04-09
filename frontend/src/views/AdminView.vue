@@ -175,6 +175,106 @@
     </v-row>
 
     <!-- ── Dialog: Confirmar exclusão ── -->
+    <!-- ── Card Snapshots de Inadimplência ── -->
+    <v-row class="mt-2">
+      <v-col cols="12">
+        <v-card class="section-card" elevation="3">
+          <div class="section-header d-flex align-center justify-space-between">
+            <div class="d-flex align-center gap-3">
+              <div class="section-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+                <v-icon size="16" color="white">mdi-chart-timeline-variant</v-icon>
+              </div>
+              <div>
+                <p class="section-title">Snapshots de Inadimplência</p>
+                <p class="section-subtitle">Histórico mensal para cálculo de variações</p>
+              </div>
+            </div>
+            <div class="d-flex gap-2">
+              <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-download-outline"
+                @click="dialogCapturar = true">
+                Capturar histórico
+              </v-btn>
+              <v-btn icon size="small" variant="text" :loading="loadingSnaps" @click="carregarSnaps">
+                <v-icon size="18">mdi-refresh</v-icon>
+              </v-btn>
+            </div>
+          </div>
+          <v-divider />
+          <div class="pa-4">
+            <v-skeleton-loader v-if="loadingSnaps" type="list-item,list-item,list-item" />
+            <div v-else-if="snapshots.length === 0" class="text-center py-5 text-disabled">
+              <v-icon size="36" class="mb-2 opacity-30">mdi-database-off-outline</v-icon>
+              <p style="font-size:0.85rem;">Nenhum snapshot salvo. Clique em "Capturar histórico" para iniciar.</p>
+            </div>
+            <v-table v-else density="compact">
+              <thead>
+                <tr>
+                  <th>Período</th>
+                  <th>Total Inadimplência</th>
+                  <th>Capturado em</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in snapshots" :key="`${s.ano}-${s.mes}`">
+                  <td style="font-weight:600;">{{ String(s.mes).padStart(2,'0') }}/{{ s.ano }}</td>
+                  <td>{{ formatBRL(s.total) }}</td>
+                  <td style="opacity:.55;font-size:0.8rem;">{{ s.capturado_em }}</td>
+                  <td>
+                    <v-btn icon size="x-small" variant="text" color="error" @click="excluirSnap(s.ano, s.mes)">
+                      <v-icon size="14">mdi-delete-outline</v-icon>
+                    </v-btn>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- Dialog capturar histórico -->
+    <v-dialog v-model="dialogCapturar" max-width="440">
+      <v-card rounded="lg">
+        <div class="section-header d-flex align-center gap-3">
+          <div class="section-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+            <v-icon size="16" color="white">mdi-download-outline</v-icon>
+          </div>
+          <div>
+            <p class="section-title">Capturar Snapshot Histórico</p>
+            <p class="section-subtitle">Busca o total de inadimplência na data informada</p>
+          </div>
+        </div>
+        <v-divider />
+        <div class="pa-5">
+          <v-row>
+            <v-col cols="12">
+              <v-text-field v-model="formSnap.data_posicao" label="Data de referência (YYYY-MM-DD)"
+                variant="outlined" density="comfortable" placeholder="ex: 2024-12-31"
+                hint="Último dia do mês desejado" persistent-hint />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="formSnap.ano" label="Ano do snapshot"
+                variant="outlined" density="comfortable" type="number" hide-details />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="formSnap.mes" label="Mês (1-12)"
+                variant="outlined" density="comfortable" type="number" min="1" max="12" hide-details />
+            </v-col>
+          </v-row>
+          <v-alert v-if="erroSnap" type="error" density="compact" class="mt-3">{{ erroSnap }}</v-alert>
+          <v-alert v-if="msgSnap" type="info" density="compact" class="mt-3">{{ msgSnap }}</v-alert>
+        </div>
+        <v-divider />
+        <div class="d-flex justify-end gap-2 pa-4">
+          <v-btn variant="text" color="grey" @click="dialogCapturar = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="capturandoSnap" @click="capturarSnap">
+            <v-icon start size="16">mdi-download-outline</v-icon> Capturar
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="deleteDialog" max-width="420" persistent>
       <v-card class="overflow-hidden">
         <div class="delete-header">
@@ -359,10 +459,81 @@ const handleCreateUser = async () => {
   }
 }
 
-const goToDashboard = () => router.push('/dashboard')
-const logout = () => { localStorage.removeItem('access_token'); router.push('/') }
+// ── Snapshots de Inadimplência ────────────────────────────────────────────────
+const snapshots     = ref([])
+const loadingSnaps  = ref(false)
+const dialogCapturar = ref(false)
+const capturandoSnap = ref(false)
+const erroSnap      = ref('')
+const msgSnap       = ref('')
+const formSnap      = ref({ data_posicao: '', ano: new Date().getFullYear(), mes: new Date().getMonth() + 1 })
 
-onMounted(fetchUsers)
+const formatBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+const carregarSnaps = async () => {
+  loadingSnaps.value = true
+  try {
+    const res = await fetch('/api/admin/snapshots/inadimplencia', {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+    if (res.ok) snapshots.value = await res.json()
+  } catch (_) {}
+  loadingSnaps.value = false
+}
+
+const capturarSnap = async () => {
+  erroSnap.value = ''
+  msgSnap.value = ''
+  if (!formSnap.value.data_posicao) { erroSnap.value = 'Informe a data de referência.'; return }
+  capturandoSnap.value = true
+  try {
+    const params = new URLSearchParams({
+      data_posicao: formSnap.value.data_posicao,
+      ano: formSnap.value.ano,
+      mes: formSnap.value.mes,
+    })
+    const res = await fetch(`/api/admin/snapshots/inadimplencia/capturar?${params}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || 'Erro ao capturar')
+    msgSnap.value = `${data.message} Acompanhe e recarregue em alguns instantes.`
+    // Poll até o job terminar
+    const jobId = data.job_id
+    const poll = setInterval(async () => {
+      const jr = await fetch(`/api/admin/dashboard/status/${jobId}`, { headers: { Authorization: `Bearer ${getToken()}` } })
+      const jd = await jr.json()
+      if (jd.status === 'pronto') {
+        clearInterval(poll)
+        capturandoSnap.value = false
+        dialogCapturar.value = false
+        msgSnap.value = ''
+        await carregarSnaps()
+      } else if (jd.status === 'erro') {
+        clearInterval(poll)
+        capturandoSnap.value = false
+        erroSnap.value = jd.error || 'Erro ao capturar snapshot'
+      }
+    }, 3000)
+  } catch (e) {
+    erroSnap.value = e.message
+    capturandoSnap.value = false
+  }
+}
+
+const excluirSnap = async (ano, mes) => {
+  if (!confirm(`Excluir snapshot de ${String(mes).padStart(2,'0')}/${ano}?`)) return
+  try {
+    await fetch(`/api/admin/snapshots/inadimplencia/${ano}/${mes}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+    await carregarSnaps()
+  } catch (_) {}
+}
+
+onMounted(() => { fetchUsers(); carregarSnaps() })
 </script>
 
 <style scoped>
