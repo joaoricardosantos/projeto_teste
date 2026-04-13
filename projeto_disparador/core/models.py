@@ -299,6 +299,22 @@ class ResponsavelPeticao(models.Model):
         return f"{self.nome} ({self.funcao})"
 
 
+class AdvogadoPlanilha(models.Model):
+    """Advogado vinculado a uma planilha Google Sheets para a aba Jurídico."""
+    nome = models.CharField(max_length=255)
+    spreadsheet_id = models.CharField(max_length=200)
+    aba = models.CharField(max_length=100, blank=True, default='')
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Advogado Planilha'
+        verbose_name_plural = 'Advogados Planilhas'
+
+    def __str__(self):
+        return self.nome
+
+
 class PasswordResetToken(models.Model):
     """Token de redefinição de senha com expiração de 1 hora."""
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

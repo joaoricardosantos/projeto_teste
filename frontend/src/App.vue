@@ -217,7 +217,7 @@ const allNavItems = [
   { to: '/financeiro',   icon: 'mdi-currency-usd',           label: 'Financeiro',       adminOnly: true,  juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
   { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
   { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
-  { to: '/pje',          icon: 'mdi-gavel',                  label: 'PJE',              adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+  { to: '/juridico',     icon: 'mdi-gavel',                  label: 'Jurídico',         adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
   { to: '/execucao',     icon: 'mdi-file-document-edit-outline', label: 'Execução',     adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
   { to: '/agenda',       icon: 'mdi-calendar-month-outline', label: 'Agenda',           adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
   { to: '/sindicos',     icon: 'mdi-account-group-outline',  label: 'Sindicos',         adminOnly: false, juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },

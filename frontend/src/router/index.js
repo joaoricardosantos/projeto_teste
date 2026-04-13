@@ -9,7 +9,7 @@ import ResetPasswordView from '../views/ResetPasswordView.vue'
 import SheetsView from '../views/SheetsView.vue'  // ← NOVA INTEGRAÇÃO
 import LevantamentoView from '../views/LevantamentoView.vue'
 import FinanceiroView from '../views/FinanceiroView.vue'
-import PjeView from '../views/PjeView.vue'
+import JuridicoView from '../views/JuridicoView.vue'
 import AgendaView from '../views/AgendaView.vue'
 import SindicosView from '../views/SindicosView.vue'
 import ExecucaoView from '../views/ExecucaoView.vue'
@@ -25,7 +25,7 @@ const routes = [
     { path: '/sheets',       name: 'Sheets',       component: SheetsView,       meta: { requiresAuth: true } },  // ← NOVA INTEGRAÇÃO
     { path: '/levantamento', name: 'Levantamento', component: LevantamentoView, meta: { requiresAuth: true } },
     { path: '/financeiro',   name: 'Financeiro',   component: FinanceiroView,   meta: { requiresAuth: true } },
-    { path: '/pje',          name: 'Pje',          component: PjeView,          meta: { requiresAuth: true } },
+    { path: '/juridico',     name: 'Juridico',     component: JuridicoView,     meta: { requiresAuth: true } },
     { path: '/agenda',       name: 'Agenda',       component: AgendaView,       meta: { requiresAuth: true } },
     { path: '/sindicos',     name: 'Sindicos',     component: SindicosView,     meta: { requiresAuth: true } },
     { path: '/execucao',     name: 'Execucao',     component: ExecucaoView,     meta: { requiresAuth: true } },
@@ -47,7 +47,7 @@ router.beforeEach((to, from, next) => {
     // Bloqueia usuário comum — apenas /agenda
     if (isUsuario && isAuthenticated && to.path !== '/agenda') return next('/agenda')
     // Bloqueia jurídico de acessar rotas não permitidas
-    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/pje', '/levantamento', '/agenda', '/execucao'].includes(to.path)) return next('/dashboard')
+    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/juridico', '/levantamento', '/agenda', '/execucao'].includes(to.path)) return next('/dashboard')
     // Bloqueia financeiro de acessar rotas não permitidas
     if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets', '/financeiro', '/agenda'].includes(to.path)) return next('/dashboard')
     next()
