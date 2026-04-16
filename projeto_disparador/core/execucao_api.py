@@ -13,11 +13,16 @@ import zipfile
 import logging
 from datetime import date
 
-_MODELO_DOCX             = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_execucao.docx")
-_MODELO_DOCX_HONORARIOS  = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_execucao_honorarios.docx")
+_MODELO_DOCX                = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_execucao.docx")
+_MODELO_DOCX_HONORARIOS     = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_execucao_honorarios.docx")
+_MODELO_DOCX_JUSTICA_COMUM  = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "modelo_justicaComum.docx")
 
 def _modelo_path(modelo: str) -> str:
-    return _MODELO_DOCX_HONORARIOS if modelo == "com_honorarios" else _MODELO_DOCX
+    if modelo == "com_honorarios":
+        return _MODELO_DOCX_HONORARIOS
+    if modelo == "sem_honorarios_justica_comum":
+        return _MODELO_DOCX_JUSTICA_COMUM
+    return _MODELO_DOCX
 
 from django.http import HttpResponse
 from ninja import Router
@@ -226,30 +231,39 @@ def _valor_para_modelo(unidade: dict, modelo: str) -> str:
     - 'sem_honorarios': valor total menos honorários
     - qualquer outro ('com_honorarios'): valor total
     """
-    if modelo == "sem_honorarios":
+    if modelo in ("sem_honorarios", "sem_honorarios_justica_comum"):
         return unidade.get("valor_sem_honorarios") or unidade.get("valor", "")
     return unidade.get("valor", "")
 
 
 def _variaveis(dados_condo: dict, dados_unidade: dict, responsavel: dict | None = None, modelo: str = "com_honorarios") -> dict:
+    endereco_condo     = dados_condo.get("endereco", "")
+    endereco_executado = dados_unidade.get("endereco") or endereco_condo
+    cpf_sindico        = dados_condo.get("cpf_sindico", "")
+    cpf_executado      = dados_unidade.get("cpf", "")
+    unidade            = dados_unidade.get("unidade", "")
+
     return {
         # Condomínio
-        "NOME DO CONDOMÍNIO": dados_condo.get("nome_condominio", ""),
-        "CNPJ":               dados_condo.get("cnpj", ""),
-        "endereço":           dados_condo.get("endereco", ""),
-        "nome do síndico":    dados_condo.get("nome_sindico", ""),
-        "CPF do síndico":     dados_condo.get("cpf_sindico", ""),
-        "NOME DA COMARCA":    dados_condo.get("comarca", "Natal"),
-        "NOME DA CIDADE":     dados_condo.get("comarca", "Natal"),
+        "NOME DO CONDOMÍNIO":   dados_condo.get("nome_condominio", ""),
+        "CNPJ":                 dados_condo.get("cnpj", ""),
+        "endereço":             endereco_executado,
+        "endereço do condomínio": endereco_condo,
+        "nome do síndico":      dados_condo.get("nome_sindico", ""),
+        "CPF do síndico":       cpf_sindico,
+        "CPF DO SÍNDICO":       cpf_sindico,
+        "NOME DA COMARCA":      dados_condo.get("comarca", "Natal"),
+        "NOME DA CIDADE":       dados_condo.get("comarca", "Natal"),
         # Executado
         "NOME DA PARTE EXECUTADA":  dados_unidade.get("nome", ""),
-        "CPF da parte executada":   dados_unidade.get("cpf", ""),
-        "endereço":                 dados_unidade.get("endereco") or dados_condo.get("endereco", ""),
+        "CPF da parte executada":   cpf_executado,
+        "CPF":                      cpf_executado,
         "telefone":                 dados_unidade.get("telefone", ""),
         "endereço de e-mail":       dados_unidade.get("email", ""),
         # Débito
         "nome do condomínio":       dados_condo.get("nome_condominio", ""),
-        "nº do apartamento":        dados_unidade.get("unidade", ""),
+        "nº do apartamento":        unidade,
+        "nº da unidade":            unidade,
         "valor do débito":          _valor_para_modelo(dados_unidade, modelo),
         # Responsável pela petição
         "NOME DO RESPONSÁVEL PELA PETIÇÃO": (responsavel or {}).get("nome", ""),

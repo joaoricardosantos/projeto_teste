@@ -2,7 +2,7 @@
   <div>
 
     <!-- ── Modal: Escolha do Modelo ── -->
-    <v-dialog v-model="dialogModelo" max-width="500" persistent>
+    <v-dialog v-model="dialogModelo" max-width="720" persistent>
       <v-card rounded="xl" elevation="8">
         <div class="modelo-dialog-header">
           <v-icon size="32" color="white" class="mb-3">mdi-file-document-multiple-outline</v-icon>
@@ -11,7 +11,7 @@
         </div>
         <v-card-text class="pa-6">
           <v-row>
-            <v-col cols="12" sm="6">
+            <v-col cols="12" sm="4">
               <div
                 class="modelo-card"
                 :class="{ 'modelo-card--active': modeloSelecionado === 'com_honorarios' }"
@@ -24,7 +24,7 @@
                 <p class="text-caption text-medium-emphasis">Valor total da dívida incluindo honorários advocatícios</p>
               </div>
             </v-col>
-            <v-col cols="12" sm="6">
+            <v-col cols="12" sm="4">
               <div
                 class="modelo-card"
                 :class="{ 'modelo-card--active': modeloSelecionado === 'sem_honorarios' }"
@@ -35,6 +35,19 @@
                 </v-icon>
                 <p class="text-body-2 font-weight-bold mb-1">Sem Honorários</p>
                 <p class="text-caption text-medium-emphasis">Valor total subtraindo os honorários advocatícios</p>
+              </div>
+            </v-col>
+            <v-col cols="12" sm="4">
+              <div
+                class="modelo-card"
+                :class="{ 'modelo-card--active': modeloSelecionado === 'sem_honorarios_justica_comum' }"
+                @click="modeloSelecionado = 'sem_honorarios_justica_comum'"
+              >
+                <v-icon size="28" :color="modeloSelecionado === 'sem_honorarios_justica_comum' ? 'info' : 'grey'" class="mb-2">
+                  mdi-gavel
+                </v-icon>
+                <p class="text-body-2 font-weight-bold mb-1">Sem Honorários | Justiça Comum</p>
+                <p class="text-caption text-medium-emphasis">Modelo para ações na justiça comum, sem honorários</p>
               </div>
             </v-col>
           </v-row>
@@ -63,13 +76,13 @@
       <!-- Badge do modelo ativo -->
       <v-chip
         v-if="modeloConfirmado"
-        :color="modeloSelecionado === 'com_honorarios' ? 'primary' : 'warning'"
+        :color="modeloLabelCor"
         variant="tonal"
         prepend-icon="mdi-check-circle"
         @click="dialogModelo = true"
         style="cursor:pointer"
       >
-        {{ modeloSelecionado === 'com_honorarios' ? 'Com Honorários' : 'Sem Honorários' }}
+        {{ modeloLabel }}
         <v-icon end size="14">mdi-pencil</v-icon>
       </v-chip>
     </div>
@@ -139,10 +152,10 @@
                 <p class="section-subtitle">Selecione as unidades que receberão o documento de execução</p>
               </div>
               <div class="d-flex gap-2 ml-auto">
-                <v-btn size="x-small" variant="tonal" color="white" @click="selecionarTodas">
+                <v-btn size="x-small" variant="tonal" color="primary" @click="selecionarTodas">
                   Todas
                 </v-btn>
-                <v-btn size="x-small" variant="tonal" color="white" @click="deselecionarTodas">
+                <v-btn size="x-small" variant="tonal" color="primary" @click="deselecionarTodas">
                   Limpar
                 </v-btn>
               </div>
@@ -173,7 +186,7 @@
                 </div>
                 <div class="unit-right">
                   <div class="text-right">
-                    <p class="unit-valor">{{ modeloSelecionado === 'sem_honorarios' ? (u.valor_sem_honorarios || u.valor) : u.valor }}</p>
+                    <p class="unit-valor">{{ usarValorSemHonorarios ? (u.valor_sem_honorarios || u.valor) : u.valor }}</p>
                     <p class="text-caption text-medium-emphasis">{{ u.qtd_inadimplencias }} parcela(s)</p>
                   </div>
                   <v-chip
@@ -297,7 +310,7 @@
                   <v-icon size="15" class="mr-1" color="primary">mdi-home-outline</v-icon>
                   Unidade {{ u.unidade }}<span v-if="u.bloco"> ({{ u.bloco }})</span> — {{ u.nome }}
                   <v-chip size="x-small" class="ml-2" color="error" variant="tonal">
-                    {{ modeloSelecionado === 'sem_honorarios' ? (u.valor_sem_honorarios || u.valor) : u.valor }}
+                    {{ usarValorSemHonorarios ? (u.valor_sem_honorarios || u.valor) : u.valor }}
                   </v-chip>
                 </p>
                 <v-row dense>
@@ -406,7 +419,7 @@
                 <p class="section-subtitle">Selecione ou cadastre o responsável que assina o documento</p>
               </div>
               <v-btn
-                size="x-small" variant="tonal" color="white"
+                size="x-small" variant="tonal" color="primary"
                 prepend-icon="mdi-cog"
                 @click="dialogGerenciar = true"
               >Gerenciar</v-btn>
@@ -613,6 +626,24 @@ const authHeader = () => ({
 const dialogModelo      = ref(true)   // abre ao entrar na tela
 const modeloSelecionado = ref('')
 const modeloConfirmado  = ref(false)
+
+// Ambos modelos "sem honorários" usam o valor sem honorários da unidade
+const usarValorSemHonorarios = computed(() =>
+  modeloSelecionado.value === 'sem_honorarios'
+  || modeloSelecionado.value === 'sem_honorarios_justica_comum'
+)
+
+const modeloLabel = computed(() => ({
+  com_honorarios:                'Com Honorários',
+  sem_honorarios:                'Sem Honorários',
+  sem_honorarios_justica_comum:  'Sem Honorários | Justiça Comum',
+})[modeloSelecionado.value] || 'Modelo')
+
+const modeloLabelCor = computed(() => ({
+  com_honorarios:                'primary',
+  sem_honorarios:                'warning',
+  sem_honorarios_justica_comum:  'info',
+})[modeloSelecionado.value] || 'grey')
 
 const confirmarModelo = () => {
   if (!modeloSelecionado.value) return
