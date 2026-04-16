@@ -298,7 +298,7 @@
       </v-row>
 
       <!-- Dialog KPI -->
-      <v-dialog v-model="dialogKpi" max-width="960">
+      <v-dialog v-model="dialogKpi" max-width="1400" width="95vw">
         <v-card>
           <v-card-title class="pa-4 d-flex align-center justify-space-between">
             <div class="d-flex align-center gap-2">
@@ -431,7 +431,7 @@
               <div class="section-badge" style="background: linear-gradient(135deg,#009688,#00796b);">
                 <v-icon size="16" color="white">mdi-store-outline</v-icon>
               </div>
-              <p class="section-title">Top 10 Fornecedores</p>
+              <p class="section-title">Por fornecedor</p>
             </div>
             <div class="pa-4">
               <div
@@ -531,9 +531,20 @@
           <p class="section-subtitle">Despesas encaminhadas para o financeiro pagar</p>
         </div>
         <div class="d-flex align-center gap-2">
-          <v-chip v-if="filaPagamento.filter(i=>i.status==='aguardando').length" color="warning" size="small" variant="tonal">
-            {{ filaPagamento.filter(i=>i.status==='aguardando').length }} aguardando
+          <v-chip v-if="filaPagamentoFiltrada.filter(i=>i.status==='aguardando').length" color="warning" size="small" variant="tonal">
+            {{ filaPagamentoFiltrada.filter(i=>i.status==='aguardando').length }} aguardando
           </v-chip>
+          <v-select
+            v-model="filaFiltroEmpresa"
+            :items="empresasNaFila"
+            item-title="title"
+            item-value="value"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="max-width:200px;"
+            prepend-inner-icon="mdi-office-building-outline"
+          />
           <v-select
             v-model="filaFiltroStatus"
             :items="[{title:'Aguardando',value:'aguardando'},{title:'Pagas',value:'pago'},{title:'Canceladas',value:'cancelado'},{title:'Todas',value:'todas'}]"
@@ -553,9 +564,11 @@
       <v-divider />
 
       <div class="pa-4">
-        <div v-if="!loadingFila && !filaPagamento.length" class="text-center py-8 text-disabled">
+        <div v-if="!loadingFila && !filaPagamentoFiltrada.length" class="text-center py-8 text-disabled">
           <v-icon size="40" class="mb-2 opacity-30">mdi-clock-check-outline</v-icon>
-          <p style="font-size:0.85rem;">Nenhuma despesa na fila de pagamento.</p>
+          <p style="font-size:0.85rem;">
+            {{ filaPagamento.length ? 'Nenhuma despesa para a empresa selecionada.' : 'Nenhuma despesa na fila de pagamento.' }}
+          </p>
         </div>
 
         <v-table v-else density="compact">
@@ -563,7 +576,7 @@
             <tr>
               <th>Descrição</th>
               <th>Fornecedor</th>
-              <th>Condomínio</th>
+              <th>Empresa</th>
               <th>Vencimento</th>
               <th class="text-right">Valor</th>
               <th>Status</th>
@@ -572,7 +585,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in filaPagamento" :key="item.id">
+            <tr v-for="item in filaPagamentoFiltrada" :key="item.id">
               <td>{{ item.descricao }}</td>
               <td class="text-medium-emphasis">{{ item.fornecedor || '—' }}</td>
               <td class="text-medium-emphasis" style="max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ item.condominio_nome }}</td>
@@ -617,12 +630,12 @@
           </tbody>
         </v-table>
 
-        <div v-if="filaPagamento.length" class="d-flex justify-end align-center mt-3 px-2">
+        <div v-if="filaPagamentoFiltrada.length" class="d-flex justify-end align-center mt-3 px-2">
           <span class="text-caption text-medium-emphasis mr-3">
-            {{ filaPagamento.length }} item(s)
+            {{ filaPagamentoFiltrada.length }} item(s)
           </span>
           <strong style="font-size:1rem;">
-            Total: {{ brl(filaPagamento.reduce((s, i) => s + (Number(i.valor) || 0), 0)) }}
+            Total: {{ brl(filaPagamentoFiltrada.reduce((s, i) => s + (Number(i.valor) || 0), 0)) }}
           </strong>
         </div>
       </div>
@@ -1100,6 +1113,8 @@ const formasPagamento = [
 ]
 
 const headersDialog = [
+  { title: 'Empresa', key: 'condominio_nome', sortable: true },
+  { title: 'Descrição', key: 'descricao', sortable: true },
   { title: 'Fornecedor', key: 'fornecedor', sortable: true },
   { title: 'Categoria', key: 'categoria', sortable: true },
   { title: 'Vencimento', key: 'vencimento', sortable: true },
@@ -1109,6 +1124,8 @@ const headersDialog = [
 ]
 
 const headersPendentes = [
+  { title: 'Empresa', key: 'condominio_nome', sortable: true },
+  { title: 'Descrição', key: 'descricao', sortable: true },
   { title: 'Fornecedor', key: 'fornecedor', sortable: true },
   { title: 'Categoria', key: 'categoria', sortable: true },
   { title: 'Vencimento', key: 'vencimento', sortable: true },
@@ -1199,19 +1216,25 @@ const marcarParaPagamento = async () => {
   if (!selecionadasParaPagar.value.length) return
   marcandoPagamento.value = true
   try {
-    const condId   = Number(condominioSelecionado.value[0]) || 0
-    const condNome = condominioNome.value
-    const despesas = selecionadasParaPagar.value.map(d => ({
-      id_despesa:      String(d.id        || ''),
-      id_parcela:      String(d.id_parcela || ''),
-      id_contato:      String(d.id_contato || ''),
-      descricao:       String(d.descricao  || ''),
-      fornecedor:      String(d.fornecedor || ''),
-      condominio_id:   condId,
-      condominio_nome: condNome,
-      valor:           Number(d.valor) || 0,
-      vencimento:      String(d.vencimento || ''),
-    }))
+    const fallbackId   = Number(condominioSelecionado.value[0]) || 0
+    const fallbackNome = condominioNome.value
+    const despesas = selecionadasParaPagar.value.map(d => {
+      const condId   = Number(d.condominio_id) || fallbackId
+      const condNome = d.condominio_nome
+        || condominios.value.find(c => Number(c.id) === condId)?.nome
+        || fallbackNome
+      return {
+        id_despesa:      String(d.id        || ''),
+        id_parcela:      String(d.id_parcela || ''),
+        id_contato:      String(d.id_contato || ''),
+        descricao:       String(d.descricao  || ''),
+        fornecedor:      String(d.fornecedor || ''),
+        condominio_id:   condId,
+        condominio_nome: condNome,
+        valor:           Number(d.valor) || 0,
+        vencimento:      String(d.vencimento || ''),
+      }
+    })
     const res = await fetch('/api/financeiro/fila-pagamento', {
       method: 'POST',
       headers: authHeader(),
@@ -1290,14 +1313,23 @@ const buscar = async () => {
       condominioSelecionado.value.map(id =>
         fetch(`/api/financeiro/despesas/${id}?${params}`, { headers: authHeader() })
           .then(r => r.json())
+          .then(data => ({ ...data, _condominio_id: Number(id) }))
       )
     )
 
+    // Anota cada despesa com o condomínio de origem para preservar o contexto
+    // mesmo quando múltiplos condomínios são agregados.
+    const anotar = (r) => {
+      const condId = Number(r._condominio_id)
+      const condNome = condominios.value.find(c => Number(c.id) === condId)?.nome || ''
+      return (r.despesas || []).map(d => ({ ...d, condominio_id: condId, condominio_nome: condNome }))
+    }
+
     if (condominioSelecionado.value.length === 1) {
-      dados.value = respostas[0]
+      dados.value = { ...respostas[0], despesas: anotar(respostas[0]) }
     } else {
       // Agrega múltiplos condomínios
-      const todasDespesas = respostas.flatMap(r => r.despesas || [])
+      const todasDespesas = respostas.flatMap(anotar)
       const somaResumo = (campo) => respostas.reduce((acc, r) => acc + (r.resumo?.[campo] || 0), 0)
 
       // Agrega por_categoria
@@ -1462,10 +1494,31 @@ const salvarNoSuperlogica = async () => {
 }
 
 // ── Fila de Pagamentos ────────────────────────────────────────────────────────
-const filaPagamento    = ref([])
-const loadingFila      = ref(false)
-const filaFiltroStatus = ref('aguardando')
-const snackFila        = ref({ show: false, msg: '', color: 'success', icon: 'mdi-check-circle-outline' })
+const filaPagamento     = ref([])
+const loadingFila       = ref(false)
+const filaFiltroStatus  = ref('aguardando')
+const filaFiltroEmpresa = ref('todas')
+const snackFila         = ref({ show: false, msg: '', color: 'success', icon: 'mdi-check-circle-outline' })
+
+// Empresas presentes na fila (para o filtro)
+const empresasNaFila = computed(() => {
+  const mapa = new Map()
+  filaPagamento.value.forEach(i => {
+    const id = Number(i.condominio_id) || 0
+    if (!mapa.has(id)) {
+      mapa.set(id, { value: id, title: i.condominio_nome || `ID ${id}` })
+    }
+  })
+  const lista = Array.from(mapa.values()).sort((a, b) => a.title.localeCompare(b.title))
+  return [{ value: 'todas', title: 'Todas as empresas' }, ...lista]
+})
+
+// Fila filtrada por empresa (o status já é filtrado no backend)
+const filaPagamentoFiltrada = computed(() => {
+  if (filaFiltroEmpresa.value === 'todas') return filaPagamento.value
+  const alvo = Number(filaFiltroEmpresa.value)
+  return filaPagamento.value.filter(i => Number(i.condominio_id) === alvo)
+})
 
 const mostrarSnackFila = (msg, color = 'success', icon = 'mdi-check-circle-outline') => {
   snackFila.value = { show: true, msg, color, icon }

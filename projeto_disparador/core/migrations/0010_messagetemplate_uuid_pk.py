@@ -11,9 +11,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterField(
-            model_name='messagetemplate',
-            name='id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+        # PostgreSQL não consegue castar bigint -> uuid automaticamente,
+        # então dropamos a coluna antiga e criamos uma nova de UUID.
+        # state_operations mantém o estado do Django consistente com o model.
+        migrations.RunSQL(
+            sql=[
+                'ALTER TABLE core_messagetemplate DROP CONSTRAINT IF EXISTS core_messagetemplate_pkey CASCADE;',
+                'ALTER TABLE core_messagetemplate DROP COLUMN IF EXISTS id;',
+                'ALTER TABLE core_messagetemplate ADD COLUMN id UUID DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY;',
+            ],
+            reverse_sql=migrations.RunSQL.noop,
+            state_operations=[
+                migrations.AlterField(
+                    model_name='messagetemplate',
+                    name='id',
+                    field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+            ],
         ),
     ]

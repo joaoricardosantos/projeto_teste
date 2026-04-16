@@ -62,22 +62,30 @@
 
       <!-- Nav items — só mostra se autenticado -->
       <v-list v-if="isAuthenticated" nav density="comfortable" class="sidebar-nav px-2 py-3">
-        <v-list-item
-          v-for="item in navItems"
-          :key="item.to"
-          :to="item.to"
-          rounded="lg"
-          class="nav-item mb-2"
-          active-class="nav-item-active"
-          :value="item.to"
-        >
-          <template #prepend>
-            <v-icon :icon="item.icon" size="20" />
-          </template>
-          <template #title>
-            <span v-if="!rail">{{ item.label }}</span>
-          </template>
-        </v-list-item>
+        <template v-for="(category, idx) in filteredCategories" :key="category.label">
+          <!-- Divisor entre categorias -->
+          <v-divider v-if="idx > 0" class="nav-category-divider" />
+
+          <!-- Rótulo da categoria (oculto no modo rail) -->
+          <div v-if="!rail" class="nav-category-label">{{ category.label }}</div>
+
+          <v-list-item
+            v-for="item in category.items"
+            :key="item.to"
+            :to="item.to"
+            rounded="lg"
+            class="nav-item mb-1"
+            active-class="nav-item-active"
+            :value="item.to"
+          >
+            <template #prepend>
+              <v-icon :icon="item.icon" size="20" />
+            </template>
+            <template #title>
+              <span v-if="!rail">{{ item.label }}</span>
+            </template>
+          </v-list-item>
+        </template>
       </v-list>
 
       <template #append>
@@ -209,29 +217,59 @@ const userRole = computed(() => {
   return 'Usuário'
 })
 
-const allNavItems = [
-  { to: '/dashboard',    icon: 'mdi-view-dashboard-outline', label: 'Dashboard',        adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: false },
-  { to: '/painel',       icon: 'mdi-send-outline',           label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
-  { to: '/templates',    icon: 'mdi-message-text-outline',   label: 'Templates',        adminOnly: false, juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
-  { to: '/sheets',       icon: 'mdi-google-spreadsheet',     label: 'Google Sheets',    adminOnly: false, juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
-  { to: '/financeiro',   icon: 'mdi-currency-usd',           label: 'Financeiro',       adminOnly: true,  juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
-  { to: '/levantamento', icon: 'mdi-magnify-scan',           label: 'Levantamento',     adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
-  { to: '/relatorios',   icon: 'mdi-file-chart-outline',     label: 'Relatórios',       adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
-  { to: '/juridico',     icon: 'mdi-gavel',                  label: 'Jurídico',         adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
-  { to: '/execucao',     icon: 'mdi-file-document-edit-outline', label: 'Execução',     adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
-  { to: '/agenda',       icon: 'mdi-calendar-month-outline', label: 'Agenda',           adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
-  { to: '/sindicos',     icon: 'mdi-account-group-outline',  label: 'Sindicos',         adminOnly: false, juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
-  { to: '/admin',        icon: 'mdi-shield-account-outline', label: 'Administração',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
+const allNavCategories = [
+  {
+    label: 'Geral',
+    items: [
+      { to: '/dashboard', icon: 'mdi-view-dashboard-outline', label: 'Dashboard', adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: false },
+      { to: '/agenda',    icon: 'mdi-calendar-month-outline', label: 'Agenda',    adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
+    ],
+  },
+  {
+    label: 'Comunicação',
+    items: [
+      { to: '/painel',    icon: 'mdi-send-outline',         label: 'Enviar Mensagens', adminOnly: false, juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
+      { to: '/templates', icon: 'mdi-message-text-outline', label: 'Templates',        adminOnly: false, juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
+    ],
+  },
+  {
+    label: 'Financeiro',
+    items: [
+      { to: '/financeiro', icon: 'mdi-currency-usd',          label: 'Financeiro',    adminOnly: true,  juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
+      { to: '/sheets',     icon: 'mdi-google-spreadsheet',    label: 'Google Sheets', adminOnly: false, juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
+      { to: '/sindicos',   icon: 'mdi-account-group-outline', label: 'Síndicos',      adminOnly: false, juridicoAllowed: false, financeiroAllowed: true,  usuarioAllowed: false },
+    ],
+  },
+  {
+    label: 'Jurídico',
+    items: [
+      { to: '/juridico',     icon: 'mdi-gavel',                     label: 'Jurídico',     adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+      { to: '/levantamento', icon: 'mdi-magnify-scan',               label: 'Levantamento', adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+      { to: '/execucao',     icon: 'mdi-file-document-edit-outline', label: 'Execução',     adminOnly: false, juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+      { to: '/relatorios',   icon: 'mdi-file-chart-outline',         label: 'Relatórios',   adminOnly: true,  juridicoAllowed: true,  financeiroAllowed: false, usuarioAllowed: false },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [
+      { to: '/admin', icon: 'mdi-shield-account-outline', label: 'Administração', adminOnly: true, juridicoAllowed: false, financeiroAllowed: false, usuarioAllowed: false },
+    ],
+  },
 ]
 
-const navItems = computed(() => {
+const filteredCategories = computed(() => {
   const isUsuario = !isAdmin.value && !isJuridico.value && !isFinanceiro.value
-  return allNavItems.filter(item => {
-    if (isUsuario)          return item.usuarioAllowed
-    if (isJuridico.value)   return item.juridicoAllowed
-    if (isFinanceiro.value) return item.financeiroAllowed
-    return !item.adminOnly || isAdmin.value
-  })
+  return allNavCategories
+    .map(cat => ({
+      ...cat,
+      items: cat.items.filter(item => {
+        if (isUsuario)          return item.usuarioAllowed
+        if (isJuridico.value)   return item.juridicoAllowed
+        if (isFinanceiro.value) return item.financeiroAllowed
+        return !item.adminOnly || isAdmin.value
+      }),
+    }))
+    .filter(cat => cat.items.length > 0)
 })
 
 const toggleTheme = () => {
@@ -317,6 +355,21 @@ const logout = () => {
 }
 .toggle-btn { opacity: 0.5; transition: opacity 0.2s; }
 .toggle-btn:hover { opacity: 1; }
+
+/* ── Category labels & dividers ── */
+.nav-category-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.4);
+  padding: 10px 12px 4px;
+  user-select: none;
+}
+.nav-category-divider {
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  margin: 6px 4px !important;
+}
 
 /* ── Nav items ── */
 .sidebar-nav .nav-item {
