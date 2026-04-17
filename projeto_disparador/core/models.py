@@ -317,15 +317,12 @@ class AdvogadoPlanilha(models.Model):
 
 class PlanilhaFuncionarioConfig(models.Model):
     """Planilha Google Sheets vinculada a um funcionário."""
-    id                  = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    funcionario         = models.OneToOneField('User', on_delete=models.CASCADE, related_name='planilha_config')
-    nome                = models.CharField(max_length=200)
-    spreadsheet_id      = models.CharField(max_length=200, blank=True)
-    linha_cabecalho     = models.IntegerField(default=1)   # linha do cabeçalho (1-based)
-    linha_dados_inicio  = models.IntegerField(default=2)   # primeira linha de dados (1-based)
-    coluna_label_indice = models.IntegerField(default=0)   # índice (0-based) da coluna de rótulo
-    criado_em           = models.DateTimeField(auto_now_add=True)
-    atualizado_em       = models.DateTimeField(auto_now=True)
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    funcionario    = models.OneToOneField('User', on_delete=models.CASCADE, related_name='planilha_config')
+    nome           = models.CharField(max_length=200)
+    spreadsheet_id = models.CharField(max_length=200, blank=True)
+    criado_em      = models.DateTimeField(auto_now_add=True)
+    atualizado_em  = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Config de Planilha do Funcionário'
@@ -333,27 +330,6 @@ class PlanilhaFuncionarioConfig(models.Model):
 
     def __str__(self):
         return f"{self.funcionario.name} — {self.nome}"
-
-
-class PlanilhaColunaRegra(models.Model):
-    """Regra de cor para uma coluna da planilha do funcionário."""
-    TIPO_CHOICES = [
-        ('data',     'Data'),
-        ('booleano', 'Booleano'),
-        ('texto',    'Texto'),
-    ]
-    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    config     = models.ForeignKey(PlanilhaFuncionarioConfig, on_delete=models.CASCADE, related_name='regras')
-    coluna_nome = models.CharField(max_length=200)  # deve bater com o cabeçalho no Sheets
-    tipo        = models.CharField(max_length=20, choices=TIPO_CHOICES, default='texto')
-    prazo_dias  = models.IntegerField(null=True, blank=True)  # dias a partir do início do mês
-
-    class Meta:
-        ordering = ['coluna_nome']
-        verbose_name = 'Regra de Coluna da Planilha'
-
-    def __str__(self):
-        return f"{self.config.funcionario.name} / {self.coluna_nome}"
 
 
 class PasswordResetToken(models.Model):

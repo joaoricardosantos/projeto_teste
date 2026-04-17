@@ -9,12 +9,10 @@
           Acompanhe o progresso das tarefas com indicadores visuais de prazo.
         </p>
       </div>
-      <div class="d-flex align-center gap-2">
-        <v-btn v-if="isAdmin" color="primary" variant="tonal" prepend-icon="mdi-cog-outline"
-          @click="abrirGerenciar">
-          Gerenciar
-        </v-btn>
-      </div>
+      <v-btn v-if="isAdmin" color="primary" variant="tonal" prepend-icon="mdi-cog-outline"
+        @click="dialogGerenciar = true">
+        Gerenciar Planilhas
+      </v-btn>
     </div>
 
     <!-- ── Seletor de funcionário (admin) ── -->
@@ -35,19 +33,19 @@
       </v-col>
     </v-row>
 
-    <!-- ── Alertas de estado ── -->
+    <!-- ── Alertas ── -->
     <v-alert v-if="!carregando && !configAtual && !isAdmin" type="info" variant="tonal" class="mb-4">
       Você ainda não possui uma planilha configurada. Contate o administrador.
     </v-alert>
     <v-alert v-if="!carregando && isAdmin && configs.length === 0" type="info" variant="tonal" class="mb-4">
-      Nenhuma planilha configurada. Clique em "Gerenciar" para criar.
+      Nenhuma planilha configurada. Clique em "Gerenciar Planilhas" para criar.
     </v-alert>
 
     <!-- ── Dashboard ── -->
     <template v-if="configAtual">
 
-      <!-- Seletor de aba + botão atualizar -->
-      <div class="d-flex align-center flex-wrap gap-3 mb-4">
+      <!-- Seletor de aba + atualizar -->
+      <div class="d-flex align-center flex-wrap gap-3 mb-5">
         <v-select
           v-model="abaSelecionada"
           :items="abas"
@@ -59,68 +57,197 @@
           style="max-width:280px"
           prepend-inner-icon="mdi-table-large"
           :loading="carregandoAbas"
-          @update:model-value="carregarDados"
+          @update:model-value="carregarDashboard"
         />
-        <v-btn icon variant="tonal" size="small" :loading="carregandoDados" @click="carregarDados">
+        <v-btn icon variant="tonal" size="small" :loading="carregandoDados" @click="carregarDashboard"
+          title="Atualizar">
           <v-icon>mdi-refresh</v-icon>
         </v-btn>
-        <span v-if="dadosSheet?.atualizado_em" class="text-caption text-medium-emphasis">
-          Atualizado: {{ dadosSheet.atualizado_em }}
+        <span v-if="dashboard?.atualizado_em" class="text-caption text-medium-emphasis">
+          Atualizado: {{ dashboard.atualizado_em }}
         </span>
       </div>
 
-      <!-- Legenda -->
-      <div class="d-flex gap-4 mb-4 flex-wrap">
+      <!-- ── KPI Cards ── -->
+      <v-row v-if="dashboard" class="mb-5" dense>
+
+        <!-- Prestação de Contas -->
+        <v-col cols="12" md="4">
+          <v-card
+            class="kpi-card"
+            :class="dashboard.kpis.prestacao.pendentes > 0 ? 'kpi-error' : 'kpi-ok'"
+            rounded="lg"
+            @click="abrirModalKpi('prestacao')"
+            style="cursor:pointer"
+          >
+            <v-card-text class="pa-4">
+              <div class="d-flex align-center justify-space-between mb-3">
+                <div class="kpi-icon-wrap" :class="dashboard.kpis.prestacao.pendentes > 0 ? 'icon-error' : 'icon-ok'">
+                  <v-icon size="22">mdi-file-check-outline</v-icon>
+                </div>
+                <v-chip
+                  v-if="dashboard.kpis.prestacao.pendentes > 0"
+                  color="error" variant="tonal" size="small"
+                >
+                  {{ dashboard.kpis.prestacao.pendentes }} atrasada{{ dashboard.kpis.prestacao.pendentes !== 1 ? 's' : '' }}
+                </v-chip>
+                <v-chip v-else color="success" variant="tonal" size="small">Em dia</v-chip>
+              </div>
+              <div class="text-subtitle-2 font-weight-semibold">Prestação de Contas</div>
+              <div class="text-caption text-medium-emphasis mt-1">
+                {{ dashboard.kpis.prestacao.total }} condomínios com prazo definido
+              </div>
+              <div v-if="dashboard.kpis.prestacao.pendentes > 0" class="text-caption mt-2" style="color:rgb(var(--v-theme-error))">
+                Clique para ver quais estão atrasadas
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+
+        <!-- Recebimentos de Relatórios -->
+        <v-col cols="12" md="4">
+          <v-card
+            class="kpi-card"
+            :class="dashboard.kpis.recebimentos.total_pendentes > 0 ? 'kpi-error' : 'kpi-ok'"
+            rounded="lg"
+            @click="abrirModalKpi('recebimentos')"
+            style="cursor:pointer"
+          >
+            <v-card-text class="pa-4">
+              <div class="d-flex align-center justify-space-between mb-3">
+                <div class="kpi-icon-wrap" :class="dashboard.kpis.recebimentos.total_pendentes > 0 ? 'icon-error' : 'icon-ok'">
+                  <v-icon size="22">mdi-inbox-arrow-down-outline</v-icon>
+                </div>
+                <v-chip
+                  v-if="dashboard.kpis.recebimentos.total_pendentes > 0"
+                  color="error" variant="tonal" size="small"
+                >
+                  {{ dashboard.kpis.recebimentos.total_pendentes }} pendente{{ dashboard.kpis.recebimentos.total_pendentes !== 1 ? 's' : '' }}
+                </v-chip>
+                <v-chip v-else color="success" variant="tonal" size="small">Em dia</v-chip>
+              </div>
+              <div class="text-subtitle-2 font-weight-semibold">Recebimentos de Relatórios</div>
+              <div class="d-flex gap-3 mt-2 flex-wrap">
+                <span class="text-caption">
+                  <span :class="dashboard.kpis.recebimentos.agua.pendentes > 0 ? 'text-error' : 'text-success'">
+                    ● Água: {{ dashboard.kpis.recebimentos.agua.pendentes }}/{{ dashboard.kpis.recebimentos.agua.total }}
+                  </span>
+                </span>
+                <span class="text-caption">
+                  <span :class="dashboard.kpis.recebimentos.gas.pendentes > 0 ? 'text-error' : 'text-success'">
+                    ● Gás: {{ dashboard.kpis.recebimentos.gas.pendentes }}/{{ dashboard.kpis.recebimentos.gas.total }}
+                  </span>
+                </span>
+                <span class="text-caption">
+                  <span :class="dashboard.kpis.recebimentos.reservas.pendentes > 0 ? 'text-error' : 'text-success'">
+                    ● Reservas: {{ dashboard.kpis.recebimentos.reservas.pendentes }}/{{ dashboard.kpis.recebimentos.reservas.total }}
+                  </span>
+                </span>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+
+        <!-- Geração de Boletos -->
+        <v-col cols="12" md="4">
+          <v-card
+            class="kpi-card"
+            :class="dashboard.kpis.boletos.atrasados > 0 ? 'kpi-error' : 'kpi-ok'"
+            rounded="lg"
+            @click="abrirModalKpi('boletos')"
+            style="cursor:pointer"
+          >
+            <v-card-text class="pa-4">
+              <div class="d-flex align-center justify-space-between mb-3">
+                <div class="kpi-icon-wrap" :class="dashboard.kpis.boletos.atrasados > 0 ? 'icon-error' : 'icon-ok'">
+                  <v-icon size="22">mdi-barcode</v-icon>
+                </div>
+                <v-chip
+                  v-if="dashboard.kpis.boletos.atrasados > 0"
+                  color="error" variant="tonal" size="small"
+                >
+                  {{ dashboard.kpis.boletos.atrasados }} atrasado{{ dashboard.kpis.boletos.atrasados !== 1 ? 's' : '' }}
+                </v-chip>
+                <v-chip v-else color="success" variant="tonal" size="small">Em dia</v-chip>
+              </div>
+              <div class="text-subtitle-2 font-weight-semibold">Geração de Boletos</div>
+              <div class="d-flex gap-4 mt-2">
+                <span class="text-caption text-success">
+                  ✔ {{ dashboard.kpis.boletos.no_prazo }} no prazo
+                </span>
+                <span v-if="dashboard.kpis.boletos.atrasados > 0" class="text-caption text-error">
+                  ✖ {{ dashboard.kpis.boletos.atrasados }} atrasado{{ dashboard.kpis.boletos.atrasados !== 1 ? 's' : '' }}
+                </span>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- ── Legenda ── -->
+      <div v-if="dashboard" class="d-flex gap-4 mb-4 flex-wrap">
         <div v-for="l in legenda" :key="l.label" class="d-flex align-center gap-2">
           <div class="legenda-dot" :style="`background:${l.cor}`"></div>
           <span class="text-caption text-medium-emphasis">{{ l.label }}</span>
         </div>
       </div>
 
-      <!-- Tabela -->
-      <div v-if="dadosSheet && !carregandoDados" class="planilha-wrapper">
+      <!-- ── Tabela ── -->
+      <div v-if="dashboard && !carregandoDados" class="planilha-wrapper">
         <div class="planilha-scroll">
           <table class="planilha-table">
             <thead>
               <tr>
-                <th class="col-label sticky-col">Item</th>
-                <th v-for="col in dadosSheet.colunas" :key="col" class="col-header">
-                  <div>{{ col }}</div>
-                  <div v-if="regraMap[col]" class="text-caption font-weight-regular" style="opacity:.7">
-                    {{ tipoLabel(regraMap[col].tipo) }}
-                    <span v-if="regraMap[col].prazo_dias"> · {{ regraMap[col].prazo_dias }}d</span>
-                  </div>
-                </th>
+                <th class="sticky-col th-label">Condomínio</th>
+                <th class="th-date">Prazo Prestação</th>
+                <th class="th-status">OK Prestação</th>
+                <th class="th-status">Água</th>
+                <th class="th-status">Gás</th>
+                <th class="th-status">Reservas</th>
+                <th class="th-date">Prazo Boleto</th>
+                <th class="th-status">Geração</th>
+                <th class="th-status">E-mail</th>
+                <th class="th-status">Impresso</th>
+                <th class="th-status">Gráfica</th>
+                <th class="th-status">Retorno</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-if="dadosSheet.linhas.length === 0">
-                <td :colspan="dadosSheet.colunas.length + 1" class="text-center text-medium-emphasis py-8">
-                  Nenhum dado encontrado nesta aba.
+              <tr v-if="dashboard.linhas.length === 0">
+                <td colspan="12" class="text-center text-medium-emphasis py-8">
+                  Nenhuma linha encontrada nesta aba.
                 </td>
               </tr>
-              <tr v-for="(linha, li) in dadosSheet.linhas" :key="li" class="planilha-row">
-                <td class="col-label sticky-col">
-                  <span class="label-text">{{ linha.label }}</span>
+              <tr v-for="(l, i) in dashboard.linhas" :key="i" class="planilha-row">
+                <td class="sticky-col td-label">{{ l.condominio }}</td>
+                <td class="td-date">{{ l.prazo_prestacao || '—' }}</td>
+                <td :class="['td-status', `st-${l.ok_prestacao.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.ok_prestacao) }}</div>
                 </td>
-                <td
-                  v-for="(celula, ci) in linha.celulas"
-                  :key="ci"
-                  class="col-celula"
-                  :class="`status-${celula.status}`"
-                >
-                  <div class="celula-inner">
-                    <template v-if="regraMap[dadosSheet.colunas[ci]]?.tipo === 'booleano'">
-                      <v-icon
-                        :color="isCelulaPreenchida(celula.valor) ? 'success' : 'grey-lighten-1'"
-                        size="20"
-                      >
-                        {{ isCelulaPreenchida(celula.valor) ? 'mdi-check-circle' : 'mdi-circle-outline' }}
-                      </v-icon>
-                    </template>
-                    <span v-else-if="celula.valor" class="celula-valor">{{ celula.valor }}</span>
-                    <span v-else class="celula-vazia">—</span>
-                  </div>
+                <td :class="['td-status', `st-${l.recebimento_agua.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.recebimento_agua) }}</div>
+                </td>
+                <td :class="['td-status', `st-${l.recebimento_gas.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.recebimento_gas) }}</div>
+                </td>
+                <td :class="['td-status', `st-${l.recebimento_reservas.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.recebimento_reservas) }}</div>
+                </td>
+                <td class="td-date">{{ l.prazo_boleto || '—' }}</td>
+                <td :class="['td-status', `st-${l.geracao_boleto.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.geracao_boleto) }}</div>
+                </td>
+                <td :class="['td-status', `st-${l.enviado_email.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.enviado_email) }}</div>
+                </td>
+                <td :class="['td-status', `st-${l.impresso_pratika.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.impresso_pratika) }}</div>
+                </td>
+                <td :class="['td-status', `st-${l.enviado_grafica.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.enviado_grafica) }}</div>
+                </td>
+                <td :class="['td-status', `st-${l.retorno_grafica.status}`]">
+                  <div class="celula-inner">{{ celulaDisplay(l.retorno_grafica) }}</div>
                 </td>
               </tr>
             </tbody>
@@ -132,30 +259,100 @@
         <v-progress-circular indeterminate color="primary" />
       </div>
 
-      <v-alert
-        v-if="!carregandoDados && !dadosSheet && abaSelecionada"
-        type="warning" variant="tonal" class="mt-4"
-      >
-        Não foi possível carregar os dados desta aba.
-      </v-alert>
-
     </template>
 
     <!-- ════════════════════════════════════════════════════════════════════ -->
-    <!-- Dialog: gerenciar configs + regras (admin)                          -->
+    <!-- Modal KPI detalhe                                                    -->
     <!-- ════════════════════════════════════════════════════════════════════ -->
-    <v-dialog v-model="dialogGerenciar" max-width="780" scrollable>
-      <v-card>
+    <v-dialog v-model="modalKpi.show" max-width="500">
+      <v-card rounded="lg">
+        <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
+          <span class="text-subtitle-1 font-weight-medium">{{ modalKpi.titulo }}</span>
+          <v-btn icon variant="text" size="small" @click="modalKpi.show = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4" style="max-height:60vh;overflow-y:auto">
+
+          <!-- Prestação -->
+          <template v-if="modalKpi.tipo === 'prestacao'">
+            <v-alert v-if="dashboard.kpis.prestacao.pendentes === 0" type="success" variant="tonal" density="compact">
+              Todas as prestações estão em dia!
+            </v-alert>
+            <v-list v-else lines="one" density="compact">
+              <v-list-item v-for="nome in dashboard.kpis.prestacao.lista" :key="nome"
+                prepend-icon="mdi-alert-circle-outline" color="error">
+                <template #title><span class="text-body-2">{{ nome }}</span></template>
+              </v-list-item>
+            </v-list>
+          </template>
+
+          <!-- Recebimentos -->
+          <template v-else-if="modalKpi.tipo === 'recebimentos'">
+            <div v-if="dashboard.kpis.recebimentos.total_pendentes === 0">
+              <v-alert type="success" variant="tonal" density="compact">
+                Todos os relatórios foram recebidos!
+              </v-alert>
+            </div>
+            <div v-else>
+              <template v-for="(grupo, key) in recebGrupos" :key="key">
+                <div v-if="dashboard.kpis.recebimentos[key].pendentes > 0" class="mb-4">
+                  <div class="text-subtitle-2 mb-2 d-flex align-center gap-2">
+                    <v-icon size="16" color="error">mdi-circle</v-icon>
+                    {{ grupo }} —
+                    <span class="text-error">{{ dashboard.kpis.recebimentos[key].pendentes }} pendente{{ dashboard.kpis.recebimentos[key].pendentes !== 1 ? 's' : '' }}</span>
+                  </div>
+                  <v-list lines="one" density="compact" class="rounded border">
+                    <template v-for="(nome, ni) in dashboard.kpis.recebimentos[key].lista" :key="ni">
+                      <v-divider v-if="ni > 0" />
+                      <v-list-item prepend-icon="mdi-home-outline">
+                        <template #title><span class="text-body-2">{{ nome }}</span></template>
+                      </v-list-item>
+                    </template>
+                  </v-list>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- Boletos -->
+          <template v-else-if="modalKpi.tipo === 'boletos'">
+            <div class="d-flex gap-4 mb-3">
+              <v-chip color="success" variant="tonal">✔ {{ dashboard.kpis.boletos.no_prazo }} no prazo</v-chip>
+              <v-chip color="error" variant="tonal">✖ {{ dashboard.kpis.boletos.atrasados }} atrasados</v-chip>
+            </div>
+            <v-alert v-if="dashboard.kpis.boletos.atrasados === 0" type="success" variant="tonal" density="compact">
+              Todos os boletos foram gerados no prazo!
+            </v-alert>
+            <v-list v-else lines="one" density="compact" class="rounded border">
+              <template v-for="(nome, ni) in dashboard.kpis.boletos.lista_atrasados" :key="ni">
+                <v-divider v-if="ni > 0" />
+                <v-list-item prepend-icon="mdi-alert-circle-outline" color="error">
+                  <template #title><span class="text-body-2">{{ nome }}</span></template>
+                </v-list-item>
+              </template>
+            </v-list>
+          </template>
+
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- Dialog: gerenciar configs (admin)                                    -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <v-dialog v-model="dialogGerenciar" max-width="620" scrollable>
+      <v-card rounded="lg">
         <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
           <span class="text-subtitle-1 font-weight-medium">Gerenciar Planilhas</span>
-          <v-btn icon variant="text" @click="dialogGerenciar = false">
+          <v-btn icon variant="text" size="small" @click="dialogGerenciar = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4" style="max-height:75vh">
 
-          <!-- Lista configs -->
           <div class="d-flex align-center justify-space-between mb-3">
             <span class="text-subtitle-2">Planilhas vinculadas</span>
             <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus"
@@ -167,15 +364,20 @@
           <v-list v-if="configs.length" lines="two" class="rounded border mb-4">
             <template v-for="(cfg, idx) in configs" :key="cfg.id">
               <v-divider v-if="idx > 0" />
-              <v-list-item :subtitle="cfg.spreadsheet_id || 'Sem planilha vinculada'"
-                :class="{ 'bg-blue-lighten-5': configEditando?.id === cfg.id }">
+              <v-list-item>
                 <template #title>{{ cfg.funcionario_nome }} — {{ cfg.nome }}</template>
+                <template #subtitle>
+                  <span v-if="cfg.spreadsheet_id" class="text-caption">
+                    {{ cfg.spreadsheet_id.substring(0, 30) }}…
+                  </span>
+                  <span v-else class="text-caption text-error">Sem planilha vinculada</span>
+                </template>
                 <template #append>
                   <v-btn icon size="x-small" variant="text" @click="abrirFormConfig(cfg)">
                     <v-icon size="16">mdi-pencil-outline</v-icon>
                   </v-btn>
-                  <v-btn icon size="x-small" variant="text" color="error" @click="confirmar(
-                    `Excluir planilha de ${cfg.funcionario_nome}?`, () => deletarConfig(cfg))">
+                  <v-btn icon size="x-small" variant="text" color="error"
+                    @click="confirmarExclusao('Excluir planilha de ' + cfg.funcionario_nome + '?', () => deletarConfig(cfg))">
                     <v-icon size="16">mdi-delete-outline</v-icon>
                   </v-btn>
                 </template>
@@ -190,9 +392,7 @@
           <v-expand-transition>
             <div v-if="formConfig.aberto">
               <v-divider class="mb-4" />
-              <div class="text-subtitle-2 mb-3">
-                {{ formConfig.id ? 'Editar planilha' : 'Nova planilha' }}
-              </div>
+              <div class="text-subtitle-2 mb-3">{{ formConfig.id ? 'Editar' : 'Nova planilha' }}</div>
               <v-row dense>
                 <v-col cols="12" md="6">
                   <v-select
@@ -209,7 +409,7 @@
                 <v-col cols="12" md="6">
                   <v-text-field
                     v-model="formConfig.nome"
-                    label="Nome da planilha"
+                    label="Nome"
                     variant="outlined"
                     density="comfortable"
                   />
@@ -217,43 +417,10 @@
                 <v-col cols="12">
                   <v-text-field
                     v-model="formConfig.spreadsheet_id"
-                    label="ID do Google Sheets (da URL)"
+                    label="ID do Google Sheets"
                     variant="outlined"
                     density="comfortable"
-                    hint="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-                    persistent-hint
-                  />
-                </v-col>
-                <v-col cols="4">
-                  <v-text-field
-                    v-model.number="formConfig.linha_cabecalho"
-                    label="Linha do cabeçalho"
-                    type="number"
-                    variant="outlined"
-                    density="comfortable"
-                    hint="Qual linha tem os títulos das colunas"
-                    persistent-hint
-                  />
-                </v-col>
-                <v-col cols="4">
-                  <v-text-field
-                    v-model.number="formConfig.linha_dados_inicio"
-                    label="Início dos dados"
-                    type="number"
-                    variant="outlined"
-                    density="comfortable"
-                    hint="Primeira linha com dados reais"
-                    persistent-hint
-                  />
-                </v-col>
-                <v-col cols="4">
-                  <v-text-field
-                    v-model.number="formConfig.coluna_label_indice"
-                    label="Coluna do rótulo (0=A)"
-                    type="number"
-                    variant="outlined"
-                    density="comfortable"
-                    hint="Índice da coluna com nomes dos itens"
+                    hint="Cole o ID da URL da planilha (entre /d/ e /edit)"
                     persistent-hint
                   />
                 </v-col>
@@ -268,97 +435,21 @@
             </div>
           </v-expand-transition>
 
-          <!-- Regras de cor da config selecionada -->
-          <template v-if="configEditando">
-            <v-divider class="my-4" />
-            <div class="d-flex align-center justify-space-between mb-3">
-              <div>
-                <span class="text-subtitle-2">Regras de cor</span>
-                <div class="text-caption text-medium-emphasis">
-                  Defina prazo (dias) para cada coluna da planilha de {{ configEditando.funcionario_nome }}
-                </div>
-              </div>
-              <v-btn size="small" color="secondary" variant="tonal" prepend-icon="mdi-plus"
-                @click="abrirFormRegra()">
-                Nova regra
-              </v-btn>
-            </div>
-
-            <v-list v-if="configEditando.regras.length" lines="two" class="rounded border mb-3">
-              <template v-for="(regra, ri) in configEditando.regras" :key="regra.id">
-                <v-divider v-if="ri > 0" />
-                <v-list-item>
-                  <template #title>{{ regra.coluna_nome }}</template>
-                  <template #subtitle>
-                    {{ tipoLabel(regra.tipo) }}
-                    <span v-if="regra.prazo_dias"> · Prazo: {{ regra.prazo_dias }} dias após início do mês</span>
-                    <span v-else> · Sem prazo (apenas exibição)</span>
-                  </template>
-                  <template #append>
-                    <v-btn icon size="x-small" variant="text" @click="abrirFormRegra(regra)">
-                      <v-icon size="16">mdi-pencil-outline</v-icon>
-                    </v-btn>
-                    <v-btn icon size="x-small" variant="text" color="error"
-                      @click="confirmar(`Excluir regra "${regra.coluna_nome}"?`, () => deletarRegra(regra))">
-                      <v-icon size="16">mdi-delete-outline</v-icon>
-                    </v-btn>
-                  </template>
-                </v-list-item>
-              </template>
-            </v-list>
-            <v-alert v-else type="info" variant="tonal" density="compact" class="mb-3">
-              Nenhuma regra. Sem regras, todas as células ficam sem cor.
-            </v-alert>
-
-            <!-- Form regra -->
-            <v-expand-transition>
-              <div v-if="formRegra.aberto">
-                <v-row dense class="mt-1">
-                  <v-col cols="12" md="4">
-                    <v-text-field
-                      v-model="formRegra.coluna_nome"
-                      label="Nome da coluna (igual ao cabeçalho)"
-                      variant="outlined"
-                      density="comfortable"
-                    />
-                  </v-col>
-                  <v-col cols="6" md="3">
-                    <v-select
-                      v-model="formRegra.tipo"
-                      :items="tiposColuna"
-                      item-title="label"
-                      item-value="value"
-                      label="Tipo"
-                      variant="outlined"
-                      density="comfortable"
-                    />
-                  </v-col>
-                  <v-col cols="6" md="3">
-                    <v-text-field
-                      v-model.number="formRegra.prazo_dias"
-                      label="Prazo (dias)"
-                      type="number"
-                      variant="outlined"
-                      density="comfortable"
-                      hint="Dias após 1º do mês"
-                      persistent-hint
-                    />
-                  </v-col>
-                  <v-col cols="12" md="2" class="d-flex align-center justify-end gap-2">
-                    <v-btn variant="text" size="small" @click="formRegra.aberto = false">
-                      Cancelar
-                    </v-btn>
-                    <v-btn color="primary" variant="tonal" size="small" @click="salvarRegra"
-                      :loading="salvando" :disabled="!formRegra.coluna_nome">
-                      {{ formRegra.id ? 'Atualizar' : 'Criar' }}
-                    </v-btn>
-                  </v-col>
-                </v-row>
-              </div>
-            </v-expand-transition>
-          </template>
-
         </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- ── Confirm dialog ── -->
+    <v-dialog v-model="confirmDlg.show" max-width="340">
+      <v-card rounded="lg">
+        <v-card-text class="pa-5">{{ confirmDlg.msg }}</v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="confirmDlg.show = false">Cancelar</v-btn>
+          <v-btn color="error" variant="tonal" @click="confirmDlg.action" :loading="salvando">
+            Excluir
+          </v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -366,20 +457,6 @@
     <v-snackbar v-model="snack.show" :color="snack.color" :timeout="3000" location="bottom right">
       {{ snack.msg }}
     </v-snackbar>
-
-    <!-- ── Confirm dialog ── -->
-    <v-dialog v-model="confirmDlg.show" max-width="340">
-      <v-card>
-        <v-card-text class="pa-5">{{ confirmDlg.msg }}</v-card-text>
-        <v-card-actions class="pa-4 pt-0">
-          <v-spacer />
-          <v-btn variant="text" @click="confirmDlg.show = false">Cancelar</v-btn>
-          <v-btn color="error" variant="tonal" @click="confirmDlg.action" :loading="salvando">
-            Confirmar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
 
   </v-container>
 </template>
@@ -397,58 +474,46 @@ const carregandoAbas  = ref(false)
 const carregandoDados = ref(false)
 const salvando        = ref(false)
 
-const configs            = ref([])
-const usuarios           = ref([])
+const configs             = ref([])
+const usuarios            = ref([])
 const configSelecionadaId = ref(null)
-const configAtual        = ref(null)
-const configEditando     = ref(null)   // config aberta no gerenciador
-
-const abas           = ref([])
-const abaSelecionada = ref(null)
-const dadosSheet     = ref(null)
+const configAtual         = ref(null)
+const abas                = ref([])
+const abaSelecionada      = ref(null)
+const dashboard           = ref(null)
 
 const dialogGerenciar = ref(false)
-
 const formConfig = ref({
-  aberto: false, id: null, funcionario_id: null, nome: '',
-  spreadsheet_id: '', linha_cabecalho: 1, linha_dados_inicio: 2, coluna_label_indice: 0,
+  aberto: false, id: null, funcionario_id: null, nome: '', spreadsheet_id: '',
 })
-const formRegra = ref({ aberto: false, id: null, coluna_nome: '', tipo: 'texto', prazo_dias: null })
 
-const snack     = ref({ show: false, color: 'success', msg: '' })
+const modalKpi = ref({ show: false, tipo: '', titulo: '' })
+const snack    = ref({ show: false, color: 'success', msg: '' })
 const confirmDlg = ref({ show: false, msg: '', action: null })
 
-const tiposColuna = [
-  { label: 'Texto', value: 'texto' },
-  { label: 'Data', value: 'data' },
-  { label: 'Booleano (Sim/Não)', value: 'booleano' },
-]
-
 const legenda = [
-  { label: 'Concluído', cor: '#4caf50' },
+  { label: 'Concluído no prazo', cor: '#4caf50' },
   { label: 'Atrasado', cor: '#f44336' },
-  { label: 'Vence em breve', cor: '#ff9800' },
-  { label: 'Pendente / Sem prazo', cor: 'rgba(128,128,128,0.15)' },
+  { label: 'Vence em breve (2 dias)', cor: '#ff9800' },
+  { label: 'Pendente / Sem prazo', cor: 'rgba(128,128,128,0.1)' },
 ]
 
-// ── Computed ──────────────────────────────────────────────────────────────────
-const regraMap = computed(() => {
-  if (!configAtual.value) return {}
-  return Object.fromEntries(configAtual.value.regras.map(r => [r.coluna_nome, r]))
-})
+const recebGrupos = { agua: 'Relatório de Água', gas: 'Relatório de Gás', reservas: 'Relatório de Reservas' }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const tipoLabel = (t) => ({ texto: 'Texto', data: 'Data', booleano: 'Sim/Não' }[t] || t)
-
-const isCelulaPreenchida = (v) =>
-  Boolean(v && v.trim() && !['0', 'none', ''].includes(v.trim().toLowerCase()))
-
 function mostrarSnack(msg, color = 'success') {
   snack.value = { show: true, color, msg }
 }
+function confirmarExclusao(msg, action) {
+  confirmDlg.value = {
+    show: true, msg,
+    action: async () => { await action(); confirmDlg.value.show = false },
+  }
+}
 
-function confirmar(msg, action) {
-  confirmDlg.value = { show: true, msg, action: async () => { await action(); confirmDlg.value.show = false } }
+function celulaDisplay(celula) {
+  if (!celula.valor) return '—'
+  return celula.valor
 }
 
 async function apiFetch(url, opts = {}) {
@@ -476,8 +541,7 @@ async function init() {
       usuarios.value = users
     } else {
       try {
-        const cfg = await apiFetch('/planilhas/minha')
-        configAtual.value = cfg
+        configAtual.value = await apiFetch('/planilhas/minha')
         await carregarAbas()
       } catch (e) {
         if (!e.message.includes('404') && !e.message.includes('Planilha_nao_configurada')) throw e
@@ -494,7 +558,7 @@ async function onConfigChange(id) {
   configAtual.value = id ? configs.value.find(c => c.id === id) || null : null
   abas.value = []
   abaSelecionada.value = null
-  dadosSheet.value = null
+  dashboard.value = null
   if (configAtual.value) await carregarAbas()
 }
 
@@ -503,9 +567,9 @@ async function carregarAbas() {
   carregandoAbas.value = true
   try {
     abas.value = await apiFetch(`/planilhas/configs/${configAtual.value.id}/abas`)
-    if (abas.value.length && !abaSelecionada.value) {
+    if (abas.value.length) {
       abaSelecionada.value = abas.value[0].title
-      await carregarDados()
+      await carregarDashboard()
     }
   } catch (e) {
     mostrarSnack(e.message, 'error')
@@ -514,13 +578,13 @@ async function carregarAbas() {
   }
 }
 
-async function carregarDados() {
+async function carregarDashboard() {
   if (!configAtual.value || !abaSelecionada.value) return
   carregandoDados.value = true
-  dadosSheet.value = null
+  dashboard.value = null
   try {
-    dadosSheet.value = await apiFetch(
-      `/planilhas/configs/${configAtual.value.id}/dados?aba=${encodeURIComponent(abaSelecionada.value)}`
+    dashboard.value = await apiFetch(
+      `/planilhas/configs/${configAtual.value.id}/dashboard?aba=${encodeURIComponent(abaSelecionada.value)}`
     )
   } catch (e) {
     mostrarSnack(e.message, 'error')
@@ -529,30 +593,21 @@ async function carregarDados() {
   }
 }
 
-// ── Gerenciar configs ─────────────────────────────────────────────────────────
-async function abrirGerenciar() {
-  if (!usuarios.value.length) {
-    usuarios.value = await apiFetch('/planilhas/usuarios').catch(() => [])
+// ── KPI modal ─────────────────────────────────────────────────────────────────
+function abrirModalKpi(tipo) {
+  const titulos = {
+    prestacao: 'Prestação de Contas Atrasadas',
+    recebimentos: 'Recebimentos de Relatórios Pendentes',
+    boletos: 'Geração de Boletos',
   }
-  configEditando.value = null
-  formConfig.value.aberto = false
-  formRegra.value.aberto = false
-  dialogGerenciar.value = true
+  modalKpi.value = { show: true, tipo, titulo: titulos[tipo] }
 }
 
+// ── Config CRUD ───────────────────────────────────────────────────────────────
 function abrirFormConfig(cfg = null) {
-  configEditando.value = cfg || null
   formConfig.value = cfg
-    ? {
-        aberto: true, id: cfg.id, funcionario_id: cfg.funcionario_id, nome: cfg.nome,
-        spreadsheet_id: cfg.spreadsheet_id, linha_cabecalho: cfg.linha_cabecalho,
-        linha_dados_inicio: cfg.linha_dados_inicio, coluna_label_indice: cfg.coluna_label_indice,
-      }
-    : {
-        aberto: true, id: null, funcionario_id: null, nome: '',
-        spreadsheet_id: '', linha_cabecalho: 1, linha_dados_inicio: 2, coluna_label_indice: 0,
-      }
-  formRegra.value.aberto = false
+    ? { aberto: true, id: cfg.id, funcionario_id: cfg.funcionario_id, nome: cfg.nome, spreadsheet_id: cfg.spreadsheet_id }
+    : { aberto: true, id: null, funcionario_id: null, nome: '', spreadsheet_id: '' }
 }
 
 async function salvarConfig() {
@@ -562,9 +617,6 @@ async function salvarConfig() {
       funcionario_id: formConfig.value.funcionario_id,
       nome: formConfig.value.nome,
       spreadsheet_id: formConfig.value.spreadsheet_id,
-      linha_cabecalho: formConfig.value.linha_cabecalho,
-      linha_dados_inicio: formConfig.value.linha_dados_inicio,
-      coluna_label_indice: formConfig.value.coluna_label_indice,
     }
     if (formConfig.value.id) {
       const updated = await apiFetch(`/planilhas/configs/${formConfig.value.id}`, {
@@ -572,11 +624,9 @@ async function salvarConfig() {
       })
       const idx = configs.value.findIndex(c => c.id === updated.id)
       if (idx >= 0) configs.value[idx] = updated
-      configEditando.value = updated
     } else {
       const created = await apiFetch('/planilhas/configs', { method: 'POST', body: JSON.stringify(body) })
       configs.value.push(created)
-      configEditando.value = created
     }
     formConfig.value.aberto = false
     mostrarSnack('Planilha salva')
@@ -595,72 +645,9 @@ async function deletarConfig(cfg) {
     if (configSelecionadaId.value === cfg.id) {
       configSelecionadaId.value = null
       configAtual.value = null
-      dadosSheet.value = null
+      dashboard.value = null
     }
-    if (configEditando.value?.id === cfg.id) configEditando.value = null
     mostrarSnack('Planilha excluída')
-  } catch (e) {
-    mostrarSnack(e.message, 'error')
-  } finally {
-    salvando.value = false
-  }
-}
-
-// ── Regras de cor ─────────────────────────────────────────────────────────────
-function abrirFormRegra(regra = null) {
-  formRegra.value = regra
-    ? { aberto: true, id: regra.id, coluna_nome: regra.coluna_nome, tipo: regra.tipo, prazo_dias: regra.prazo_dias }
-    : { aberto: true, id: null, coluna_nome: '', tipo: 'texto', prazo_dias: null }
-}
-
-async function salvarRegra() {
-  if (!configEditando.value) return
-  salvando.value = true
-  try {
-    const body = {
-      coluna_nome: formRegra.value.coluna_nome,
-      tipo: formRegra.value.tipo,
-      prazo_dias: formRegra.value.prazo_dias || null,
-    }
-    if (formRegra.value.id) {
-      const updated = await apiFetch(`/planilhas/regras/${formRegra.value.id}`, {
-        method: 'PUT', body: JSON.stringify(body),
-      })
-      const idx = configEditando.value.regras.findIndex(r => r.id === updated.id)
-      if (idx >= 0) configEditando.value.regras[idx] = updated
-    } else {
-      const created = await apiFetch(`/planilhas/configs/${configEditando.value.id}/regras`, {
-        method: 'POST', body: JSON.stringify(body),
-      })
-      configEditando.value.regras.push(created)
-    }
-    // Sincroniza com configs global
-    const gi = configs.value.findIndex(c => c.id === configEditando.value.id)
-    if (gi >= 0) configs.value[gi] = { ...configEditando.value }
-    // Sincroniza com configAtual se for o mesmo
-    if (configAtual.value?.id === configEditando.value.id) {
-      configAtual.value = { ...configEditando.value }
-    }
-    formRegra.value.aberto = false
-    mostrarSnack('Regra salva')
-  } catch (e) {
-    mostrarSnack(e.message, 'error')
-  } finally {
-    salvando.value = false
-  }
-}
-
-async function deletarRegra(regra) {
-  salvando.value = true
-  try {
-    await apiFetch(`/planilhas/regras/${regra.id}`, { method: 'DELETE' })
-    configEditando.value.regras = configEditando.value.regras.filter(r => r.id !== regra.id)
-    const gi = configs.value.findIndex(c => c.id === configEditando.value.id)
-    if (gi >= 0) configs.value[gi] = { ...configEditando.value }
-    if (configAtual.value?.id === configEditando.value.id) {
-      configAtual.value = { ...configEditando.value }
-    }
-    mostrarSnack('Regra excluída')
   } catch (e) {
     mostrarSnack(e.message, 'error')
   } finally {
@@ -672,82 +659,80 @@ onMounted(init)
 </script>
 
 <style scoped>
-.legenda-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
+/* KPI cards */
+.kpi-card { transition: box-shadow 0.15s, transform 0.1s; }
+.kpi-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important; transform: translateY(-1px); }
+.kpi-error { border-left: 4px solid rgb(var(--v-theme-error)) !important; }
+.kpi-ok    { border-left: 4px solid rgb(var(--v-theme-success)) !important; }
 
+.kpi-icon-wrap {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.icon-error { background: rgba(var(--v-theme-error), 0.12); color: rgb(var(--v-theme-error)); }
+.icon-ok    { background: rgba(var(--v-theme-success), 0.12); color: rgb(var(--v-theme-success)); }
+
+/* Legenda */
+.legenda-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+/* Tabela */
 .planilha-wrapper {
-  border: 1px solid rgba(128, 128, 128, 0.2);
-  border-radius: 8px;
-  overflow: hidden;
+  border: 1px solid rgba(128,128,128,0.2);
+  border-radius: 8px; overflow: hidden;
 }
-.planilha-scroll {
-  overflow-x: auto;
-}
-.planilha-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 500px;
-}
-.planilha-table thead tr {
-  background: rgba(128, 128, 128, 0.06);
-}
+.planilha-scroll { overflow-x: auto; }
+.planilha-table  { width: 100%; border-collapse: collapse; min-width: 900px; }
+
+.planilha-table thead tr { background: rgba(128,128,128,0.06); }
 .planilha-table th {
-  padding: 10px 14px;
+  padding: 10px 12px;
   text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(128,128,128,0.15);
   white-space: nowrap;
 }
-.col-header {
-  min-width: 100px;
-}
+.th-label  { min-width: 160px; }
+.th-date   { min-width: 110px; }
+.th-status { min-width: 90px; text-align: center; }
+
+/* Sticky col */
 .sticky-col {
-  position: sticky;
-  left: 0;
-  z-index: 2;
+  position: sticky; left: 0; z-index: 2;
   background: inherit;
-  min-width: 150px;
-  max-width: 220px;
 }
 thead .sticky-col {
-  background: rgba(128, 128, 128, 0.06) !important;
+  background: rgba(128,128,128,0.06) !important;
   z-index: 3;
 }
-.planilha-row td {
-  border-bottom: 1px solid rgba(128, 128, 128, 0.1);
-}
+
+/* Linhas */
+.planilha-row td { border-bottom: 1px solid rgba(128,128,128,0.08); }
 .planilha-row:last-child td { border-bottom: none; }
-.planilha-row:hover td { background: rgba(128, 128, 128, 0.03); }
+.planilha-row:hover td { background: rgba(128,128,128,0.03); }
 
-.col-celula { padding: 0; }
+.td-label { padding: 9px 12px; font-size: 13px; font-weight: 500; }
+.td-date  { padding: 9px 12px; font-size: 12px; color: rgba(128,128,128,0.8); }
+.td-status { padding: 0; }
 .celula-inner {
-  padding: 9px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  min-width: 90px;
+  padding: 8px 12px; min-height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 500;
 }
-.celula-valor { font-size: 13px; font-weight: 500; }
-.celula-vazia { font-size: 13px; color: rgba(128,128,128,0.4); }
-.label-text { font-size: 13px; font-weight: 500; }
 
-/* Status colors */
-.status-success { background: rgba(76, 175, 80, 0.15) !important; }
-.status-error   { background: rgba(244, 67, 54, 0.15) !important; }
-.status-warning { background: rgba(255, 152, 0, 0.15) !important; }
-.status-pending { background: rgba(128, 128, 128, 0.06) !important; }
-.status-none    { background: transparent; }
+/* Status */
+.st-success { background: rgba(76,175,80,0.15) !important; color: #2e7d32; }
+.st-error   { background: rgba(244,67,54,0.15) !important; color: #c62828; }
+.st-warning { background: rgba(255,152,0,0.15) !important; color: #e65100; }
+.st-pending { background: rgba(128,128,128,0.06) !important; }
+.st-none    { background: transparent; }
 
+/* Dark mode */
 .v-theme--pratikaDark .planilha-wrapper { border-color: rgba(255,255,255,0.1); }
 .v-theme--pratikaDark .planilha-table thead tr { background: rgba(255,255,255,0.04); }
 .v-theme--pratikaDark thead .sticky-col { background: rgba(255,255,255,0.04) !important; }
 .v-theme--pratikaDark .planilha-row td { border-bottom-color: rgba(255,255,255,0.06); }
+.v-theme--pratikaDark .st-success { color: #a5d6a7; }
+.v-theme--pratikaDark .st-error   { color: #ef9a9a; }
+.v-theme--pratikaDark .st-warning { color: #ffcc80; }
 </style>
