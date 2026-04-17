@@ -10,14 +10,15 @@
         </p>
       </div>
       <div class="d-flex align-center gap-2">
-        <v-btn v-if="isAdmin" color="primary" variant="tonal" prepend-icon="mdi-cog-outline" @click="abrirGerenciarConfigs">
-          Gerenciar Planilhas
+        <v-btn v-if="isAdmin" color="primary" variant="tonal" prepend-icon="mdi-cog-outline"
+          @click="abrirGerenciar">
+          Gerenciar
         </v-btn>
       </div>
     </div>
 
     <!-- ── Seletor de funcionário (admin) ── -->
-    <v-row v-if="isAdmin" class="mb-4">
+    <v-row v-if="isAdmin" class="mb-2">
       <v-col cols="12" md="4">
         <v-select
           v-model="configSelecionadaId"
@@ -34,134 +35,92 @@
       </v-col>
     </v-row>
 
-    <!-- ── Estado: sem planilha ── -->
+    <!-- ── Alertas de estado ── -->
     <v-alert v-if="!carregando && !configAtual && !isAdmin" type="info" variant="tonal" class="mb-4">
-      Você ainda não possui uma planilha configurada. Entre em contato com o administrador.
+      Você ainda não possui uma planilha configurada. Contate o administrador.
     </v-alert>
     <v-alert v-if="!carregando && isAdmin && configs.length === 0" type="info" variant="tonal" class="mb-4">
-      Nenhuma planilha configurada ainda. Clique em "Gerenciar Planilhas" para criar.
+      Nenhuma planilha configurada. Clique em "Gerenciar" para criar.
     </v-alert>
 
     <!-- ── Dashboard ── -->
     <template v-if="configAtual">
 
-      <!-- Navegação de período -->
-      <div class="d-flex align-center justify-space-between mb-4 flex-wrap gap-3">
-        <div class="d-flex align-center gap-2">
-          <v-btn icon variant="text" @click="mudarMes(-1)">
-            <v-icon>mdi-chevron-left</v-icon>
-          </v-btn>
-          <span class="text-subtitle-1 font-weight-medium" style="min-width:160px;text-align:center;">
-            {{ nomeMes(mesSelecionado) }} {{ anoSelecionado }}
-          </span>
-          <v-btn icon variant="text" @click="mudarMes(1)">
-            <v-icon>mdi-chevron-right</v-icon>
-          </v-btn>
-        </div>
-
-        <div class="d-flex align-center gap-2">
-          <v-chip v-if="periodoAtual" size="small" color="success" variant="tonal">
-            <v-icon start size="14">mdi-check-circle-outline</v-icon>
-            Período disponível
-          </v-chip>
-          <v-chip v-else size="small" color="warning" variant="tonal">
-            <v-icon start size="14">mdi-clock-outline</v-icon>
-            Sem dados este mês
-          </v-chip>
-          <v-btn v-if="isAdmin && !periodoAtual" color="primary" size="small" variant="tonal"
-            prepend-icon="mdi-plus" @click="criarPeriodo" :loading="salvando">
-            Criar período
-          </v-btn>
-          <v-btn v-if="isAdmin && periodoAtual" color="secondary" size="small" variant="tonal"
-            prepend-icon="mdi-plus" @click="dialogLinha = true">
-            Adicionar linha
-          </v-btn>
-        </div>
+      <!-- Seletor de aba + botão atualizar -->
+      <div class="d-flex align-center flex-wrap gap-3 mb-4">
+        <v-select
+          v-model="abaSelecionada"
+          :items="abas"
+          item-title="title"
+          item-value="title"
+          label="Aba / Período"
+          variant="outlined"
+          density="comfortable"
+          style="max-width:280px"
+          prepend-inner-icon="mdi-table-large"
+          :loading="carregandoAbas"
+          @update:model-value="carregarDados"
+        />
+        <v-btn icon variant="tonal" size="small" :loading="carregandoDados" @click="carregarDados">
+          <v-icon>mdi-refresh</v-icon>
+        </v-btn>
+        <span v-if="dadosSheet?.atualizado_em" class="text-caption text-medium-emphasis">
+          Atualizado: {{ dadosSheet.atualizado_em }}
+        </span>
       </div>
 
       <!-- Legenda -->
-      <div class="d-flex gap-3 mb-4 flex-wrap">
-        <div class="legenda-item">
-          <div class="legenda-dot" style="background:#4caf50"></div>
-          <span class="text-caption text-medium-emphasis">Concluído</span>
-        </div>
-        <div class="legenda-item">
-          <div class="legenda-dot" style="background:#f44336"></div>
-          <span class="text-caption text-medium-emphasis">Atrasado</span>
-        </div>
-        <div class="legenda-item">
-          <div class="legenda-dot" style="background:#ff9800"></div>
-          <span class="text-caption text-medium-emphasis">Vence em breve</span>
-        </div>
-        <div class="legenda-item">
-          <div class="legenda-dot" style="background:rgba(128,128,128,0.15)"></div>
-          <span class="text-caption text-medium-emphasis">Pendente</span>
+      <div class="d-flex gap-4 mb-4 flex-wrap">
+        <div v-for="l in legenda" :key="l.label" class="d-flex align-center gap-2">
+          <div class="legenda-dot" :style="`background:${l.cor}`"></div>
+          <span class="text-caption text-medium-emphasis">{{ l.label }}</span>
         </div>
       </div>
 
-      <!-- Tabela de dashboard -->
-      <div v-if="periodoAtual && !carregandoPeriodo" class="planilha-wrapper">
+      <!-- Tabela -->
+      <div v-if="dadosSheet && !carregandoDados" class="planilha-wrapper">
         <div class="planilha-scroll">
           <table class="planilha-table">
             <thead>
               <tr>
-                <th class="col-label sticky-col">Item / Condomínio</th>
-                <th v-for="col in configAtual.colunas" :key="col.id" class="col-header">
-                  <div class="col-header-inner">
-                    <span>{{ col.nome }}</span>
-                    <v-chip v-if="col.prazo_dias" size="x-small" color="info" variant="tonal" class="ml-1">
-                      {{ col.prazo_dias }}d
-                    </v-chip>
+                <th class="col-label sticky-col">Item</th>
+                <th v-for="col in dadosSheet.colunas" :key="col" class="col-header">
+                  <div>{{ col }}</div>
+                  <div v-if="regraMap[col]" class="text-caption font-weight-regular" style="opacity:.7">
+                    {{ tipoLabel(regraMap[col].tipo) }}
+                    <span v-if="regraMap[col].prazo_dias"> · {{ regraMap[col].prazo_dias }}d</span>
                   </div>
-                  <div class="text-caption text-medium-emphasis mt-1">{{ tipoLabel(col.tipo) }}</div>
                 </th>
-                <th v-if="isAdmin" class="col-acoes">Ações</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-if="periodoAtual.linhas.length === 0">
-                <td :colspan="configAtual.colunas.length + (isAdmin ? 2 : 1)" class="text-center text-medium-emphasis py-8">
-                  Nenhuma linha cadastrada. Clique em "Adicionar linha" para começar.
+              <tr v-if="dadosSheet.linhas.length === 0">
+                <td :colspan="dadosSheet.colunas.length + 1" class="text-center text-medium-emphasis py-8">
+                  Nenhum dado encontrado nesta aba.
                 </td>
               </tr>
-              <tr v-for="linha in periodoAtual.linhas" :key="linha.id" class="planilha-row">
+              <tr v-for="(linha, li) in dadosSheet.linhas" :key="li" class="planilha-row">
                 <td class="col-label sticky-col">
                   <span class="label-text">{{ linha.label }}</span>
                 </td>
                 <td
-                  v-for="col in configAtual.colunas"
-                  :key="col.id"
+                  v-for="(celula, ci) in linha.celulas"
+                  :key="ci"
                   class="col-celula"
-                  :class="statusClass(col, getCelula(linha, col.id), anoSelecionado, mesSelecionado)"
-                  @click="editarCelula(linha, col)"
+                  :class="`status-${celula.status}`"
                 >
                   <div class="celula-inner">
-                    <template v-if="col.tipo === 'booleano'">
+                    <template v-if="regraMap[dadosSheet.colunas[ci]]?.tipo === 'booleano'">
                       <v-icon
-                        :color="getCelula(linha, col.id)?.valor === 'true' ? 'success' : 'grey-lighten-1'"
+                        :color="isCelulaPreenchida(celula.valor) ? 'success' : 'grey-lighten-1'"
                         size="20"
                       >
-                        {{ getCelula(linha, col.id)?.valor === 'true' ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+                        {{ isCelulaPreenchida(celula.valor) ? 'mdi-check-circle' : 'mdi-circle-outline' }}
                       </v-icon>
                     </template>
-                    <template v-else-if="col.tipo === 'data'">
-                      <span class="celula-valor" v-if="getCelula(linha, col.id)?.valor">
-                        {{ formatarData(getCelula(linha, col.id).valor) }}
-                      </span>
-                      <span class="celula-vazia" v-else>—</span>
-                    </template>
-                    <template v-else>
-                      <span class="celula-valor" v-if="getCelula(linha, col.id)?.valor">
-                        {{ getCelula(linha, col.id).valor }}
-                      </span>
-                      <span class="celula-vazia" v-else>—</span>
-                    </template>
+                    <span v-else-if="celula.valor" class="celula-valor">{{ celula.valor }}</span>
+                    <span v-else class="celula-vazia">—</span>
                   </div>
-                </td>
-                <td v-if="isAdmin" class="col-acoes">
-                  <v-btn icon size="x-small" variant="text" color="error" @click.stop="confirmarDeleteLinha(linha)">
-                    <v-icon size="16">mdi-delete-outline</v-icon>
-                  </v-btn>
                 </td>
               </tr>
             </tbody>
@@ -169,101 +128,23 @@
         </div>
       </div>
 
-      <div v-if="carregandoPeriodo" class="d-flex justify-center py-12">
+      <div v-if="carregandoDados" class="d-flex justify-center py-12">
         <v-progress-circular indeterminate color="primary" />
       </div>
 
-      <div v-if="!periodoAtual && !carregandoPeriodo && !isAdmin" class="text-center py-12 text-medium-emphasis">
-        <v-icon size="48" class="mb-3">mdi-calendar-blank-outline</v-icon>
-        <div>Nenhum dado disponível para este mês.</div>
-      </div>
+      <v-alert
+        v-if="!carregandoDados && !dadosSheet && abaSelecionada"
+        type="warning" variant="tonal" class="mt-4"
+      >
+        Não foi possível carregar os dados desta aba.
+      </v-alert>
 
     </template>
 
-    <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <!-- Dialog: editar célula                                                  -->
-    <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <v-dialog v-model="dialogCelula" max-width="380" @keydown.esc="dialogCelula = false">
-      <v-card v-if="celulaEdit">
-        <v-card-title class="text-subtitle-1 font-weight-medium pa-4 pb-2">
-          {{ celulaEdit.coluna.nome }}
-          <div class="text-caption text-medium-emphasis font-weight-regular">{{ celulaEdit.linha.label }}</div>
-        </v-card-title>
-        <v-card-text class="pa-4 pt-2">
-          <!-- Booleano -->
-          <template v-if="celulaEdit.coluna.tipo === 'booleano'">
-            <v-switch
-              v-model="celulaValorTemp"
-              :true-value="'true'"
-              :false-value="'false'"
-              color="success"
-              label="Concluído"
-              hide-details
-            />
-          </template>
-          <!-- Data -->
-          <template v-else-if="celulaEdit.coluna.tipo === 'data'">
-            <v-text-field
-              v-model="celulaValorTemp"
-              type="date"
-              label="Data"
-              variant="outlined"
-              density="comfortable"
-            />
-          </template>
-          <!-- Texto -->
-          <template v-else>
-            <v-text-field
-              v-model="celulaValorTemp"
-              label="Valor"
-              variant="outlined"
-              density="comfortable"
-              autofocus
-            />
-          </template>
-        </v-card-text>
-        <v-card-actions class="pa-4 pt-0 gap-2">
-          <v-btn variant="text" color="error" @click="salvarCelula(null)">Limpar</v-btn>
-          <v-spacer />
-          <v-btn variant="text" @click="dialogCelula = false">Cancelar</v-btn>
-          <v-btn color="primary" variant="tonal" @click="salvarCelula(celulaValorTemp)" :loading="salvando">
-            Salvar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <!-- Dialog: adicionar linha                                                -->
-    <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <v-dialog v-model="dialogLinha" max-width="400" @keydown.esc="dialogLinha = false">
-      <v-card>
-        <v-card-title class="pa-4 pb-2 text-subtitle-1 font-weight-medium">Adicionar linha</v-card-title>
-        <v-card-text class="pa-4 pt-2">
-          <v-text-field
-            v-model="novaLinhaLabel"
-            label="Nome do item / condomínio"
-            variant="outlined"
-            density="comfortable"
-            autofocus
-            @keydown.enter="adicionarLinha"
-          />
-        </v-card-text>
-        <v-card-actions class="pa-4 pt-0">
-          <v-spacer />
-          <v-btn variant="text" @click="dialogLinha = false">Cancelar</v-btn>
-          <v-btn color="primary" variant="tonal" @click="adicionarLinha" :loading="salvando"
-            :disabled="!novaLinhaLabel.trim()">
-            Adicionar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <!-- Dialog: gerenciar configs (admin)                                      -->
-    <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <v-dialog v-model="dialogGerenciar" max-width="720" scrollable>
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- Dialog: gerenciar configs + regras (admin)                          -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <v-dialog v-model="dialogGerenciar" max-width="780" scrollable>
       <v-card>
         <v-card-title class="pa-4 pb-2 d-flex align-center justify-space-between">
           <span class="text-subtitle-1 font-weight-medium">Gerenciar Planilhas</span>
@@ -272,58 +153,57 @@
           </v-btn>
         </v-card-title>
         <v-divider />
-        <v-card-text class="pa-4" style="max-height:70vh">
+        <v-card-text class="pa-4" style="max-height:75vh">
 
-          <!-- Lista de configs existentes -->
+          <!-- Lista configs -->
           <div class="d-flex align-center justify-space-between mb-3">
-            <span class="text-subtitle-2">Planilhas configuradas</span>
-            <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="abrirNovaConfig">
-              Nova planilha
+            <span class="text-subtitle-2">Planilhas vinculadas</span>
+            <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus"
+              @click="abrirFormConfig()">
+              Nova
             </v-btn>
           </div>
 
-          <v-list v-if="configs.length > 0" lines="two" class="rounded border mb-4">
+          <v-list v-if="configs.length" lines="two" class="rounded border mb-4">
             <template v-for="(cfg, idx) in configs" :key="cfg.id">
               <v-divider v-if="idx > 0" />
-              <v-list-item>
-                <template #title>{{ cfg.funcionario_nome }}</template>
-                <template #subtitle>{{ cfg.nome }}</template>
+              <v-list-item :subtitle="cfg.spreadsheet_id || 'Sem planilha vinculada'"
+                :class="{ 'bg-blue-lighten-5': configEditando?.id === cfg.id }">
+                <template #title>{{ cfg.funcionario_nome }} — {{ cfg.nome }}</template>
                 <template #append>
-                  <div class="d-flex gap-1">
-                    <v-btn icon size="x-small" variant="text" @click="selecionarConfigParaEditar(cfg)">
-                      <v-icon size="16">mdi-pencil-outline</v-icon>
-                    </v-btn>
-                    <v-btn icon size="x-small" variant="text" color="error" @click="confirmarDeleteConfig(cfg)">
-                      <v-icon size="16">mdi-delete-outline</v-icon>
-                    </v-btn>
-                  </div>
+                  <v-btn icon size="x-small" variant="text" @click="abrirFormConfig(cfg)">
+                    <v-icon size="16">mdi-pencil-outline</v-icon>
+                  </v-btn>
+                  <v-btn icon size="x-small" variant="text" color="error" @click="confirmar(
+                    `Excluir planilha de ${cfg.funcionario_nome}?`, () => deletarConfig(cfg))">
+                    <v-icon size="16">mdi-delete-outline</v-icon>
+                  </v-btn>
                 </template>
               </v-list-item>
             </template>
           </v-list>
-
           <v-alert v-else type="info" variant="tonal" density="compact" class="mb-4">
-            Nenhuma planilha configurada ainda.
+            Nenhuma planilha configurada.
           </v-alert>
 
-          <!-- Form nova/editar config -->
+          <!-- Form config -->
           <v-expand-transition>
-            <div v-if="formConfig.aberto" class="mt-2">
+            <div v-if="formConfig.aberto">
               <v-divider class="mb-4" />
               <div class="text-subtitle-2 mb-3">
-                {{ formConfig.editandoId ? 'Editar planilha' : 'Nova planilha' }}
+                {{ formConfig.id ? 'Editar planilha' : 'Nova planilha' }}
               </div>
               <v-row dense>
                 <v-col cols="12" md="6">
                   <v-select
-                    v-model="formConfig.funcionarioId"
+                    v-model="formConfig.funcionario_id"
                     :items="usuarios"
                     item-title="nome"
                     item-value="id"
                     label="Funcionário"
                     variant="outlined"
                     density="comfortable"
-                    :disabled="!!formConfig.editandoId"
+                    :disabled="!!formConfig.id"
                   />
                 </v-col>
                 <v-col cols="12" md="6">
@@ -334,70 +214,117 @@
                     density="comfortable"
                   />
                 </v-col>
+                <v-col cols="12">
+                  <v-text-field
+                    v-model="formConfig.spreadsheet_id"
+                    label="ID do Google Sheets (da URL)"
+                    variant="outlined"
+                    density="comfortable"
+                    hint="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+                    persistent-hint
+                  />
+                </v-col>
+                <v-col cols="4">
+                  <v-text-field
+                    v-model.number="formConfig.linha_cabecalho"
+                    label="Linha do cabeçalho"
+                    type="number"
+                    variant="outlined"
+                    density="comfortable"
+                    hint="Qual linha tem os títulos das colunas"
+                    persistent-hint
+                  />
+                </v-col>
+                <v-col cols="4">
+                  <v-text-field
+                    v-model.number="formConfig.linha_dados_inicio"
+                    label="Início dos dados"
+                    type="number"
+                    variant="outlined"
+                    density="comfortable"
+                    hint="Primeira linha com dados reais"
+                    persistent-hint
+                  />
+                </v-col>
+                <v-col cols="4">
+                  <v-text-field
+                    v-model.number="formConfig.coluna_label_indice"
+                    label="Coluna do rótulo (0=A)"
+                    type="number"
+                    variant="outlined"
+                    density="comfortable"
+                    hint="Índice da coluna com nomes dos itens"
+                    persistent-hint
+                  />
+                </v-col>
               </v-row>
-              <div class="d-flex gap-2 justify-end mt-2">
+              <div class="d-flex gap-2 justify-end mt-3">
                 <v-btn variant="text" @click="formConfig.aberto = false">Cancelar</v-btn>
                 <v-btn color="primary" variant="tonal" @click="salvarConfig" :loading="salvando"
-                  :disabled="!formConfig.funcionarioId || !formConfig.nome">
-                  {{ formConfig.editandoId ? 'Atualizar' : 'Criar' }}
+                  :disabled="!formConfig.funcionario_id || !formConfig.nome">
+                  {{ formConfig.id ? 'Atualizar' : 'Criar' }}
                 </v-btn>
               </div>
             </div>
           </v-expand-transition>
 
-          <!-- Gerenciar colunas da config selecionada -->
-          <template v-if="configParaColunas">
+          <!-- Regras de cor da config selecionada -->
+          <template v-if="configEditando">
             <v-divider class="my-4" />
             <div class="d-flex align-center justify-space-between mb-3">
-              <span class="text-subtitle-2">Colunas de {{ configParaColunas.funcionario_nome }}</span>
+              <div>
+                <span class="text-subtitle-2">Regras de cor</span>
+                <div class="text-caption text-medium-emphasis">
+                  Defina prazo (dias) para cada coluna da planilha de {{ configEditando.funcionario_nome }}
+                </div>
+              </div>
               <v-btn size="small" color="secondary" variant="tonal" prepend-icon="mdi-plus"
-                @click="abrirNovaColuna">
-                Nova coluna
+                @click="abrirFormRegra()">
+                Nova regra
               </v-btn>
             </div>
 
-            <v-list v-if="configParaColunas.colunas.length > 0" lines="two" class="rounded border mb-3">
-              <template v-for="(col, idx) in configParaColunas.colunas" :key="col.id">
-                <v-divider v-if="idx > 0" />
+            <v-list v-if="configEditando.regras.length" lines="two" class="rounded border mb-3">
+              <template v-for="(regra, ri) in configEditando.regras" :key="regra.id">
+                <v-divider v-if="ri > 0" />
                 <v-list-item>
-                  <template #title>{{ col.nome }}</template>
+                  <template #title>{{ regra.coluna_nome }}</template>
                   <template #subtitle>
-                    {{ tipoLabel(col.tipo) }}
-                    <span v-if="col.prazo_dias"> · Prazo: {{ col.prazo_dias }} dias</span>
+                    {{ tipoLabel(regra.tipo) }}
+                    <span v-if="regra.prazo_dias"> · Prazo: {{ regra.prazo_dias }} dias após início do mês</span>
+                    <span v-else> · Sem prazo (apenas exibição)</span>
                   </template>
                   <template #append>
-                    <div class="d-flex gap-1">
-                      <v-btn icon size="x-small" variant="text" @click="selecionarColunaParaEditar(col)">
-                        <v-icon size="16">mdi-pencil-outline</v-icon>
-                      </v-btn>
-                      <v-btn icon size="x-small" variant="text" color="error" @click="confirmarDeleteColuna(col)">
-                        <v-icon size="16">mdi-delete-outline</v-icon>
-                      </v-btn>
-                    </div>
+                    <v-btn icon size="x-small" variant="text" @click="abrirFormRegra(regra)">
+                      <v-icon size="16">mdi-pencil-outline</v-icon>
+                    </v-btn>
+                    <v-btn icon size="x-small" variant="text" color="error"
+                      @click="confirmar(`Excluir regra "${regra.coluna_nome}"?`, () => deletarRegra(regra))">
+                      <v-icon size="16">mdi-delete-outline</v-icon>
+                    </v-btn>
                   </template>
                 </v-list-item>
               </template>
             </v-list>
-
             <v-alert v-else type="info" variant="tonal" density="compact" class="mb-3">
-              Nenhuma coluna. Adicione colunas para definir o que será rastreado.
+              Nenhuma regra. Sem regras, todas as células ficam sem cor.
             </v-alert>
 
-            <!-- Form coluna -->
+            <!-- Form regra -->
             <v-expand-transition>
-              <div v-if="formColuna.aberto">
-                <v-row dense>
+              <div v-if="formRegra.aberto">
+                <v-row dense class="mt-1">
                   <v-col cols="12" md="4">
                     <v-text-field
-                      v-model="formColuna.nome"
-                      label="Nome da coluna"
+                      v-model="formRegra.coluna_nome"
+                      label="Nome da coluna (igual ao cabeçalho)"
                       variant="outlined"
                       density="comfortable"
                     />
                   </v-col>
                   <v-col cols="6" md="3">
                     <v-select
-                      v-model="formColuna.tipo"
+                      v-model="formRegra.tipo"
                       :items="tiposColuna"
                       item-title="label"
                       item-value="value"
@@ -406,30 +333,24 @@
                       density="comfortable"
                     />
                   </v-col>
-                  <v-col cols="6" md="2">
+                  <v-col cols="6" md="3">
                     <v-text-field
-                      v-model.number="formColuna.prazo_dias"
+                      v-model.number="formRegra.prazo_dias"
                       label="Prazo (dias)"
                       type="number"
                       variant="outlined"
                       density="comfortable"
-                      hint="Dias após início do mês"
+                      hint="Dias após 1º do mês"
+                      persistent-hint
                     />
                   </v-col>
-                  <v-col cols="6" md="1" class="d-flex align-center">
-                    <v-text-field
-                      v-model.number="formColuna.ordem"
-                      label="Ordem"
-                      type="number"
-                      variant="outlined"
-                      density="comfortable"
-                    />
-                  </v-col>
-                  <v-col cols="6" md="2" class="d-flex align-center justify-end gap-2">
-                    <v-btn variant="text" size="small" @click="formColuna.aberto = false">Cancelar</v-btn>
-                    <v-btn color="primary" variant="tonal" size="small" @click="salvarColuna"
-                      :loading="salvando" :disabled="!formColuna.nome">
-                      {{ formColuna.editandoId ? 'Atualizar' : 'Criar' }}
+                  <v-col cols="12" md="2" class="d-flex align-center justify-end gap-2">
+                    <v-btn variant="text" size="small" @click="formRegra.aberto = false">
+                      Cancelar
+                    </v-btn>
+                    <v-btn color="primary" variant="tonal" size="small" @click="salvarRegra"
+                      :loading="salvando" :disabled="!formRegra.coluna_nome">
+                      {{ formRegra.id ? 'Atualizar' : 'Criar' }}
                     </v-btn>
                   </v-col>
                 </v-row>
@@ -446,15 +367,15 @@
       {{ snack.msg }}
     </v-snackbar>
 
-    <!-- ── Confirm delete ── -->
-    <v-dialog v-model="confirmDialog.show" max-width="340">
+    <!-- ── Confirm dialog ── -->
+    <v-dialog v-model="confirmDlg.show" max-width="340">
       <v-card>
-        <v-card-text class="pa-5">{{ confirmDialog.msg }}</v-card-text>
+        <v-card-text class="pa-5">{{ confirmDlg.msg }}</v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
-          <v-btn variant="text" @click="confirmDialog.show = false">Cancelar</v-btn>
-          <v-btn color="error" variant="tonal" @click="confirmDialog.action" :loading="salvando">
-            Excluir
+          <v-btn variant="text" @click="confirmDlg.show = false">Cancelar</v-btn>
+          <v-btn color="error" variant="tonal" @click="confirmDlg.action" :loading="salvando">
+            Confirmar
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -464,41 +385,38 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const API = '/api'
 const token = () => localStorage.getItem('access_token')
 const isAdmin = computed(() => localStorage.getItem('is_admin') === 'true')
 
-// ── Estado global ─────────────────────────────────────────────────────────────
-const carregando       = ref(false)
-const carregandoPeriodo = ref(false)
-const salvando         = ref(false)
-const configs          = ref([])        // lista de configs (admin)
-const usuarios         = ref([])        // lista de usuários (admin)
-const configSelecionadaId = ref(null)   // id da config selecionada no dropdown (admin)
-const configAtual      = ref(null)      // config completa em exibição
-const periodoAtual     = ref(null)      // dados do período selecionado
+// ── Estado ────────────────────────────────────────────────────────────────────
+const carregando      = ref(false)
+const carregandoAbas  = ref(false)
+const carregandoDados = ref(false)
+const salvando        = ref(false)
 
-const anoSelecionado   = ref(new Date().getFullYear())
-const mesSelecionado   = ref(new Date().getMonth() + 1)
+const configs            = ref([])
+const usuarios           = ref([])
+const configSelecionadaId = ref(null)
+const configAtual        = ref(null)
+const configEditando     = ref(null)   // config aberta no gerenciador
 
-// ── Dialogs ───────────────────────────────────────────────────────────────────
-const dialogCelula    = ref(false)
-const dialogLinha     = ref(false)
+const abas           = ref([])
+const abaSelecionada = ref(null)
+const dadosSheet     = ref(null)
+
 const dialogGerenciar = ref(false)
-const novaLinhaLabel  = ref('')
 
-const celulaEdit      = ref(null)   // { linha, coluna }
-const celulaValorTemp = ref(null)
+const formConfig = ref({
+  aberto: false, id: null, funcionario_id: null, nome: '',
+  spreadsheet_id: '', linha_cabecalho: 1, linha_dados_inicio: 2, coluna_label_indice: 0,
+})
+const formRegra = ref({ aberto: false, id: null, coluna_nome: '', tipo: 'texto', prazo_dias: null })
 
-const configParaColunas = ref(null) // config sendo editada no gerenciador
-
-const formConfig = ref({ aberto: false, editandoId: null, funcionarioId: null, nome: '' })
-const formColuna = ref({ aberto: false, editandoId: null, nome: '', tipo: 'texto', prazo_dias: null, ordem: 0 })
-
-const snack       = ref({ show: false, color: 'success', msg: '' })
-const confirmDialog = ref({ show: false, msg: '', action: null })
+const snack     = ref({ show: false, color: 'success', msg: '' })
+const confirmDlg = ref({ show: false, msg: '', action: null })
 
 const tiposColuna = [
   { label: 'Texto', value: 'texto' },
@@ -506,40 +424,31 @@ const tiposColuna = [
   { label: 'Booleano (Sim/Não)', value: 'booleano' },
 ]
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const nomeMes = (m) => ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][m - 1]
+const legenda = [
+  { label: 'Concluído', cor: '#4caf50' },
+  { label: 'Atrasado', cor: '#f44336' },
+  { label: 'Vence em breve', cor: '#ff9800' },
+  { label: 'Pendente / Sem prazo', cor: 'rgba(128,128,128,0.15)' },
+]
 
+// ── Computed ──────────────────────────────────────────────────────────────────
+const regraMap = computed(() => {
+  if (!configAtual.value) return {}
+  return Object.fromEntries(configAtual.value.regras.map(r => [r.coluna_nome, r]))
+})
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const tipoLabel = (t) => ({ texto: 'Texto', data: 'Data', booleano: 'Sim/Não' }[t] || t)
 
-const formatarData = (v) => {
-  if (!v) return '—'
-  const [y, m, d] = v.split('-')
-  return `${d}/${m}/${y}`
-}
-
-const getCelula = (linha, colunaId) => linha.celulas.find(c => c.coluna_id === colunaId)
-
-function statusClass(coluna, celula, ano, mes) {
-  if (!coluna.prazo_dias) return ''
-  const isDone = celula?.valor && celula.valor !== '' && celula.valor !== 'false'
-  if (isDone) return 'status-success'
-
-  const deadline = new Date(ano, mes - 1, 1)
-  deadline.setDate(deadline.getDate() + coluna.prazo_dias)
-  deadline.setHours(0, 0, 0, 0)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  if (today > deadline) return 'status-error'
-  const warn = new Date(deadline)
-  warn.setDate(warn.getDate() - 2)
-  if (today >= warn) return 'status-warning'
-  return 'status-pending'
-}
+const isCelulaPreenchida = (v) =>
+  Boolean(v && v.trim() && !['0', 'none', ''].includes(v.trim().toLowerCase()))
 
 function mostrarSnack(msg, color = 'success') {
   snack.value = { show: true, color, msg }
+}
+
+function confirmar(msg, action) {
+  confirmDlg.value = { show: true, msg, action: async () => { await action(); confirmDlg.value.show = false } }
 }
 
 async function apiFetch(url, opts = {}) {
@@ -554,8 +463,8 @@ async function apiFetch(url, opts = {}) {
   return res.status === 204 ? null : res.json()
 }
 
-// ── Carregamento ──────────────────────────────────────────────────────────────
-async function carregarDados() {
+// ── Inicialização ─────────────────────────────────────────────────────────────
+async function init() {
   carregando.value = true
   try {
     if (isAdmin.value) {
@@ -567,9 +476,9 @@ async function carregarDados() {
       usuarios.value = users
     } else {
       try {
-        const data = await apiFetch('/planilhas/minha')
-        configAtual.value = data.config
-        await carregarPeriodo()
+        const cfg = await apiFetch('/planilhas/minha')
+        configAtual.value = cfg
+        await carregarAbas()
       } catch (e) {
         if (!e.message.includes('404') && !e.message.includes('Planilha_nao_configurada')) throw e
       }
@@ -583,165 +492,91 @@ async function carregarDados() {
 
 async function onConfigChange(id) {
   configAtual.value = id ? configs.value.find(c => c.id === id) || null : null
-  periodoAtual.value = null
-  if (configAtual.value) await carregarPeriodo()
+  abas.value = []
+  abaSelecionada.value = null
+  dadosSheet.value = null
+  if (configAtual.value) await carregarAbas()
 }
 
-async function carregarPeriodo() {
-  if (!configAtual.value) return
-  carregandoPeriodo.value = true
-  periodoAtual.value = null
+async function carregarAbas() {
+  if (!configAtual.value?.spreadsheet_id) return
+  carregandoAbas.value = true
   try {
-    const periodos = await apiFetch(`/planilhas/configs/${configAtual.value.id}/periodos`)
-    const p = periodos.find(x => x.ano === anoSelecionado.value && x.mes === mesSelecionado.value)
-    if (p) {
-      periodoAtual.value = await apiFetch(`/planilhas/periodos/${p.id}`)
+    abas.value = await apiFetch(`/planilhas/configs/${configAtual.value.id}/abas`)
+    if (abas.value.length && !abaSelecionada.value) {
+      abaSelecionada.value = abas.value[0].title
+      await carregarDados()
     }
   } catch (e) {
     mostrarSnack(e.message, 'error')
   } finally {
-    carregandoPeriodo.value = false
+    carregandoAbas.value = false
   }
 }
 
-function mudarMes(delta) {
-  let m = mesSelecionado.value + delta
-  let a = anoSelecionado.value
-  if (m > 12) { m = 1; a++ }
-  if (m < 1)  { m = 12; a-- }
-  mesSelecionado.value = m
-  anoSelecionado.value = a
-}
-
-watch([anoSelecionado, mesSelecionado], () => {
-  if (configAtual.value) carregarPeriodo()
-})
-
-// ── Período ───────────────────────────────────────────────────────────────────
-async function criarPeriodo() {
-  if (!configAtual.value) return
-  salvando.value = true
+async function carregarDados() {
+  if (!configAtual.value || !abaSelecionada.value) return
+  carregandoDados.value = true
+  dadosSheet.value = null
   try {
-    await apiFetch(`/planilhas/configs/${configAtual.value.id}/periodos`, {
-      method: 'POST',
-      body: JSON.stringify({ ano: anoSelecionado.value, mes: mesSelecionado.value }),
-    })
-    await carregarPeriodo()
-    mostrarSnack('Período criado com sucesso')
+    dadosSheet.value = await apiFetch(
+      `/planilhas/configs/${configAtual.value.id}/dados?aba=${encodeURIComponent(abaSelecionada.value)}`
+    )
   } catch (e) {
     mostrarSnack(e.message, 'error')
   } finally {
-    salvando.value = false
+    carregandoDados.value = false
   }
 }
 
-// ── Linhas ────────────────────────────────────────────────────────────────────
-async function adicionarLinha() {
-  if (!novaLinhaLabel.value.trim() || !periodoAtual.value) return
-  salvando.value = true
-  try {
-    const nova = await apiFetch(`/planilhas/periodos/${periodoAtual.value.id}/linhas`, {
-      method: 'POST',
-      body: JSON.stringify({ label: novaLinhaLabel.value.trim(), ordem: periodoAtual.value.linhas.length }),
-    })
-    periodoAtual.value.linhas.push(nova)
-    novaLinhaLabel.value = ''
-    dialogLinha.value = false
-    mostrarSnack('Linha adicionada')
-  } catch (e) {
-    mostrarSnack(e.message, 'error')
-  } finally {
-    salvando.value = false
+// ── Gerenciar configs ─────────────────────────────────────────────────────────
+async function abrirGerenciar() {
+  if (!usuarios.value.length) {
+    usuarios.value = await apiFetch('/planilhas/usuarios').catch(() => [])
   }
-}
-
-function confirmarDeleteLinha(linha) {
-  confirmDialog.value = {
-    show: true,
-    msg: `Excluir a linha "${linha.label}" e todos os seus dados?`,
-    action: () => deletarLinha(linha),
-  }
-}
-
-async function deletarLinha(linha) {
-  salvando.value = true
-  try {
-    await apiFetch(`/planilhas/linhas/${linha.id}`, { method: 'DELETE' })
-    periodoAtual.value.linhas = periodoAtual.value.linhas.filter(l => l.id !== linha.id)
-    confirmDialog.value.show = false
-    mostrarSnack('Linha removida')
-  } catch (e) {
-    mostrarSnack(e.message, 'error')
-  } finally {
-    salvando.value = false
-  }
-}
-
-// ── Células ───────────────────────────────────────────────────────────────────
-function editarCelula(linha, coluna) {
-  celulaEdit.value = { linha, coluna }
-  const existente = getCelula(linha, coluna.id)
-  celulaValorTemp.value = existente?.valor ?? (coluna.tipo === 'booleano' ? 'false' : '')
-  dialogCelula.value = true
-}
-
-async function salvarCelula(valor) {
-  if (!celulaEdit.value) return
-  salvando.value = true
-  try {
-    const { linha, coluna } = celulaEdit.value
-    const result = await apiFetch('/planilhas/celulas', {
-      method: 'PUT',
-      body: JSON.stringify({ linha_id: linha.id, coluna_id: coluna.id, valor: valor ?? null }),
-    })
-    const idx = linha.celulas.findIndex(c => c.coluna_id === coluna.id)
-    if (idx >= 0) linha.celulas[idx] = result
-    else linha.celulas.push(result)
-    dialogCelula.value = false
-    mostrarSnack('Salvo')
-  } catch (e) {
-    mostrarSnack(e.message, 'error')
-  } finally {
-    salvando.value = false
-  }
-}
-
-// ── Gerenciar configs (admin) ─────────────────────────────────────────────────
-async function abrirGerenciarConfigs() {
-  if (usuarios.value.length === 0) {
-    const users = await apiFetch('/planilhas/usuarios').catch(() => [])
-    usuarios.value = users
-  }
-  configParaColunas.value = null
-  formConfig.value = { aberto: false, editandoId: null, funcionarioId: null, nome: '' }
-  formColuna.value = { aberto: false, editandoId: null, nome: '', tipo: 'texto', prazo_dias: null, ordem: 0 }
+  configEditando.value = null
+  formConfig.value.aberto = false
+  formRegra.value.aberto = false
   dialogGerenciar.value = true
 }
 
-function abrirNovaConfig() {
-  formConfig.value = { aberto: true, editandoId: null, funcionarioId: null, nome: '' }
-}
-
-function selecionarConfigParaEditar(cfg) {
-  configParaColunas.value = cfg
-  formConfig.value = { aberto: true, editandoId: cfg.id, funcionarioId: cfg.funcionario_id, nome: cfg.nome }
+function abrirFormConfig(cfg = null) {
+  configEditando.value = cfg || null
+  formConfig.value = cfg
+    ? {
+        aberto: true, id: cfg.id, funcionario_id: cfg.funcionario_id, nome: cfg.nome,
+        spreadsheet_id: cfg.spreadsheet_id, linha_cabecalho: cfg.linha_cabecalho,
+        linha_dados_inicio: cfg.linha_dados_inicio, coluna_label_indice: cfg.coluna_label_indice,
+      }
+    : {
+        aberto: true, id: null, funcionario_id: null, nome: '',
+        spreadsheet_id: '', linha_cabecalho: 1, linha_dados_inicio: 2, coluna_label_indice: 0,
+      }
+  formRegra.value.aberto = false
 }
 
 async function salvarConfig() {
   salvando.value = true
   try {
-    const body = { funcionario_id: formConfig.value.funcionarioId, nome: formConfig.value.nome }
-    if (formConfig.value.editandoId) {
-      const updated = await apiFetch(`/planilhas/configs/${formConfig.value.editandoId}`, {
+    const body = {
+      funcionario_id: formConfig.value.funcionario_id,
+      nome: formConfig.value.nome,
+      spreadsheet_id: formConfig.value.spreadsheet_id,
+      linha_cabecalho: formConfig.value.linha_cabecalho,
+      linha_dados_inicio: formConfig.value.linha_dados_inicio,
+      coluna_label_indice: formConfig.value.coluna_label_indice,
+    }
+    if (formConfig.value.id) {
+      const updated = await apiFetch(`/planilhas/configs/${formConfig.value.id}`, {
         method: 'PUT', body: JSON.stringify(body),
       })
       const idx = configs.value.findIndex(c => c.id === updated.id)
       if (idx >= 0) configs.value[idx] = updated
-      if (configParaColunas.value?.id === updated.id) configParaColunas.value = updated
+      configEditando.value = updated
     } else {
       const created = await apiFetch('/planilhas/configs', { method: 'POST', body: JSON.stringify(body) })
       configs.value.push(created)
-      configParaColunas.value = created
+      configEditando.value = created
     }
     formConfig.value.aberto = false
     mostrarSnack('Planilha salva')
@@ -749,14 +584,6 @@ async function salvarConfig() {
     mostrarSnack(e.message, 'error')
   } finally {
     salvando.value = false
-  }
-}
-
-function confirmarDeleteConfig(cfg) {
-  confirmDialog.value = {
-    show: true,
-    msg: `Excluir a planilha de ${cfg.funcionario_nome} e todos os seus dados?`,
-    action: () => deletarConfig(cfg),
   }
 }
 
@@ -768,10 +595,9 @@ async function deletarConfig(cfg) {
     if (configSelecionadaId.value === cfg.id) {
       configSelecionadaId.value = null
       configAtual.value = null
-      periodoAtual.value = null
+      dadosSheet.value = null
     }
-    if (configParaColunas.value?.id === cfg.id) configParaColunas.value = null
-    confirmDialog.value.show = false
+    if (configEditando.value?.id === cfg.id) configEditando.value = null
     mostrarSnack('Planilha excluída')
   } catch (e) {
     mostrarSnack(e.message, 'error')
@@ -780,49 +606,43 @@ async function deletarConfig(cfg) {
   }
 }
 
-// ── Colunas ───────────────────────────────────────────────────────────────────
-function abrirNovaColuna() {
-  formColuna.value = {
-    aberto: true, editandoId: null, nome: '', tipo: 'texto',
-    prazo_dias: null, ordem: configParaColunas.value?.colunas.length ?? 0,
-  }
+// ── Regras de cor ─────────────────────────────────────────────────────────────
+function abrirFormRegra(regra = null) {
+  formRegra.value = regra
+    ? { aberto: true, id: regra.id, coluna_nome: regra.coluna_nome, tipo: regra.tipo, prazo_dias: regra.prazo_dias }
+    : { aberto: true, id: null, coluna_nome: '', tipo: 'texto', prazo_dias: null }
 }
 
-function selecionarColunaParaEditar(col) {
-  formColuna.value = {
-    aberto: true, editandoId: col.id, nome: col.nome, tipo: col.tipo,
-    prazo_dias: col.prazo_dias, ordem: col.ordem,
-  }
-}
-
-async function salvarColuna() {
-  if (!configParaColunas.value) return
+async function salvarRegra() {
+  if (!configEditando.value) return
   salvando.value = true
   try {
     const body = {
-      nome: formColuna.value.nome,
-      tipo: formColuna.value.tipo,
-      ordem: formColuna.value.ordem,
-      prazo_dias: formColuna.value.prazo_dias || null,
-      obrigatorio: true,
+      coluna_nome: formRegra.value.coluna_nome,
+      tipo: formRegra.value.tipo,
+      prazo_dias: formRegra.value.prazo_dias || null,
     }
-    if (formColuna.value.editandoId) {
-      const updated = await apiFetch(`/planilhas/colunas/${formColuna.value.editandoId}`, {
+    if (formRegra.value.id) {
+      const updated = await apiFetch(`/planilhas/regras/${formRegra.value.id}`, {
         method: 'PUT', body: JSON.stringify(body),
       })
-      const idx = configParaColunas.value.colunas.findIndex(c => c.id === updated.id)
-      if (idx >= 0) configParaColunas.value.colunas[idx] = updated
+      const idx = configEditando.value.regras.findIndex(r => r.id === updated.id)
+      if (idx >= 0) configEditando.value.regras[idx] = updated
     } else {
-      const created = await apiFetch(`/planilhas/configs/${configParaColunas.value.id}/colunas`, {
+      const created = await apiFetch(`/planilhas/configs/${configEditando.value.id}/regras`, {
         method: 'POST', body: JSON.stringify(body),
       })
-      configParaColunas.value.colunas.push(created)
+      configEditando.value.regras.push(created)
     }
-    // atualiza a config no array global também
-    const gIdx = configs.value.findIndex(c => c.id === configParaColunas.value.id)
-    if (gIdx >= 0) configs.value[gIdx] = { ...configParaColunas.value }
-    formColuna.value.aberto = false
-    mostrarSnack('Coluna salva')
+    // Sincroniza com configs global
+    const gi = configs.value.findIndex(c => c.id === configEditando.value.id)
+    if (gi >= 0) configs.value[gi] = { ...configEditando.value }
+    // Sincroniza com configAtual se for o mesmo
+    if (configAtual.value?.id === configEditando.value.id) {
+      configAtual.value = { ...configEditando.value }
+    }
+    formRegra.value.aberto = false
+    mostrarSnack('Regra salva')
   } catch (e) {
     mostrarSnack(e.message, 'error')
   } finally {
@@ -830,21 +650,17 @@ async function salvarColuna() {
   }
 }
 
-function confirmarDeleteColuna(col) {
-  confirmDialog.value = {
-    show: true,
-    msg: `Excluir a coluna "${col.nome}" e todos os seus dados?`,
-    action: () => deletarColuna(col),
-  }
-}
-
-async function deletarColuna(col) {
+async function deletarRegra(regra) {
   salvando.value = true
   try {
-    await apiFetch(`/planilhas/colunas/${col.id}`, { method: 'DELETE' })
-    configParaColunas.value.colunas = configParaColunas.value.colunas.filter(c => c.id !== col.id)
-    confirmDialog.value.show = false
-    mostrarSnack('Coluna excluída')
+    await apiFetch(`/planilhas/regras/${regra.id}`, { method: 'DELETE' })
+    configEditando.value.regras = configEditando.value.regras.filter(r => r.id !== regra.id)
+    const gi = configs.value.findIndex(c => c.id === configEditando.value.id)
+    if (gi >= 0) configs.value[gi] = { ...configEditando.value }
+    if (configAtual.value?.id === configEditando.value.id) {
+      configAtual.value = { ...configEditando.value }
+    }
+    mostrarSnack('Regra excluída')
   } catch (e) {
     mostrarSnack(e.message, 'error')
   } finally {
@@ -852,16 +668,10 @@ async function deletarColuna(col) {
   }
 }
 
-onMounted(carregarDados)
+onMounted(init)
 </script>
 
 <style scoped>
-/* ── Legenda ── */
-.legenda-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 .legenda-dot {
   width: 12px;
   height: 12px;
@@ -869,7 +679,6 @@ onMounted(carregarDados)
   flex-shrink: 0;
 }
 
-/* ── Tabela ── */
 .planilha-wrapper {
   border: 1px solid rgba(128, 128, 128, 0.2);
   border-radius: 8px;
@@ -881,10 +690,8 @@ onMounted(carregarDados)
 .planilha-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 600px;
+  min-width: 500px;
 }
-
-/* Cabeçalho */
 .planilha-table thead tr {
   background: rgba(128, 128, 128, 0.06);
 }
@@ -898,98 +705,49 @@ onMounted(carregarDados)
   border-bottom: 1px solid rgba(128, 128, 128, 0.15);
   white-space: nowrap;
 }
-.col-header-inner {
-  display: flex;
-  align-items: center;
+.col-header {
+  min-width: 100px;
 }
-.col-acoes {
-  width: 48px;
-  text-align: center;
-}
-
-/* Sticky primeira coluna */
 .sticky-col {
   position: sticky;
   left: 0;
   z-index: 2;
   background: inherit;
-  min-width: 160px;
+  min-width: 150px;
   max-width: 220px;
 }
 thead .sticky-col {
   background: rgba(128, 128, 128, 0.06) !important;
   z-index: 3;
 }
-
-/* Linhas */
 .planilha-row td {
   border-bottom: 1px solid rgba(128, 128, 128, 0.1);
 }
-.planilha-row:last-child td {
-  border-bottom: none;
-}
-.planilha-row:hover td {
-  background: rgba(128, 128, 128, 0.04);
-}
+.planilha-row:last-child td { border-bottom: none; }
+.planilha-row:hover td { background: rgba(128, 128, 128, 0.03); }
 
-/* Células */
-.col-celula {
-  padding: 0;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.col-celula:hover {
-  filter: brightness(0.96);
-}
+.col-celula { padding: 0; }
 .celula-inner {
-  padding: 10px 14px;
+  padding: 9px 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 42px;
   min-width: 90px;
 }
-.celula-valor {
-  font-size: 13px;
-  font-weight: 500;
-}
-.celula-vazia {
-  font-size: 13px;
-  color: rgba(128, 128, 128, 0.5);
-}
-.label-text {
-  font-size: 13px;
-  font-weight: 500;
-}
+.celula-valor { font-size: 13px; font-weight: 500; }
+.celula-vazia { font-size: 13px; color: rgba(128,128,128,0.4); }
+.label-text { font-size: 13px; font-weight: 500; }
 
 /* Status colors */
-.status-success {
-  background: rgba(76, 175, 80, 0.15) !important;
-}
-.status-error {
-  background: rgba(244, 67, 54, 0.15) !important;
-}
-.status-warning {
-  background: rgba(255, 152, 0, 0.15) !important;
-}
-.status-pending {
-  background: rgba(128, 128, 128, 0.06) !important;
-}
+.status-success { background: rgba(76, 175, 80, 0.15) !important; }
+.status-error   { background: rgba(244, 67, 54, 0.15) !important; }
+.status-warning { background: rgba(255, 152, 0, 0.15) !important; }
+.status-pending { background: rgba(128, 128, 128, 0.06) !important; }
+.status-none    { background: transparent; }
 
-/* Theme: dark mode adjustments */
-.v-theme--pratikaDark .planilha-wrapper {
-  border-color: rgba(255, 255, 255, 0.1);
-}
-.v-theme--pratikaDark .planilha-table thead tr {
-  background: rgba(255, 255, 255, 0.04);
-}
-.v-theme--pratikaDark thead .sticky-col {
-  background: rgba(255, 255, 255, 0.04) !important;
-}
-.v-theme--pratikaDark .planilha-row td {
-  border-bottom-color: rgba(255, 255, 255, 0.06);
-}
-.v-theme--pratikaDark .planilha-row:hover td {
-  background: rgba(255, 255, 255, 0.03);
-}
+.v-theme--pratikaDark .planilha-wrapper { border-color: rgba(255,255,255,0.1); }
+.v-theme--pratikaDark .planilha-table thead tr { background: rgba(255,255,255,0.04); }
+.v-theme--pratikaDark thead .sticky-col { background: rgba(255,255,255,0.04) !important; }
+.v-theme--pratikaDark .planilha-row td { border-bottom-color: rgba(255,255,255,0.06); }
 </style>

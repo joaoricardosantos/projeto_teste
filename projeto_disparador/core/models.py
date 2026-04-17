@@ -316,11 +316,16 @@ class AdvogadoPlanilha(models.Model):
 
 
 class PlanilhaFuncionarioConfig(models.Model):
-    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    funcionario  = models.OneToOneField('User', on_delete=models.CASCADE, related_name='planilha_config')
-    nome         = models.CharField(max_length=200)
-    criado_em    = models.DateTimeField(auto_now_add=True)
-    atualizado_em = models.DateTimeField(auto_now=True)
+    """Planilha Google Sheets vinculada a um funcionário."""
+    id                  = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    funcionario         = models.OneToOneField('User', on_delete=models.CASCADE, related_name='planilha_config')
+    nome                = models.CharField(max_length=200)
+    spreadsheet_id      = models.CharField(max_length=200, blank=True)
+    linha_cabecalho     = models.IntegerField(default=1)   # linha do cabeçalho (1-based)
+    linha_dados_inicio  = models.IntegerField(default=2)   # primeira linha de dados (1-based)
+    coluna_label_indice = models.IntegerField(default=0)   # índice (0-based) da coluna de rótulo
+    criado_em           = models.DateTimeField(auto_now_add=True)
+    atualizado_em       = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Config de Planilha do Funcionário'
@@ -330,71 +335,25 @@ class PlanilhaFuncionarioConfig(models.Model):
         return f"{self.funcionario.name} — {self.nome}"
 
 
-class PlanilhaConfigColuna(models.Model):
+class PlanilhaColunaRegra(models.Model):
+    """Regra de cor para uma coluna da planilha do funcionário."""
     TIPO_CHOICES = [
         ('data',     'Data'),
         ('booleano', 'Booleano'),
         ('texto',    'Texto'),
     ]
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    config     = models.ForeignKey(PlanilhaFuncionarioConfig, on_delete=models.CASCADE, related_name='colunas')
-    nome       = models.CharField(max_length=200)
-    tipo       = models.CharField(max_length=20, choices=TIPO_CHOICES, default='texto')
-    ordem      = models.IntegerField(default=0)
-    prazo_dias = models.IntegerField(null=True, blank=True)
-    obrigatorio = models.BooleanField(default=True)
+    config     = models.ForeignKey(PlanilhaFuncionarioConfig, on_delete=models.CASCADE, related_name='regras')
+    coluna_nome = models.CharField(max_length=200)  # deve bater com o cabeçalho no Sheets
+    tipo        = models.CharField(max_length=20, choices=TIPO_CHOICES, default='texto')
+    prazo_dias  = models.IntegerField(null=True, blank=True)  # dias a partir do início do mês
 
     class Meta:
-        ordering = ['ordem', 'nome']
-        verbose_name = 'Coluna da Planilha'
+        ordering = ['coluna_nome']
+        verbose_name = 'Regra de Coluna da Planilha'
 
     def __str__(self):
-        return f"{self.config.funcionario.name} / {self.nome}"
-
-
-class PlanilhaPeriodo(models.Model):
-    id     = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    config = models.ForeignKey(PlanilhaFuncionarioConfig, on_delete=models.CASCADE, related_name='periodos')
-    ano    = models.IntegerField()
-    mes    = models.IntegerField()
-
-    class Meta:
-        unique_together = ['config', 'ano', 'mes']
-        ordering = ['-ano', '-mes']
-        verbose_name = 'Período da Planilha'
-
-    def __str__(self):
-        return f"{self.config.funcionario.name} — {self.mes:02d}/{self.ano}"
-
-
-class PlanilhaLinha(models.Model):
-    id      = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    periodo = models.ForeignKey(PlanilhaPeriodo, on_delete=models.CASCADE, related_name='linhas')
-    label   = models.CharField(max_length=200)
-    ordem   = models.IntegerField(default=0)
-
-    class Meta:
-        ordering = ['ordem', 'label']
-        verbose_name = 'Linha da Planilha'
-
-    def __str__(self):
-        return f"{self.periodo} / {self.label}"
-
-
-class PlanilhaCelula(models.Model):
-    id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    linha         = models.ForeignKey(PlanilhaLinha, on_delete=models.CASCADE, related_name='celulas')
-    coluna        = models.ForeignKey(PlanilhaConfigColuna, on_delete=models.CASCADE)
-    valor         = models.TextField(blank=True, null=True)
-    atualizado_em = models.DateTimeField(auto_now=True)
-    atualizado_por = models.ForeignKey('User', null=True, blank=True, on_delete=models.SET_NULL, related_name='celulas_atualizadas')
-
-    class Meta:
-        unique_together = ['linha', 'coluna']
-        verbose_name = 'Célula da Planilha'
-
-    def __str__(self):
-        return f"{self.linha.label} / {self.coluna.nome} = {self.valor}"
+        return f"{self.config.funcionario.name} / {self.coluna_nome}"
 
 
 class PasswordResetToken(models.Model):
