@@ -13,6 +13,7 @@ from core.agenda_api import agenda_router
 from core.juridico_api import juridico_router
 from core.sindico_api import sindico_router
 from core.execucao_api import execucao_router
+from core.planilha_funcionario_api import planilha_router
 
 api = NinjaAPI(title="Condominium Messaging API", version="1.0.0")
 
@@ -29,6 +30,7 @@ api.add_router("/juridico",   juridico_router)
 api.add_router("/agenda",     agenda_router)
 api.add_router("/sindicos",   sindico_router)
 api.add_router("/execucao",   execucao_router)
+api.add_router("/planilhas",  planilha_router)
 
 urlpatterns = [
     path("api/", api.urls),

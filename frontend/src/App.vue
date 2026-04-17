@@ -222,7 +222,8 @@ const allNavCategories = [
     label: 'Geral',
     items: [
       { to: '/dashboard', icon: 'mdi-view-dashboard-outline', label: 'Dashboard', adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: false },
-      { to: '/agenda',    icon: 'mdi-calendar-month-outline', label: 'Agenda',    adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
+      { to: '/agenda',     icon: 'mdi-calendar-month-outline',   label: 'Agenda',     adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
+      { to: '/planilhas',  icon: 'mdi-table-account',             label: 'Planilhas',  adminOnly: false, juridicoAllowed: true,  financeiroAllowed: true,  usuarioAllowed: true  },
     ],
   },
   {

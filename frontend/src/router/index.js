@@ -13,6 +13,7 @@ import JuridicoView from '../views/JuridicoView.vue'
 import AgendaView from '../views/AgendaView.vue'
 import SindicosView from '../views/SindicosView.vue'
 import ExecucaoView from '../views/ExecucaoView.vue'
+import PlanilhasView from '../views/PlanilhasView.vue'
 
 const routes = [
     { path: '/', name: 'Auth', component: AuthView },
@@ -29,6 +30,7 @@ const routes = [
     { path: '/agenda',       name: 'Agenda',       component: AgendaView,       meta: { requiresAuth: true } },
     { path: '/sindicos',     name: 'Sindicos',     component: SindicosView,     meta: { requiresAuth: true } },
     { path: '/execucao',     name: 'Execucao',     component: ExecucaoView,     meta: { requiresAuth: true } },
+    { path: '/planilhas',    name: 'Planilhas',    component: PlanilhasView,    meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })
@@ -45,11 +47,11 @@ router.beforeEach((to, from, next) => {
     if (to.meta.requiresAdmin && !isAdmin) return next('/agenda')
     if (to.meta.requiresAdminOrJuridico && !isAdmin && !isJuridico) return next('/agenda')
     // Bloqueia usuário comum — apenas /agenda
-    if (isUsuario && isAuthenticated && to.path !== '/agenda') return next('/agenda')
+    if (isUsuario && isAuthenticated && !['/agenda', '/planilhas'].includes(to.path)) return next('/agenda')
     // Bloqueia jurídico de acessar rotas não permitidas
-    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/juridico', '/levantamento', '/agenda', '/execucao'].includes(to.path)) return next('/dashboard')
+    if (isJuridico && !isAdmin && !['/dashboard', '/relatorios', '/juridico', '/levantamento', '/agenda', '/execucao', '/planilhas'].includes(to.path)) return next('/dashboard')
     // Bloqueia financeiro de acessar rotas não permitidas
-    if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets', '/financeiro', '/agenda'].includes(to.path)) return next('/dashboard')
+    if (isFinanceiro && !isAdmin && !['/dashboard', '/sheets', '/financeiro', '/agenda', '/planilhas'].includes(to.path)) return next('/dashboard')
     next()
 })
 
