@@ -107,9 +107,25 @@ class KpisOut(Schema):
     boletos: KpiBoletosOut
 
 
+class PipelinePassoOut(Schema):
+    label: str
+    concluidos: int
+    total: int
+    pct: float
+
+
+class ResumoOut(Schema):
+    total_condominios: int
+    prestacao_pct: float
+    recebimentos_pct: float
+    boletos_pct: float
+
+
 class DashboardOut(Schema):
     config_id: str
     aba: str
+    resumo: ResumoOut
+    pipeline: List[PipelinePassoOut]
     kpis: KpisOut
     linhas: List[LinhaOut]
     atualizado_em: str
@@ -150,11 +166,32 @@ def _status_com_prazo(valor: str, prazo_str: str, hoje: date) -> str:
     return 'pending'
 
 
+def _prazo_boleto_date(prazo_str: str, ref: date) -> Optional[date]:
+    """
+    Interpreta o prazo do boleto.
+    Aceita data completa OU apenas o dia do mês (ex: '30').
+    Quando for só um dia, usa o mês/ano de `ref` (data de geração ou hoje).
+    """
+    d = _parse_date(prazo_str)
+    if d:
+        return d
+    try:
+        import calendar
+        dia = int(str(prazo_str).strip())
+        if 1 <= dia <= 31:
+            ultimo = calendar.monthrange(ref.year, ref.month)[1]
+            return date(ref.year, ref.month, min(dia, ultimo))
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 def _status_boleto(geracao_str: str, prazo_str: str, hoje: date) -> str:
-    prazo = _parse_date(prazo_str)
+    geracao = _parse_date(geracao_str)
+    ref = geracao or hoje
+    prazo = _prazo_boleto_date(prazo_str, ref)
     if not prazo:
         return 'none'
-    geracao = _parse_date(geracao_str)
     if geracao:
         return 'success' if geracao <= prazo else 'error'
     if hoje > prazo:
@@ -188,6 +225,8 @@ def _processar_sheet(raw: List[List[Any]], config_id: str, aba: str) -> dict:
     if header_idx is None:
         return {
             'config_id': config_id, 'aba': aba,
+            'resumo': _resumo_vazio(),
+            'pipeline': [],
             'kpis': _kpis_vazios(),
             'linhas': [],
             'atualizado_em': datetime.now().strftime('%d/%m/%Y %H:%M'),
@@ -283,10 +322,46 @@ def _processar_sheet(raw: List[List[Any]], config_id: str, aba: str) -> dict:
     total_receb_pendentes = (
         kpi_agua['pendentes'] + kpi_gas['pendentes'] + kpi_reservas['pendentes']
     )
+    total = len(linhas)
+
+    def _passo(label, campo):
+        c = sum(1 for l in linhas if _preenchido(l[campo]['valor']))
+        pct = round(c / total * 100, 1) if total else 0.0
+        return {'label': label, 'concluidos': c, 'total': total, 'pct': pct}
+
+    pipeline = [
+        _passo('Geração',  'geracao_boleto'),
+        _passo('E-mail',   'enviado_email'),
+        _passo('Impresso', 'impresso_pratika'),
+        _passo('Gráfica',  'enviado_grafica'),
+        _passo('Retorno',  'retorno_grafica'),
+    ]
+
+    def _pct(ok, ttl):
+        return round(ok / ttl * 100, 1) if ttl else 0.0
+
+    resumo = {
+        'total_condominios': total,
+        'prestacao_pct': _pct(
+            kpi_prestacao['total'] - kpi_prestacao['pendentes'], kpi_prestacao['total']
+        ),
+        'recebimentos_pct': _pct(
+            sum([
+                kpi_agua['total'] - kpi_agua['pendentes'],
+                kpi_gas['total'] - kpi_gas['pendentes'],
+                kpi_reservas['total'] - kpi_reservas['pendentes'],
+            ]),
+            kpi_agua['total'] + kpi_gas['total'] + kpi_reservas['total'],
+        ),
+        'boletos_pct': _pct(kpi_boletos['no_prazo'],
+                            kpi_boletos['no_prazo'] + kpi_boletos['atrasados']),
+    }
 
     return {
         'config_id': config_id,
         'aba': aba,
+        'resumo': resumo,
+        'pipeline': pipeline,
         'kpis': {
             'prestacao': kpi_prestacao,
             'recebimentos': {
@@ -311,6 +386,10 @@ def _kpis_vazios():
         },
         'boletos': {'no_prazo': 0, 'atrasados': 0, 'lista_atrasados': []},
     }
+
+
+def _resumo_vazio():
+    return {'total_condominios': 0, 'prestacao_pct': 0.0, 'recebimentos_pct': 0.0, 'boletos_pct': 0.0}
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
