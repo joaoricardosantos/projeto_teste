@@ -93,6 +93,9 @@ SUPERLOGICA_APP_TOKEN    = os.environ.get("SUPERLOGICA_APP_TOKEN",    "")
 SUPERLOGICA_ACCESS_TOKEN = os.environ.get("SUPERLOGICA_ACCESS_TOKEN", "")
 SUPERLOGICA_MAX_ID       = int(os.environ.get("SUPERLOGICA_MAX_ID",   "100"))
  
+# Google Drive — pasta-mãe com subpastas dos condomínios (cada uma com "01 - Modelos")
+DRIVE_EXECUCOES_FOLDER_ID = os.environ.get("DRIVE_EXECUCOES_FOLDER_ID", "")
+
 # Evolution API (WhatsApp)
 EVOLUTION_BASE_URL = os.environ.get("EVOLUTION_BASE_URL", "http://localhost:8080")
 EVOLUTION_INSTANCE = os.environ.get("EVOLUTION_INSTANCE", "minha-instancia")

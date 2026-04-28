@@ -332,6 +332,23 @@ class PlanilhaFuncionarioConfig(models.Model):
         return f"{self.funcionario.name} — {self.nome}"
 
 
+class CondominioDriveMap(models.Model):
+    """Mapeamento manual condomínio → pasta do Google Drive com os modelos."""
+    condominio_id     = models.IntegerField(unique=True)
+    condominio_nome   = models.CharField(max_length=255, blank=True)
+    drive_folder_id   = models.CharField(max_length=200)
+    drive_folder_nome = models.CharField(max_length=255, blank=True)
+    criado_em         = models.DateTimeField(auto_now_add=True)
+    atualizado_em     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Mapeamento Condomínio → Drive"
+        ordering = ["condominio_nome"]
+
+    def __str__(self):
+        return f"#{self.condominio_id} {self.condominio_nome} → {self.drive_folder_nome}"
+
+
 class PasswordResetToken(models.Model):
     """Token de redefinição de senha com expiração de 1 hora."""
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

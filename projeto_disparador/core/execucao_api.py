@@ -518,6 +518,8 @@ def gerar_docx_endpoint(request):
     Gera DOCX(s) para as unidades selecionadas.
     Uma unidade  → baixa o .docx diretamente.
     Várias unidades → baixa um .zip com todos os .docx.
+    Se `incluir_modelos_drive=true` e `drive_folder_id` informado,
+    os arquivos da pasta do Drive são incluídos no ZIP sob "modelos/".
     """
     body         = _parse_body(request)
     dados_condo  = body.get("condominio", {})
@@ -526,11 +528,24 @@ def gerar_docx_endpoint(request):
     if not unidades_sel:
         raise HttpError(400, "Nenhuma unidade selecionada")
 
-    responsavel   = body.get("responsavel") or {}
-    modelo        = body.get("modelo") or "com_honorarios"
-    m_path        = _modelo_path(modelo)
+    responsavel       = body.get("responsavel") or {}
+    modelo            = body.get("modelo") or "com_honorarios"
+    m_path            = _modelo_path(modelo)
+    incluir_drive     = bool(body.get("incluir_modelos_drive"))
+    drive_folder_id   = (body.get("drive_folder_id") or "").strip()
 
-    if len(unidades_sel) == 1:
+    # Baixa arquivos do Drive uma única vez (compartilhados pelo condomínio)
+    arquivos_drive: dict = {}
+    if incluir_drive and drive_folder_id:
+        try:
+            from core.drive_service import baixar_pasta_como_dict
+            arquivos_drive = baixar_pasta_como_dict(drive_folder_id)
+        except Exception as e:
+            logger.error(f"Erro ao baixar pasta do Drive {drive_folder_id}: {e}")
+            raise HttpError(502, f"Erro ao baixar modelos do Drive: {e}")
+
+    # Uma unidade, sem drive solicitado → DOCX direto
+    if len(unidades_sel) == 1 and not incluir_drive:
         u            = unidades_sel[0]
         imagem_bytes = _extrair_imagem(u)
         variaveis    = _variaveis(dados_condo, u, responsavel, modelo)
@@ -544,7 +559,7 @@ def gerar_docx_endpoint(request):
         resp["Content-Disposition"] = f'attachment; filename="{nome}"'
         return resp
 
-    # Múltiplas unidades → ZIP
+    # ZIP (múltiplas unidades ou drive)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for u in unidades_sel:
@@ -554,6 +569,10 @@ def gerar_docx_endpoint(request):
                 zf.writestr(f"{_nome_arquivo(u)}.docx", _gerar_docx(variaveis, imagem_bytes=imagem_bytes, modelo_path=m_path))
             except Exception as e:
                 logger.error(f"Erro ao gerar DOCX para {u.get('unidade')}: {e}")
+        for nome_arq, conteudo in arquivos_drive.items():
+            # Sanitiza nome para evitar path traversal
+            nome_safe = re.sub(r'[\\/]+', '_', nome_arq).lstrip(".")
+            zf.writestr(f"modelos/{nome_safe}", conteudo)
     buf.seek(0)
     nome_zip = f"execucao_docx_{date.today().isoformat()}.zip"
     resp = HttpResponse(buf.read(), content_type="application/zip")
@@ -567,6 +586,8 @@ def gerar_pdf_endpoint(request):
     Gera PDF(s) para as unidades selecionadas.
     Uma unidade  → baixa o .pdf diretamente.
     Várias unidades → baixa um .zip com todos os .pdf.
+    Se `incluir_modelos_drive=true` e `drive_folder_id` informado,
+    os arquivos da pasta do Drive são incluídos no ZIP sob "modelos/".
     """
     body         = _parse_body(request)
     dados_condo  = body.get("condominio", {})
@@ -575,11 +596,22 @@ def gerar_pdf_endpoint(request):
     if not unidades_sel:
         raise HttpError(400, "Nenhuma unidade selecionada")
 
-    responsavel   = body.get("responsavel") or {}
-    modelo        = body.get("modelo") or "com_honorarios"
-    m_path        = _modelo_path(modelo)
+    responsavel     = body.get("responsavel") or {}
+    modelo          = body.get("modelo") or "com_honorarios"
+    m_path          = _modelo_path(modelo)
+    incluir_drive   = bool(body.get("incluir_modelos_drive"))
+    drive_folder_id = (body.get("drive_folder_id") or "").strip()
 
-    if len(unidades_sel) == 1:
+    arquivos_drive: dict = {}
+    if incluir_drive and drive_folder_id:
+        try:
+            from core.drive_service import baixar_pasta_como_dict
+            arquivos_drive = baixar_pasta_como_dict(drive_folder_id)
+        except Exception as e:
+            logger.error(f"Erro ao baixar pasta do Drive {drive_folder_id}: {e}")
+            raise HttpError(502, f"Erro ao baixar modelos do Drive: {e}")
+
+    if len(unidades_sel) == 1 and not incluir_drive:
         u            = unidades_sel[0]
         imagem_bytes = _extrair_imagem(u)
         variaveis    = _variaveis(dados_condo, u, responsavel, modelo)
@@ -593,7 +625,7 @@ def gerar_pdf_endpoint(request):
         resp["Content-Disposition"] = f'attachment; filename="{nome}"'
         return resp
 
-    # Múltiplas unidades → ZIP
+    # ZIP (múltiplas unidades ou drive)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for u in unidades_sel:
@@ -606,6 +638,9 @@ def gerar_pdf_endpoint(request):
                 )
             except Exception as e:
                 logger.error(f"Erro ao gerar PDF para {u.get('unidade')}: {e}")
+        for nome_arq, conteudo in arquivos_drive.items():
+            nome_safe = re.sub(r'[\\/]+', '_', nome_arq).lstrip(".")
+            zf.writestr(f"modelos/{nome_safe}", conteudo)
     buf.seek(0)
     nome_zip = f"execucao_pdf_{date.today().isoformat()}.zip"
     resp = HttpResponse(buf.read(), content_type="application/zip")
@@ -693,3 +728,197 @@ def definir_padrao(request, id_resp: int):
         r.padrao = True
         r.save()
     return 200, {"id": r.id, "nome": r.nome, "funcao": r.funcao, "padrao": r.padrao}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Google Drive — modelos do condomínio
+# ──────────────────────────────────────────────────────────────────────────────
+
+@execucao_router.get("/drive/buscar-pasta", response={200: dict})
+def buscar_pasta_drive(request, id_condominio: int, nome_condominio: str = ""):
+    """
+    Busca a pasta de modelos do condomínio no Google Drive.
+    Prioridade: mapeamento manual salvo no banco > match automático pelo nome.
+
+    Retorna:
+      {
+        "status": "ok" | "ambiguo" | "nao_encontrada" | "nao_configurado",
+        "folder_id": "...",          # quando status=ok
+        "folder_name": "...",        # quando status=ok
+        "origem": "manual" | "auto", # quando status=ok
+        "candidatos": [{id, name}],  # quando status=ambiguo
+        "mensagem": "..."
+      }
+    """
+    from core.models import CondominioDriveMap
+    from core.drive_service import (
+        buscar_pasta_condominio, info_pasta, listar_arquivos,
+    )
+
+    # 1. Mapeamento manual
+    try:
+        m = CondominioDriveMap.objects.get(condominio_id=id_condominio)
+        info = info_pasta(m.drive_folder_id)
+        arquivos = listar_arquivos(m.drive_folder_id) if info else []
+        return 200, {
+            "status": "ok" if info else "nao_encontrada",
+            "folder_id": m.drive_folder_id,
+            "folder_name": info["name"] if info else m.drive_folder_nome,
+            "origem": "manual",
+            "total_arquivos": len(arquivos),
+            "candidatos": [],
+            "mensagem": "" if info else "Pasta manual não existe mais no Drive.",
+        }
+    except CondominioDriveMap.DoesNotExist:
+        pass
+
+    # 2. Match automático
+    parent_id = settings.DRIVE_EXECUCOES_FOLDER_ID
+    if not parent_id:
+        return 200, {
+            "status": "nao_configurado",
+            "mensagem": "DRIVE_EXECUCOES_FOLDER_ID não configurado no servidor.",
+            "candidatos": [],
+        }
+    try:
+        pasta, candidatos = buscar_pasta_condominio(parent_id, nome_condominio)
+    except Exception as e:
+        logger.error(f"Erro ao buscar pasta no Drive: {e}")
+        return 200, {
+            "status": "erro",
+            "mensagem": f"Erro ao acessar Drive: {e}",
+            "candidatos": [],
+        }
+
+    if pasta:
+        arquivos = listar_arquivos(pasta["id"])
+        return 200, {
+            "status": "ok",
+            "folder_id": pasta["id"],
+            "folder_name": pasta["name"],
+            "origem": "auto",
+            "total_arquivos": len(arquivos),
+            "candidatos": [],
+            "mensagem": "",
+        }
+    if candidatos:
+        return 200, {
+            "status": "ambiguo",
+            "candidatos": candidatos,
+            "mensagem": f"{len(candidatos)} pastas correspondem ao nome.",
+        }
+    return 200, {
+        "status": "nao_encontrada",
+        "candidatos": [],
+        "mensagem": "Nenhuma pasta encontrada com esse nome.",
+    }
+
+
+@execucao_router.get("/drive/listar-subpastas", response={200: list})
+def listar_subpastas_drive(request, parent_id: str = ""):
+    """Lista subpastas de `parent_id` (ou da pasta-mãe configurada)."""
+    from core.drive_service import listar_subpastas
+    pid = parent_id or settings.DRIVE_EXECUCOES_FOLDER_ID
+    if not pid:
+        raise HttpError(400, "parent_id ausente")
+    try:
+        return 200, listar_subpastas(pid)
+    except Exception as e:
+        raise HttpError(502, f"Erro Drive: {e}")
+
+
+@execucao_router.get("/drive/diagnostico", response={200: dict})
+def diagnostico_drive(request, folder_id: str = ""):
+    """
+    Endpoint de diagnóstico: tenta acessar uma pasta de várias formas
+    e retorna o que o service account consegue ver.
+    """
+    from core.drive_service import (
+        _get_drive_service, info_pasta, FOLDER_MIME,
+    )
+    pid = folder_id or settings.DRIVE_EXECUCOES_FOLDER_ID
+    out = {"folder_id": pid, "env_configurada": bool(settings.DRIVE_EXECUCOES_FOLDER_ID)}
+    if not pid:
+        out["erro"] = "Nenhum folder_id fornecido"
+        return 200, out
+    try:
+        info = info_pasta(pid)
+        out["metadata_pasta"] = info
+    except Exception as e:
+        out["erro_metadata"] = str(e)
+    try:
+        service = _get_drive_service()
+        # Lista TUDO dentro da pasta (pastas + arquivos)
+        q = f"'{pid}' in parents and trashed=false"
+        resp = service.files().list(
+            q=q,
+            fields="files(id, name, mimeType)",
+            pageSize=50,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            corpora="allDrives",
+        ).execute()
+        arquivos = resp.get("files", [])
+        out["total_itens_dentro"] = len(arquivos)
+        out["itens"] = [
+            {"id": f["id"], "name": f["name"], "tipo": "pasta" if f["mimeType"] == FOLDER_MIME else "arquivo"}
+            for f in arquivos[:20]
+        ]
+    except Exception as e:
+        out["erro_listagem"] = str(e)
+
+    # Lista pastas/arquivos que o SA consegue ver no total (primeiros 20)
+    try:
+        service = _get_drive_service()
+        resp = service.files().list(
+            q="trashed=false",
+            fields="files(id, name, mimeType, owners(emailAddress))",
+            pageSize=20,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            corpora="allDrives",
+        ).execute()
+        out["visivel_para_sa"] = [
+            {"name": f["name"], "tipo": "pasta" if f["mimeType"] == FOLDER_MIME else "arquivo"}
+            for f in resp.get("files", [])
+        ]
+    except Exception as e:
+        out["erro_listagem_geral"] = str(e)
+
+    return 200, out
+
+
+@execucao_router.post("/drive/mapeamento", response={200: dict})
+def salvar_mapeamento_drive(request):
+    """Salva/atualiza mapeamento manual condomínio → pasta Drive."""
+    from core.models import CondominioDriveMap
+    from core.drive_service import info_pasta
+    body = _parse_body(request)
+    id_cond = int(body.get("id_condominio") or 0)
+    nome_cond = (body.get("nome_condominio") or "").strip()
+    folder_id = (body.get("folder_id") or "").strip()
+    if not id_cond or not folder_id:
+        raise HttpError(400, "id_condominio e folder_id são obrigatórios")
+    info = info_pasta(folder_id)
+    if not info:
+        raise HttpError(404, "Pasta não encontrada no Drive ou service account sem acesso.")
+    m, _ = CondominioDriveMap.objects.update_or_create(
+        condominio_id=id_cond,
+        defaults={
+            "condominio_nome": nome_cond,
+            "drive_folder_id": folder_id,
+            "drive_folder_nome": info["name"],
+        },
+    )
+    return 200, {
+        "id_condominio": m.condominio_id,
+        "folder_id": m.drive_folder_id,
+        "folder_name": m.drive_folder_nome,
+    }
+
+
+@execucao_router.delete("/drive/mapeamento/{id_condominio}", response={204: None})
+def deletar_mapeamento_drive(request, id_condominio: int):
+    from core.models import CondominioDriveMap
+    CondominioDriveMap.objects.filter(condominio_id=id_condominio).delete()
+    return 204, None

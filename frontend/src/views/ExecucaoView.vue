@@ -567,6 +567,70 @@
               {{ sucesso }}
             </v-alert>
 
+            <!-- ── Modelos do Google Drive ── -->
+            <v-card variant="outlined" class="pa-3">
+              <div class="d-flex align-center flex-wrap gap-2">
+                <v-icon color="primary">mdi-google-drive</v-icon>
+                <div class="text-subtitle-2 mr-2">Modelos do Drive</div>
+
+                <template v-if="driveStatus === 'buscando'">
+                  <v-progress-circular indeterminate size="18" width="2" />
+                  <span class="text-caption text-medium-emphasis">Buscando pasta...</span>
+                </template>
+
+                <template v-else-if="driveStatus === 'ok'">
+                  <v-chip color="success" size="small" variant="tonal" prepend-icon="mdi-folder-check">
+                    {{ driveFolder.folder_name }}
+                    <span class="ml-1 opacity-70">({{ driveFolder.total_arquivos }} arq.)</span>
+                  </v-chip>
+                  <v-chip v-if="driveFolder.origem === 'manual'" size="x-small" variant="text" color="info">
+                    manual
+                  </v-chip>
+                  <v-checkbox
+                    v-model="incluirModelosDrive"
+                    label="Incluir no ZIP"
+                    density="compact"
+                    hide-details
+                    class="ml-auto"
+                  />
+                  <v-btn size="x-small" variant="text" @click="abrirSelecaoManualDrive">
+                    Trocar pasta
+                  </v-btn>
+                </template>
+
+                <template v-else-if="driveStatus === 'ambiguo'">
+                  <v-chip color="warning" size="small" variant="tonal" prepend-icon="mdi-alert-outline">
+                    {{ driveCandidatos.length }} pastas correspondem — selecione manualmente
+                  </v-chip>
+                  <v-btn size="small" color="primary" variant="tonal" @click="abrirSelecaoManualDrive">
+                    Selecionar pasta
+                  </v-btn>
+                </template>
+
+                <template v-else-if="driveStatus === 'nao_encontrada'">
+                  <v-chip color="error" size="small" variant="tonal" prepend-icon="mdi-folder-alert">
+                    Pasta não encontrada
+                  </v-chip>
+                  <v-btn size="small" color="primary" variant="tonal" @click="abrirSelecaoManualDrive">
+                    Vincular manualmente
+                  </v-btn>
+                </template>
+
+                <template v-else-if="driveStatus === 'nao_configurado'">
+                  <v-chip color="grey" size="small" variant="tonal">
+                    Drive não configurado no servidor
+                  </v-chip>
+                </template>
+
+                <template v-else-if="driveStatus === 'erro'">
+                  <v-chip color="error" size="small" variant="tonal">
+                    {{ driveMensagem || 'Erro ao acessar Drive' }}
+                  </v-chip>
+                  <v-btn size="x-small" variant="text" @click="buscarPastaDrive">Tentar novamente</v-btn>
+                </template>
+              </div>
+            </v-card>
+
             <v-row>
               <v-col cols="12" sm="6">
                 <v-btn
@@ -610,6 +674,75 @@
 
       </v-col>
     </v-row>
+
+    <!-- ── Dialog: seleção manual da pasta do Drive ── -->
+    <v-dialog v-model="dialogDriveManual" max-width="600">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon class="mr-2" color="primary">mdi-google-drive</v-icon>
+          Selecionar pasta do Drive
+          <v-spacer />
+          <v-btn icon variant="text" size="small" @click="dialogDriveManual = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        <v-card-text>
+          <p class="text-caption mb-2">
+            Navegue até a pasta dos modelos do condomínio
+            <strong>{{ nomeCondominio }}</strong> e clique nela para selecionar.
+            Use <v-icon size="14">mdi-folder-arrow-right-outline</v-icon> para entrar em uma subpasta.
+          </p>
+
+          <!-- Breadcrumb -->
+          <div class="d-flex align-center flex-wrap gap-1 mb-2 pa-2 rounded" style="background:rgba(128,128,128,0.08)">
+            <v-btn size="x-small" variant="text" @click="voltarPastaDrive(-1)">
+              <v-icon size="16" class="mr-1">mdi-home-outline</v-icon>
+              01 - EXECUÇÕES
+            </v-btn>
+            <template v-for="(b, idx) in driveBreadcrumb" :key="b.id">
+              <v-icon size="14">mdi-chevron-right</v-icon>
+              <v-btn size="x-small" variant="text" @click="voltarPastaDrive(idx)">
+                {{ b.name }}
+              </v-btn>
+            </template>
+          </div>
+
+          <div v-if="carregandoSubpastas" class="d-flex justify-center py-6">
+            <v-progress-circular indeterminate color="primary" />
+          </div>
+          <v-list v-else lines="one" density="compact" max-height="360" class="rounded border">
+            <v-list-item
+              v-for="p in subpastasDrive"
+              :key="p.id"
+              :active="driveManualSelecionado === p.id"
+              @click="driveManualSelecionado = p.id"
+            >
+              <template #prepend>
+                <v-icon :color="driveManualSelecionado === p.id ? 'primary' : 'grey'">
+                  {{ driveManualSelecionado === p.id ? 'mdi-folder-check' : 'mdi-folder-outline' }}
+                </v-icon>
+              </template>
+              <v-list-item-title>{{ p.name }}</v-list-item-title>
+              <template #append>
+                <v-btn icon size="x-small" variant="text" @click.stop="entrarPastaDrive(p)" title="Entrar na pasta">
+                  <v-icon size="18">mdi-folder-arrow-right-outline</v-icon>
+                </v-btn>
+              </template>
+            </v-list-item>
+            <v-list-item v-if="!subpastasDrive.length" class="text-center text-medium-emphasis">
+              Nenhuma subpasta aqui
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="dialogDriveManual = false">Cancelar</v-btn>
+          <v-btn color="primary" :disabled="!driveManualSelecionado" @click="salvarMapeamentoManualDrive">
+            Salvar mapeamento
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
   </div>
 </template>
@@ -886,10 +1019,117 @@ const buscarInadimplentes = async () => {
     if (!unidades.value.length) {
       erroBusca.value = 'Nenhuma unidade inadimplente encontrada para este condomínio.'
     }
+
+    // Busca pasta do Drive em paralelo (não bloqueia o fluxo)
+    buscarPastaDrive()
   } catch (e) {
     erroBusca.value = e.message
   } finally {
     loading.value = false
+  }
+}
+
+// ── Google Drive (modelos do condomínio) ──────────────────────────────────
+const driveStatus     = ref('idle')   // 'idle' | 'buscando' | 'ok' | 'ambiguo' | 'nao_encontrada' | 'nao_configurado' | 'erro'
+const driveFolder     = ref(null)     // { folder_id, folder_name, origem, total_arquivos }
+const driveCandidatos = ref([])
+const driveMensagem   = ref('')
+const incluirModelosDrive = ref(true)
+const dialogDriveManual   = ref(false)
+const subpastasDrive      = ref([])
+const driveManualSelecionado = ref(null)
+const carregandoSubpastas = ref(false)
+const driveBreadcrumb     = ref([])   // [{ id, name }] caminho percorrido
+
+async function buscarPastaDrive() {
+  if (!idCondominio.value) return
+  driveStatus.value = 'buscando'
+  driveFolder.value = null
+  driveCandidatos.value = []
+  driveMensagem.value = ''
+  try {
+    const nome = encodeURIComponent(nomeCondominio.value || '')
+    const res = await fetch(
+      `/api/execucao/drive/buscar-pasta?id_condominio=${idCondominio.value}&nome_condominio=${nome}`,
+      { headers: authHeader() },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`)
+    driveStatus.value = data.status
+    driveMensagem.value = data.mensagem || ''
+    if (data.status === 'ok') {
+      driveFolder.value = {
+        folder_id: data.folder_id,
+        folder_name: data.folder_name,
+        origem: data.origem,
+        total_arquivos: data.total_arquivos,
+      }
+    } else if (data.status === 'ambiguo') {
+      driveCandidatos.value = data.candidatos || []
+    }
+  } catch (e) {
+    driveStatus.value = 'erro'
+    driveMensagem.value = e.message
+  }
+}
+
+async function carregarSubpastasDrive(parentId = '') {
+  carregandoSubpastas.value = true
+  try {
+    const url = parentId
+      ? `/api/execucao/drive/listar-subpastas?parent_id=${encodeURIComponent(parentId)}`
+      : '/api/execucao/drive/listar-subpastas'
+    const res = await fetch(url, { headers: authHeader() })
+    const data = await res.json().catch(() => [])
+    if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`)
+    subpastasDrive.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    driveMensagem.value = e.message
+    subpastasDrive.value = []
+  } finally {
+    carregandoSubpastas.value = false
+  }
+}
+
+async function abrirSelecaoManualDrive() {
+  dialogDriveManual.value = true
+  driveManualSelecionado.value = null
+  driveBreadcrumb.value = []
+  await carregarSubpastasDrive()
+}
+
+async function entrarPastaDrive(pasta) {
+  driveBreadcrumb.value = [...driveBreadcrumb.value, pasta]
+  driveManualSelecionado.value = null
+  await carregarSubpastasDrive(pasta.id)
+}
+
+async function voltarPastaDrive(idx) {
+  // idx = -1 volta para a raiz
+  driveBreadcrumb.value = driveBreadcrumb.value.slice(0, idx + 1)
+  driveManualSelecionado.value = null
+  const parent = driveBreadcrumb.value[driveBreadcrumb.value.length - 1]
+  await carregarSubpastasDrive(parent?.id || '')
+}
+
+async function salvarMapeamentoManualDrive() {
+  if (!driveManualSelecionado.value) return
+  try {
+    const res = await fetch('/api/execucao/drive/mapeamento', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id_condominio: idCondominio.value,
+        nome_condominio: nomeCondominio.value,
+        folder_id: driveManualSelecionado.value,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`)
+    dialogDriveManual.value = false
+    await buscarPastaDrive()
+  } catch (e) {
+    driveMensagem.value = e.message
   }
 }
 
@@ -899,6 +1139,8 @@ const _payload = () => ({
   responsavel: responsavelSelecionado.value
     ? { nome: responsavelSelecionado.value.nome, funcao: responsavelSelecionado.value.funcao || '' }
     : null,
+  incluir_modelos_drive: incluirModelosDrive.value && driveStatus.value === 'ok',
+  drive_folder_id: driveFolder.value?.folder_id || '',
   unidades: unidadesSelecionadasLista.value.map(u => {
     const extra = dadosExtras.value[u.id_unidade] || {}
     return {
@@ -927,8 +1169,9 @@ const gerarDocumentos = async (tipo) => {
 
   const endpoint = tipo === 'docx' ? '/api/execucao/gerar-docx' : '/api/execucao/gerar-pdf'
   const qtd      = unidadesSelecionadas.value.size
-  const ext      = qtd === 1 ? tipo : 'zip'
-  const nomeBase = qtd === 1
+  const vaiSerZip = qtd > 1 || (incluirModelosDrive.value && driveStatus.value === 'ok')
+  const ext      = vaiSerZip ? 'zip' : tipo
+  const nomeBase = (qtd === 1 && !vaiSerZip)
     ? `${unidadesSelecionadasLista.value[0].unidade}_execucao.${ext}`
     : `execucao_${tipo}_${new Date().toISOString().slice(0, 10)}.zip`
 
